@@ -46,6 +46,7 @@ type SessionTaskSwitcherSheetProps = {
   onCloseAutoFocus?: (event: Event) => void;
   renderInline?: (body: ReactNode) => ReactNode;
   selection?: TaskSheetSelectionController;
+  onRequestNavigation?: (action: () => void | Promise<void>) => void;
 };
 function useTaskSheetOpener(open: boolean) {
   const [opener, setOpener] = useState({ open: false, current: null as HTMLElement | null });
@@ -476,6 +477,7 @@ export const SessionTaskSwitcherSheet = memo(function SessionTaskSwitcherSheet({
   onCloseAutoFocus,
   renderInline,
   selection,
+  onRequestNavigation,
 }: SessionTaskSwitcherSheetProps) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [expanded, setExpanded] = useState(true);
@@ -489,7 +491,13 @@ export const SessionTaskSwitcherSheet = memo(function SessionTaskSwitcherSheet({
     (nextOpen: boolean) => handleTaskSheetOpenChange(selectionController, nextOpen, onOpenChange),
     [onOpenChange, selectionController],
   );
-  const actions = useSheetActions(workspaceId, handleOpenChange, selectionController, navigate);
+  const actions = useSheetActions(
+    workspaceId,
+    handleOpenChange,
+    selectionController,
+    onRequestNavigation,
+    navigate,
+  );
   const rename = useMobileTaskRename();
   const edit = useSidebarTaskEdit();
   const linking = useMobileTaskLinking(workspaceId);
