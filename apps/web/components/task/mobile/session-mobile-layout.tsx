@@ -52,6 +52,7 @@ import { useTranslation } from "react-i18next";
 import { useTaskStatusSummary } from "@/hooks/domains/task/use-task-status-summary";
 import { LaunchQueueStatus } from "../launch-queue-status";
 import { WipQueueStatus } from "../wip-queue-status";
+import { SessionTaskSwitcherSheet } from "./session-task-switcher-sheet";
 
 export { resolveMobilePluginPanel } from "./mobile-plugin-panel-lifecycle";
 
@@ -869,6 +870,7 @@ export const SessionMobileLayout = memo(function SessionMobileLayout(
     handlePanelChange,
     isTaskSwitcherOpen,
     handleMenuClick,
+    setMobileSessionTaskSwitcherOpen,
   } = useSessionLayoutState({ sessionId: props.sessionId });
   const {
     selectedFile,
