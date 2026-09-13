@@ -77,7 +77,7 @@ export function resetTaskForm(
     resetters.resetRepositorySelections(initialSelections);
   } else {
     resetters.setRepositories(restoredRepositories);
-    resetters.setRemoteRepos([]);
+    resetters.setRemoteRepos(seededRemoteRepositories(initialValues));
   }
   resetters.setRepositoriesDirty(false);
   resetters.setAgentProfileId("");
