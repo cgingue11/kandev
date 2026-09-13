@@ -35,6 +35,7 @@ import {
   RemoteRepoProviderTabs,
 } from "@/components/task-create-dialog-remote-repo-provider-tabs";
 import { remoteRepositoryMatchesSelection } from "./task-create-dialog-remote-repo-identity";
+import { RemoteProviderConnectionError } from "./task-create-dialog-remote-provider-error";
 
 export { selectedRemoteRepositoryIdentity } from "./task-create-dialog-remote-repo-identity";
 import {
@@ -55,6 +56,8 @@ export type RemoteRepoChipProps = {
   branchesLoading: boolean;
   prInfo?: PRInfo;
   resolutionError?: Error;
+  /** The provider that supplied this picker row is no longer ready. */
+  connectionUnavailable?: boolean;
   accessibleRepos: UseRemoteRepositoriesResult;
   /** Identities selected by other rows. Matching entries remain selectable. */
   selectedRepositoryIdentities?: string[];
@@ -76,6 +79,8 @@ export type RemoteRepoChipProps = {
   onBranchChange: (branch: string) => void;
   onRetry?: () => void;
   onRemove: () => void;
+  repositoryLocked?: boolean;
+  branchLocked?: boolean;
 };
 
 /**
@@ -97,12 +102,15 @@ export function RemoteRepoChip({
   branchesLoading,
   prInfo,
   resolutionError,
+  connectionUnavailable = false,
   accessibleRepos,
   selectedRepositoryIdentities = [],
   onURLChange,
   onBranchChange,
   onRetry,
   onRemove,
+  repositoryLocked,
+  branchLocked,
 }: RemoteRepoChipProps) {
   useRowBranchAutoSelect({ row, branches, prInfo, onBranchChange });
   return (
@@ -120,6 +128,7 @@ export function RemoteRepoChip({
           accessibleRepos={accessibleRepos}
           selectedRepositoryIdentities={selectedRepositoryIdentities}
           onURLChange={onURLChange}
+          disabled={repositoryLocked}
         />
         <RemoteBranchPill
           url={row.url}
@@ -127,6 +136,7 @@ export function RemoteRepoChip({
           branches={branches}
           branchesLoading={branchesLoading}
           onBranchChange={onBranchChange}
+          branchLocked={branchLocked}
         />
         {onOptionsChange && row.url.trim() && (
           <RepositoryOptions
@@ -137,14 +147,34 @@ export function RemoteRepoChip({
             onChange={onOptionsChange}
           />
         )}
-        <RemoveButton onRemove={onRemove} />
+        {repositoryLocked ? null : <RemoveButton onRemove={onRemove} />}
       </span>
       <RepositoryOptionsSummary options={row.checkoutOptions} />
-      {resolutionError && onRetry ? (
-        <RemoteResolutionError error={resolutionError} onRetry={onRetry} />
-      ) : null}
+      <RemoteRepoError
+        connectionUnavailable={connectionUnavailable}
+        resolutionError={resolutionError}
+        onRetry={onRetry}
+      />
     </div>
   );
+}
+
+function RemoteRepoError({
+  connectionUnavailable,
+  resolutionError,
+  onRetry,
+}: {
+  connectionUnavailable: boolean;
+  resolutionError?: Error;
+  onRetry?: () => void;
+}) {
+  if (connectionUnavailable && onRetry) {
+    return <RemoteProviderConnectionError onRetry={onRetry} />;
+  }
+  if (resolutionError && onRetry) {
+    return <RemoteResolutionError error={resolutionError} onRetry={onRetry} />;
+  }
+  return null;
 }
 
 function RemoteResolutionError({ error, onRetry }: { error: Error; onRetry: () => void }) {
@@ -247,11 +277,13 @@ function RemoteRepoPill({
   accessibleRepos,
   selectedRepositoryIdentities,
   onURLChange,
+  disabled,
 }: {
   row: TaskRemoteRepoRow;
   accessibleRepos: UseRemoteRepositoriesResult;
   selectedRepositoryIdentities: string[];
   onURLChange: RemoteRepoChipProps["onURLChange"];
+  disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const portalContainer = useTaskCreateDialogPopoverContainer();
@@ -262,10 +294,12 @@ function RemoteRepoPill({
       <PopoverTrigger asChild>
         <button
           type="button"
+          disabled={disabled}
           data-testid="remote-repo-chip-trigger"
           className={cn(
             "col-span-3 h-7 min-w-0 inline-flex items-center gap-1.5 rounded-md px-2.5 text-xs bg-transparent md:col-span-1 [@media(pointer:coarse)]:h-11",
             "hover:bg-muted/60 cursor-pointer",
+            disabled && "cursor-not-allowed",
             !hasValue && "text-muted-foreground",
           )}
         >
@@ -381,6 +415,13 @@ function RemoteRepoPopoverContent({
   );
   return (
     <div className="flex flex-col">
+      {showProviderTabs && selectedProvider ? (
+        <RemoteRepoProviderTabs
+          providers={accessible.availableProviders}
+          value={selectedProvider}
+          onChange={setActiveProvider}
+        />
+      ) : null}
       <input
         autoFocus
         value={value}
@@ -427,13 +468,6 @@ function RemoteRepoPopoverContent({
         onPick={onPick}
         urlError={visibleUrlError}
       />
-      {showProviderTabs && selectedProvider ? (
-        <RemoteRepoProviderTabs
-          providers={accessible.availableProviders}
-          value={selectedProvider}
-          onChange={setActiveProvider}
-        />
-      ) : null}
     </div>
   );
 }
@@ -584,12 +618,14 @@ function RemoteBranchPill({
   branches,
   branchesLoading,
   onBranchChange,
+  branchLocked,
 }: {
   url: string;
   branch: string;
   branches: Branch[];
   branchesLoading: boolean;
   onBranchChange: (branch: string) => void;
+  branchLocked?: boolean;
 }) {
   const { t } = useTranslation();
   const hasUrl = !!url.trim();
@@ -601,7 +637,8 @@ function RemoteBranchPill({
   // user sees the value as the active selection and can still re-open the
   // dropdown to swap branches once the list loads. The pill's own popover
   // will show "loading" / "no branches" if the list isn't ready yet.
-  const disabled = !hasUrl || (!hasBranch && (branchesLoading || branchOptions.length === 0));
+  const disabled =
+    branchLocked || !hasUrl || (!hasBranch && (branchesLoading || branchOptions.length === 0));
   return (
     <Pill
       icon={<IconGitBranch className="h-3 w-3 shrink-0 text-muted-foreground" />}
@@ -610,12 +647,16 @@ function RemoteBranchPill({
       options={branchOptions}
       onSelect={onBranchChange}
       disabled={disabled}
-      disabledReason={computeRemoteBranchDisabledReason(
-        hasUrl,
-        hasBranch,
-        branchesLoading,
-        branchOptions.length,
-      )}
+      disabledReason={
+        branchLocked
+          ? t("task:branchLocked")
+          : computeRemoteBranchDisabledReason(
+              hasUrl,
+              hasBranch,
+              branchesLoading,
+              branchOptions.length,
+            )
+      }
       searchPlaceholder={t("task:searchBranches")}
       emptyMessage={branchesLoading ? t("task:loadingBranches") : t("task:noBranches")}
       testId="remote-branch-chip-trigger"
