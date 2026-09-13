@@ -617,6 +617,7 @@ func startAgentInfrastructure(
 	// AGENT MANAGER
 	// ============================================
 	lifecycleMgr, err := provideLifecycleManager(
+		ctx,
 		cfg,
 		log,
 		eventBus,
