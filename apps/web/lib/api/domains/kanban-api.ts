@@ -8,6 +8,7 @@ import type {
   CreateTaskResponse,
   AttachTaskWorkspaceSourcesRequest,
   AttachTaskWorkspaceSourcesResponse,
+  WorkspaceSourceRequest,
   Task,
   TaskPriority,
   MoveTaskResponse,
@@ -90,6 +91,8 @@ export async function createTask(
       confirm_discard?: boolean;
       consented_dirty_files?: string[];
     }>;
+    /** Presence-aware ordered folders and repositories for task creation. */
+    workspace_sources?: WorkspaceSourceRequest[];
     state?: Task["state"];
     start_agent?: boolean;
     prepare_session?: boolean;

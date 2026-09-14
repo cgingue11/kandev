@@ -82,6 +82,10 @@ type CreateTaskRequest struct {
 	Priority       string                 `json:"priority"`
 	State          *v1.TaskState          `json:"state,omitempty"`
 	Repositories   []TaskRepositoryInput  `json:"repositories,omitempty"`
+	// WorkspaceSources is presence-aware. A nil pointer preserves legacy
+	// repository/workspace-path behavior; a non-nil pointer, including an empty
+	// slice, is the complete ordered workspace contents selected by the caller.
+	WorkspaceSources                  *[]WorkspaceSourceInput `json:"workspace_sources,omitempty"`
 	Position       int                    `json:"position"`
 	Metadata       map[string]interface{} `json:"metadata,omitempty"`
 	// TrustedHandoffMetadata allows the handoff application path to persist its

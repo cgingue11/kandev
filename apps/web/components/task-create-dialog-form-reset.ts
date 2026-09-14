@@ -86,7 +86,10 @@ export function resetTaskForm(
   resetters.setSelectedWorkflowId(workflowId);
   resetters.setWorkflowAgentOverrides({});
   resetters.setFetchedSteps(null);
-  resetters.setNoRepository(initialValues?.noRepository ?? false);
+  const explicitEmptySelection =
+    initialValues?.repositorySelections !== undefined &&
+    initialValues.repositorySelections.length === 0;
+  resetters.setNoRepository(initialValues?.noRepository ?? explicitEmptySelection);
   resetters.setPreferLocalExecutor(initialValues?.preferLocalExecutor ?? false);
   resetters.setWorkspacePath("");
   resetters.setAutopilot(false);
@@ -116,8 +119,7 @@ export function repositorySelectionsFromInitialValues(
     ...localRows.map((row) => ({ kind: "local" as const, ...row })),
     ...remoteSelectionsFromInitialValues(initialValues),
   ];
-  if (selections.length > 0 || initialValues?.noRepository) return selections;
-  return [{ kind: "local", key: "row-0", branch: "" }];
+  return selections;
 }
 
 /** Converts a legacy URL preset into the remote row shape used by the picker. */

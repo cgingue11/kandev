@@ -38,6 +38,7 @@ import {
   type WorkflowAgentOverrideValidation,
 } from "@/components/task-create-dialog-workflow-agent-override-validation";
 import { resolveRepositorySelections } from "@/components/task-create-dialog-repositories-state";
+import { hasLastUsedWorkspaceSnapshot } from "@/components/task-create-dialog-workspace-defaults";
 
 // Catalog key: module scope, so it is resolved at the call site.
 const PROMPT_INSERTED_MESSAGE_KEY = "task:enhancedPromptInserted";
@@ -382,6 +383,15 @@ function useDialogSetupData(
     workflows,
     isLocalExecutor: computed.isLocalExecutor,
     lastUsedRepositoryId: taskCreateLastUsed.repositoryId,
+    workspaceSourcesByWorkspace: taskCreateLastUsed.workspaceSourcesByWorkspace,
+    hasWorkspaceSourcesSnapshot:
+      userSettingsLoaded &&
+      hasLastUsedWorkspaceSnapshot(
+        taskCreateLastUsed.workspaceSourcesByWorkspace ?? {},
+        workspaceId,
+      ),
+    restoreWorkspaceContents: props.mode !== "edit" && props.mode !== "session",
+    initialValues,
     userSettingsLoaded,
     lastUsedAgentProfileId: taskCreateLastUsed.agentProfileId,
     lastUsedExecutorProfileId: taskCreateLastUsed.executorProfileId,
@@ -542,6 +552,7 @@ function useDialogRepositorySets(
     setRepositories: fs.setRepositories,
     setRepositoriesDirty: fs.setRepositoriesDirty,
     setNoRepository: fs.setNoRepository,
+    setRepositorySelections: fs.resetRepositorySelections,
     userSettingsLoaded,
     isLocalExecutor: computed.isLocalExecutor,
     freshBranchEnabled: fs.freshBranchEnabled,
@@ -557,6 +568,7 @@ type RepositorySetsForDialogArgs = {
   setRepositories: DialogFormState["setRepositories"];
   setRepositoriesDirty: DialogFormState["setRepositoriesDirty"];
   setNoRepository: DialogFormState["setNoRepository"];
+  setRepositorySelections?: DialogFormState["resetRepositorySelections"];
   userSettingsLoaded: boolean;
   isLocalExecutor: boolean;
   freshBranchEnabled: boolean;
@@ -579,6 +591,7 @@ function useRepositorySetsForDialog({
   setRepositories,
   setRepositoriesDirty,
   setNoRepository,
+  setRepositorySelections,
   userSettingsLoaded,
   isLocalExecutor,
   freshBranchEnabled,
@@ -590,6 +603,8 @@ function useRepositorySetsForDialog({
     setRepositories,
     setRepositoriesDirty,
     setNoRepository,
+    selections,
+    setRepositorySelections,
   });
   const [saveOpen, setSaveOpen] = useState(false);
   // Offer "Save as set" only when there is a workspace-repository selection worth
@@ -599,6 +614,8 @@ function useRepositorySetsForDialog({
   return {
     sets,
     onApply,
+    rows,
+    repositories,
     save:
       canSave && workspaceId
         ? {

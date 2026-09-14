@@ -27,6 +27,7 @@ import {
   activatePlanMode,
   buildCreateTaskPayload,
   buildRepositoriesPayload,
+  buildWorkspaceSourcesPayload,
   computeIsTaskStarted,
   findDuplicateRemoteRepo,
   findUnresolvedProviderRemote,
@@ -375,10 +376,13 @@ export function useTaskSubmitHandlers({
     remoteRepos,
     useRemote,
   });
+  const usesWorkspaceSources = repositorySelections !== undefined;
+  const emptyWorkspaceSelection = usesWorkspaceSources && selections.length === 0;
+  const effectiveNoRepository = noRepository || emptyWorkspaceSelection;
   const isFreshBranchActive =
     freshBranchEnabled &&
     isLocalExecutor &&
-    !noRepository &&
+    !effectiveNoRepository &&
     selections.length === 1 &&
     selections[0]?.kind === "local" &&
     repositoryLocalPath !== "";
@@ -416,7 +420,7 @@ export function useTaskSubmitHandlers({
         remoteProviderReadiness,
         remoteRepos: useRemote ? remoteRepos : undefined,
         agentProfileId,
-        noRepository,
+        noRepository: effectiveNoRepository,
       }),
     [
       workspaceId,
@@ -426,7 +430,7 @@ export function useTaskSubmitHandlers({
       useRemote,
       remoteRepos,
       agentProfileId,
-      noRepository,
+      effectiveNoRepository,
       autoTitle,
       selections,
     ],
@@ -513,7 +517,7 @@ export function useTaskSubmitHandlers({
 
   const getRepositoriesPayload = useCallback(
     (consentedDirtyFiles: string[] = []) => {
-      if (noRepository) return [];
+      if (effectiveNoRepository) return [];
       return buildRepositoriesPayload({
         selections,
         useRemote,
@@ -528,9 +532,38 @@ export function useTaskSubmitHandlers({
     },
     // buildFreshBranchPayload is a closure over current scope; dependencies stay explicit below.
     [
-      noRepository,
+      effectiveNoRepository,
       useRemote,
       selections,
+      remoteRepos,
+      prInfoByUrl,
+      repositories,
+      discoveredRepositories,
+      workspaceRepositories,
+      isLocalExecutor,
+      isFreshBranchActive,
+    ],
+  );
+
+  const getWorkspaceSourcesPayload = useCallback(
+    (consentedDirtyFiles: string[] = []) => {
+      if (!usesWorkspaceSources) return undefined;
+      return buildWorkspaceSourcesPayload({
+        selections,
+        useRemote,
+        remoteRepos,
+        prInfoByUrl,
+        repositories,
+        discoveredRepositories,
+        workspaceRepositories,
+        isLocalExecutor,
+        freshBranch: buildFreshBranchPayload(consentedDirtyFiles),
+      });
+    },
+    [
+      usesWorkspaceSources,
+      selections,
+      useRemote,
       remoteRepos,
       prInfoByUrl,
       repositories,
@@ -773,6 +806,7 @@ export function useTaskSubmitHandlers({
           trimmedDescription: opts.trimmedDescription,
           autoTitle,
           repositoriesPayload: getRepositoriesPayload(c),
+          workspaceSourcesPayload: getWorkspaceSourcesPayload(c),
           agentProfileId,
           executorId,
           executorProfileId,
@@ -784,7 +818,7 @@ export function useTaskSubmitHandlers({
           // payload omits the key entirely — matches the noRepository=false
           // case and keeps "no path provided" semantically distinct from
           // "empty path string" on the wire.
-          workspacePath: resolveWorkspacePath(noRepository, workspacePath),
+          workspacePath: resolveWorkspacePath(effectiveNoRepository, workspacePath),
           autopilot,
           priority,
           workflowAgentOverrides,
@@ -845,6 +879,7 @@ export function useTaskSubmitHandlers({
       parentTaskId,
       autopilot,
       noRepository,
+      effectiveNoRepository,
       workspacePath,
       priority,
       onSuccess,
@@ -855,6 +890,7 @@ export function useTaskSubmitHandlers({
       setPlanMode,
       router,
       getRepositoriesPayload,
+      getWorkspaceSourcesPayload,
       createTaskWithFreshBranchRetry,
       isSessionMode,
       isEditMode,
@@ -1087,12 +1123,13 @@ export function useTaskSubmitHandlers({
           trimmedDescription,
           autoTitle,
           repositoriesPayload: getRepositoriesPayload(c),
+          workspaceSourcesPayload: getWorkspaceSourcesPayload(c),
           agentProfileId,
           executorId,
           executorProfileId,
           withAgent: false,
           attachments,
-          workspacePath: resolveWorkspacePath(noRepository, workspacePath),
+          workspacePath: resolveWorkspacePath(effectiveNoRepository, workspacePath),
           autopilot,
           priority,
           workflowAgentOverrides,
@@ -1128,12 +1165,14 @@ export function useTaskSubmitHandlers({
     executorId,
     executorProfileId,
     noRepository,
+    effectiveNoRepository,
     autopilot,
     workspacePath,
     priority,
     validateForCreate,
     hasRemoteSubmitBlocker,
     getRepositoriesPayload,
+    getWorkspaceSourcesPayload,
     ensureFreshBranchConsent,
     createTaskWithFreshBranchRetry,
     refreshStaleBranchPolicies,
