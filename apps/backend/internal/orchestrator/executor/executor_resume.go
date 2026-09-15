@@ -1583,7 +1583,9 @@ func (e *Executor) applyResumeWorkspaceFolders(
 	for _, folder := range folders {
 		if folder != nil {
 			req.WorkspaceFolders = append(req.WorkspaceFolders, WorkspaceFolderSpec{
-				Name: folder.DisplayName, LocalPath: folder.LocalPath,
+				Name:                  folder.DisplayName,
+				LocalPath:             folder.LocalPath,
+				WorkspaceRelativePath: folder.WorkspaceRelativePath,
 			})
 		}
 	}
