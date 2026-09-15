@@ -272,6 +272,12 @@ function useFormStateValues(workflowId: string | null) {
   const [agentProfileId, setAgentProfileId] = useState("");
   const [executorId, setExecutorId] = useState("");
   const [executorProfileId, setExecutorProfileId] = useState("");
+  const [executorChoiceTouched, setExecutorChoiceTouched] = useState(false);
+  const [automaticExecutorRestore, setAutomaticExecutorRestore] = useState<{
+    executorId: string;
+    executorProfileId: string;
+  } | null>(null);
+  const [folderOnlyExecutorNotice, setFolderOnlyExecutorNotice] = useState(false);
   const [selectedWorkflowId, setSelectedWorkflowId] = useState(workflowId);
   const [workflowAgentOverrides, setWorkflowAgentOverrides] = useState<Record<string, string>>({});
   const [fetchedSteps, setFetchedSteps] = useState<StepType[] | null>(null);
@@ -305,6 +311,12 @@ function useFormStateValues(workflowId: string | null) {
     setExecutorId,
     executorProfileId,
     setExecutorProfileId,
+    executorChoiceTouched,
+    setExecutorChoiceTouched,
+    automaticExecutorRestore,
+    setAutomaticExecutorRestore,
+    folderOnlyExecutorNotice,
+    setFolderOnlyExecutorNotice,
     selectedWorkflowId,
     setSelectedWorkflowId,
     workflowAgentOverrides,
@@ -394,6 +406,9 @@ export function useDialogFormState(
       setAgentProfileId: form.setAgentProfileId,
       setExecutorId: form.setExecutorId,
       setExecutorProfileId: form.setExecutorProfileId,
+      setExecutorChoiceTouched: form.setExecutorChoiceTouched,
+      setAutomaticExecutorRestore: form.setAutomaticExecutorRestore,
+      setFolderOnlyExecutorNotice: form.setFolderOnlyExecutorNotice,
       setSelectedWorkflowId: form.setSelectedWorkflowId,
       setWorkflowAgentOverrides: form.setWorkflowAgentOverrides,
       setFetchedSteps: form.setFetchedSteps,

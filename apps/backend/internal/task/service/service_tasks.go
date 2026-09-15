@@ -1223,6 +1223,12 @@ func buildTaskRepositoryMetadata(repoInput TaskRepositoryInput) (map[string]inte
 	if err := models.PutRepositoryCheckoutOptions(metadata, repoInput.CheckoutOptions); err != nil {
 		return nil, err
 	}
+	if repoInput.CheckoutSource != "" {
+		metadata["checkout_source"] = repoInput.CheckoutSource
+	}
+	if repoInput.ExpectedOrigin != "" {
+		metadata["expected_origin"] = repoInput.ExpectedOrigin
+	}
 	if prNum := resolvePRNumber(repoInput); prNum > 0 {
 		metadata["pr_number"] = prNum
 	}
@@ -1917,6 +1923,13 @@ func (s *Service) replaceTaskRepositories(ctx context.Context, taskID, workspace
 	preserveTaskRepositoryPolicySnapshots(repositories, existing)
 	if err := s.validateTaskRepositoryPolicies(ctx, workspaceID, repositories); err != nil {
 		return err
+	}
+	for index, input := range repositories {
+		resolved, resolveErr := s.resolveRemoteOriginInput(ctx, workspaceID, input)
+		if resolveErr != nil {
+			return resolveErr
+		}
+		repositories[index] = resolved
 	}
 	if err := s.taskRepos.DeleteTaskRepositoriesByTask(ctx, taskID); err != nil {
 		s.logger.Error("failed to delete task repositories", zap.Error(err))

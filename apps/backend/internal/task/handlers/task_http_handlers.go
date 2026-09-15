@@ -48,6 +48,8 @@ type workspaceSourceJSON struct {
 	ProviderRepoID      string   `json:"provider_repo_id"`
 	ProviderOwner       string   `json:"provider_owner"`
 	ProviderName        string   `json:"provider_name"`
+	CheckoutSource      string   `json:"checkout_source,omitempty"`
+	ExpectedOrigin      string   `json:"expected_origin,omitempty"`
 	BaseBranch          string   `json:"base_branch"`
 	CheckoutBranch      string   `json:"checkout_branch"`
 	BranchPolicyID      string   `json:"branch_policy_id"`
@@ -103,7 +105,7 @@ func parseHTTPWorkspaceSourcesWithFreshBranch(raw []json.RawMessage, allowFreshB
 		allowed := map[string]bool{"kind": true, "local_path": true}
 		switch kind {
 		case string(service.WorkspaceSourceRepository):
-			for _, key := range []string{"repository_id", "remote_url", "github_url", "provider", "provider_host", "provider_scope", "provider_repo_id", "provider_owner", "provider_name", "base_branch", "checkout_branch", "branch_policy_id", "pr_number"} {
+			for _, key := range []string{"repository_id", "remote_url", "github_url", "provider", "provider_host", "provider_scope", "provider_repo_id", "provider_owner", "provider_name", "checkout_source", "expected_origin", "base_branch", "checkout_branch", "branch_policy_id", "pr_number"} {
 				allowed[key] = true
 			}
 			if allowFreshBranch {
@@ -137,6 +139,8 @@ func parseHTTPWorkspaceSourcesWithFreshBranch(raw []json.RawMessage, allowFreshB
 			ProviderRepoID:      source.ProviderRepoID,
 			ProviderOwner:       source.ProviderOwner,
 			ProviderName:        source.ProviderName,
+			CheckoutSource:      source.CheckoutSource,
+			ExpectedOrigin:      source.ExpectedOrigin,
 			BaseBranch:          source.BaseBranch,
 			CheckoutBranch:      source.CheckoutBranch,
 			BranchPolicyID:      source.BranchPolicyID,
@@ -793,6 +797,8 @@ type httpTaskRepositoryInput struct {
 	ProviderRepoID  string                            `json:"provider_repo_id"`
 	ProviderOwner   string                            `json:"provider_owner"`
 	ProviderName    string                            `json:"provider_name"`
+	CheckoutSource  string                            `json:"checkout_source,omitempty"`
+	ExpectedOrigin  string                            `json:"expected_origin,omitempty"`
 
 	// Fresh-branch flow (local executor only): when FreshBranch is true the
 	// handler discards uncommitted changes in the local clone and creates
@@ -821,7 +827,7 @@ type httpCreateTaskRequest struct {
 	Priority               string                    `json:"priority,omitempty"`
 	State                  *v1.TaskState             `json:"state,omitempty"`
 	Repositories           []httpTaskRepositoryInput `json:"repositories,omitempty"`
-	WorkspaceSources       *[]json.RawMessage       `json:"workspace_sources,omitempty"`
+	WorkspaceSources       *[]json.RawMessage        `json:"workspace_sources,omitempty"`
 	Position               int                       `json:"position,omitempty"`
 	Metadata               map[string]interface{}    `json:"metadata,omitempty"`
 	StartAgent             bool                      `json:"start_agent,omitempty"`
@@ -1282,6 +1288,8 @@ func mapTaskCreateLastUsedSources(
 			ProviderRepoID: source.ProviderRepoID,
 			ProviderOwner:  source.ProviderOwner,
 			ProviderName:   source.ProviderName,
+			CheckoutSource: source.CheckoutSource,
+			ExpectedOrigin: source.ExpectedOrigin,
 			BaseBranch:     source.BaseBranch,
 			CheckoutBranch: source.CheckoutBranch,
 			BranchPolicyID: source.BranchPolicyID,
@@ -1502,22 +1510,24 @@ func convertCreateTaskRepositories(c *gin.Context, inputs []httpTaskRepositoryIn
 func dtoTaskRepositoryInput(r httpTaskRepositoryInput) dto.TaskRepositoryInput {
 	return dto.TaskRepositoryInput{
 		CheckoutOptions: r.CheckoutOptions,
-		RepositoryID:   r.RepositoryID,
-		BaseBranch:     r.BaseBranch,
-		CheckoutBranch: r.CheckoutBranch,
-		BranchPolicyID: r.BranchPolicyID,
-		PRNumber:       r.PRNumber,
-		LocalPath:      r.LocalPath,
-		Name:           r.Name,
-		DefaultBranch:  r.DefaultBranch,
-		GitHubURL:      r.GitHubURL,
-		RemoteURL:      r.RemoteURL,
-		Provider:       r.Provider,
-		ProviderHost:   r.ProviderHost,
-		ProviderScope:  r.ProviderScope,
-		ProviderRepoID: r.ProviderRepoID,
-		ProviderOwner:  r.ProviderOwner,
-		ProviderName:   r.ProviderName,
+		RepositoryID:    r.RepositoryID,
+		BaseBranch:      r.BaseBranch,
+		CheckoutBranch:  r.CheckoutBranch,
+		BranchPolicyID:  r.BranchPolicyID,
+		PRNumber:        r.PRNumber,
+		LocalPath:       r.LocalPath,
+		Name:            r.Name,
+		DefaultBranch:   r.DefaultBranch,
+		GitHubURL:       r.GitHubURL,
+		RemoteURL:       r.RemoteURL,
+		Provider:        r.Provider,
+		ProviderHost:    r.ProviderHost,
+		ProviderScope:   r.ProviderScope,
+		ProviderRepoID:  r.ProviderRepoID,
+		ProviderOwner:   r.ProviderOwner,
+		ProviderName:    r.ProviderName,
+		CheckoutSource:  r.CheckoutSource,
+		ExpectedOrigin:  r.ExpectedOrigin,
 	}
 }
 
@@ -1539,6 +1549,8 @@ func workspaceSourceRepositoryInputs(sources []service.WorkspaceSourceInput) ([]
 			ProviderRepoID:      source.ProviderRepoID,
 			ProviderOwner:       source.ProviderOwner,
 			ProviderName:        source.ProviderName,
+			CheckoutSource:      source.CheckoutSource,
+			ExpectedOrigin:      source.ExpectedOrigin,
 			BaseBranch:          source.BaseBranch,
 			CheckoutBranch:      source.CheckoutBranch,
 			BranchPolicyID:      source.BranchPolicyID,
@@ -1826,6 +1838,8 @@ func (h *TaskHandlers) httpUpdateTask(c *gin.Context) {
 				ProviderRepoID:  r.ProviderRepoID,
 				ProviderOwner:   r.ProviderOwner,
 				ProviderName:    r.ProviderName,
+				CheckoutSource:  r.CheckoutSource,
+				ExpectedOrigin:  r.ExpectedOrigin,
 			})
 		}
 	}

@@ -127,6 +127,9 @@ export function buildDialogFormBodyProps(
     onToggleFreshBranch: handlers.handleToggleFreshBranch,
     onToggleNoRepository: repoLocked ? undefined : handlers.handleToggleNoRepository,
     onWorkspacePathChange: handlers.handleWorkspacePathChange,
+    onFolderSelectionAdded: handlers.onFolderSelectionAdded,
+    onRepositorySelectionAdded: handlers.onRepositorySelectionAdded,
+    onAllWorkspaceSourcesRemoved: handlers.onAllWorkspaceSourcesRemoved,
     localRepositoryCreation: localRepositoryCreationEnabled(setup.isCreateMode, repoLocked)
       ? {
           executorSelection: handlers.directLocalExecutorSelection,
@@ -144,6 +147,8 @@ export function buildDialogFormBodyProps(
     // Applying a set writes into the same ordered draft as the repository picker.
     repositorySets: repoLocked ? undefined : setup.repositorySets,
     isLocalExecutor: computed.isLocalExecutor,
+    executorSourcePolicy: computed.executorSourcePolicy,
+    executorSourceNotice: computed.executorSourceNotice,
     agentCompatState: computed.agentCompatState,
     selectedAgentProfileName: computed.selectedAgentProfileName,
     effectiveWorkflowName: resolveWorkflowName(setup.workflows, computed.effectiveWorkflowId),
@@ -203,6 +208,7 @@ export function buildDialogFooterProps(
     workspaceId: props.workspaceId,
     effectiveWorkflowId: computed.effectiveWorkflowId ?? null,
     executorHint: computed.executorHint,
+    executorSourceNotice: computed.executorSourceNotice,
     noCompatibleAgent: computed.noCompatibleAgent,
     agentCompatState: computed.agentCompatState,
     selectedAgentProfileName: computed.selectedAgentProfileName,
@@ -215,7 +221,8 @@ export function buildDialogFooterProps(
       props.submitBlockedReason ??
       pendingAttachmentUploadReason ??
       setup.savedBaseSubmitBlockedReason ??
-      workflowAgentOverridesBlockedReason,
+      workflowAgentOverridesBlockedReason ??
+      (computed.executorSourcePolicy?.incompatible ? computed.sourcePolicyReason : null),
     editDependenciesReady: setup.isEditMode ? setup.editDependencies.ready : undefined,
   };
 }
