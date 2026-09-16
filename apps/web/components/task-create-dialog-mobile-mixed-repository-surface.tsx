@@ -44,6 +44,8 @@ export function MobileMixedRepositorySurface({
         onRowBranchChange={props.onRowBranchChange}
         lastUsedBranch={props.lastUsedBranch}
         userSettingsLoaded={props.userSettingsLoaded}
+        remoteOriginMode={props.executorSourcePolicy?.capabilities.requiresCloneableLocalRepository}
+        remoteOriginStates={props.remoteOriginStates}
       />
       <MobileMixedRepositoryChips
         repositories={props.repositories}

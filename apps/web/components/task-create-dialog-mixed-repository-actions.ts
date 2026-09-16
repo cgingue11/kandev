@@ -32,6 +32,7 @@ type MixedRepositoryActionsArgs = {
   onFolderSelectionAdded?: (wasEmpty: boolean) => void;
   onRepositorySelectionAdded?: (wasFolderOnly: boolean) => void;
   onAllWorkspaceSourcesRemoved?: () => void;
+  onRepositorySelectionRemoved?: (remaining: TaskRepositorySelection[]) => void;
 };
 
 export function useMixedRepositoryActions({
@@ -42,6 +43,7 @@ export function useMixedRepositoryActions({
   onFolderSelectionAdded,
   onRepositorySelectionAdded,
   onAllWorkspaceSourcesRemoved,
+  onRepositorySelectionRemoved,
 }: MixedRepositoryActionsArgs) {
   const appendActions = useRepositoryAppendActions({
     fs,
@@ -50,11 +52,13 @@ export function useMixedRepositoryActions({
     selectionCount,
     onFolderSelectionAdded,
     onRepositorySelectionAdded,
+    onRepositorySelectionRemoved,
   });
   const removeActions = useRepositoryRemoveActions(
     fs,
     selectionCount,
     onAllWorkspaceSourcesRemoved,
+    onRepositorySelectionRemoved,
   );
   return { ...appendActions, ...removeActions };
 }
@@ -156,27 +160,34 @@ function useRepositoryRemoveActions(
   fs: DialogFormState,
   selectionCount: number,
   onAllWorkspaceSourcesRemoved?: () => void,
+  onRepositorySelectionRemoved?: (remaining: TaskRepositorySelection[]) => void,
 ) {
   const shouldEnterScratch = selectionCount === 1;
   const removeLocal = useCallback(
     (key: string) => {
+      const remaining = remainingSelections(fs, key);
       fs.removeRepository(key);
       if (shouldEnterScratch) {
         fs.setNoRepository(true);
         onAllWorkspaceSourcesRemoved?.();
+      } else {
+        onRepositorySelectionRemoved?.(remaining);
       }
     },
-    [fs.removeRepository, fs.setNoRepository, shouldEnterScratch, onAllWorkspaceSourcesRemoved],
+    [fs, shouldEnterScratch, onAllWorkspaceSourcesRemoved, onRepositorySelectionRemoved],
   );
   const removeRemote = useCallback(
     (key: string) => {
+      const remaining = remainingSelections(fs, key);
       fs.removeRemoteRepo(key);
       if (shouldEnterScratch) {
         fs.setNoRepository(true);
         onAllWorkspaceSourcesRemoved?.();
+      } else {
+        onRepositorySelectionRemoved?.(remaining);
       }
     },
-    [fs.removeRemoteRepo, fs.setNoRepository, shouldEnterScratch, onAllWorkspaceSourcesRemoved],
+    [fs, shouldEnterScratch, onAllWorkspaceSourcesRemoved, onRepositorySelectionRemoved],
   );
   const removeFolder = useCallback(
     (key: string) => {
@@ -189,6 +200,10 @@ function useRepositoryRemoveActions(
     [fs.removeRepository, fs.setNoRepository, shouldEnterScratch, onAllWorkspaceSourcesRemoved],
   );
   return { removeLocal, removeRemote, removeFolder };
+}
+
+function remainingSelections(fs: DialogFormState, removedKey: string): TaskRepositorySelection[] {
+  return resolveRepositorySelections(fs).filter((selection) => selection.key !== removedKey);
 }
 
 function selectionIsFolderOnly(fs: DialogFormState): boolean {

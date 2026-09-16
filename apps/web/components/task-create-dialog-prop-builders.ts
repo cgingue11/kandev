@@ -130,6 +130,7 @@ export function buildDialogFormBodyProps(
     onFolderSelectionAdded: handlers.onFolderSelectionAdded,
     onRepositorySelectionAdded: handlers.onRepositorySelectionAdded,
     onAllWorkspaceSourcesRemoved: handlers.onAllWorkspaceSourcesRemoved,
+    onRepositorySelectionRemoved: handlers.onRepositorySelectionRemoved,
     localRepositoryCreation: localRepositoryCreationEnabled(setup.isCreateMode, repoLocked)
       ? {
           executorSelection: handlers.directLocalExecutorSelection,
@@ -149,6 +150,8 @@ export function buildDialogFormBodyProps(
     isLocalExecutor: computed.isLocalExecutor,
     executorSourcePolicy: computed.executorSourcePolicy,
     executorSourceNotice: computed.executorSourceNotice,
+    remoteOriginStates: computed.remoteOriginStates,
+    refreshRemoteOrigins: computed.refreshRemoteOrigins,
     agentCompatState: computed.agentCompatState,
     selectedAgentProfileName: computed.selectedAgentProfileName,
     effectiveWorkflowName: resolveWorkflowName(setup.workflows, computed.effectiveWorkflowId),

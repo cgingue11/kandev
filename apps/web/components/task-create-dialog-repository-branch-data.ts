@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import type { TaskRepoRow } from "@/components/task-create-dialog-types";
+import type { Branch } from "@/lib/types/http";
 import { useBranches, type BranchSource } from "@/hooks/domains/workspace/use-repository-branches";
 import { useRepoBranchAutoselect } from "@/components/task-create-dialog-repo-branch-autoselect";
 
@@ -14,8 +15,12 @@ export type RepositoryBranchDataArgs = {
   preferredDefaultBranchLoading?: boolean;
   lastUsedBranch?: string | null;
   userSettingsLoaded?: boolean;
-  remoteBranches?: import("@/lib/types/http").Branch[];
+  remoteBranches?: Branch[];
   isLocalExecutor?: boolean;
+  /** True when the current executor clones local rows from their origin. */
+  remoteOriginMode?: boolean;
+  /** Current origin inspection has not returned a branch set yet. */
+  remoteOriginInspectionLoading?: boolean;
 };
 
 export function useRepositoryBranchData({
@@ -29,6 +34,8 @@ export function useRepositoryBranchData({
   userSettingsLoaded,
   remoteBranches,
   isLocalExecutor = false,
+  remoteOriginMode,
+  remoteOriginInspectionLoading = false,
 }: RepositoryBranchDataArgs) {
   const branchSource = useMemo<BranchSource | null>(() => {
     if (!workspaceId) return null;
@@ -46,11 +53,19 @@ export function useRepositoryBranchData({
     refresh: refreshBranches,
     isLoaded: branchesLoaded,
   } = useBranches(branchSource, !!branchSource);
-  const effectiveBranches = !isLocalExecutor && remoteBranches ? remoteBranches : branches;
+  const effectiveBranchState = resolveEffectiveBranchState({
+    branches,
+    branchesLoading,
+    branchesLoaded,
+    isLocalExecutor,
+    remoteBranches,
+    remoteOriginMode,
+    remoteOriginInspectionLoading,
+  });
   useRepoBranchAutoselect({
     branchSource,
-    branchesLoading,
-    branches: effectiveBranches,
+    branchesLoading: effectiveBranchState.loading,
+    branches: effectiveBranchState.branches,
     rowBranch: branchValue,
     onBranchChange,
     preferredDefaultBranch,
@@ -59,9 +74,39 @@ export function useRepositoryBranchData({
     userSettingsLoaded,
   });
   return {
-    branches: effectiveBranches,
-    branchesLoading: !isLocalExecutor && remoteBranches ? false : branchesLoading,
-    branchesLoaded: !isLocalExecutor && remoteBranches ? true : branchesLoaded,
+    branches: effectiveBranchState.branches,
+    branchesLoading: effectiveBranchState.loading,
+    branchesLoaded: effectiveBranchState.loaded,
     refreshBranches,
   };
+}
+
+function resolveEffectiveBranchState({
+  branches,
+  branchesLoading,
+  branchesLoaded,
+  isLocalExecutor,
+  remoteBranches,
+  remoteOriginMode,
+  remoteOriginInspectionLoading,
+}: {
+  branches: Branch[];
+  branchesLoading: boolean;
+  branchesLoaded: boolean;
+  isLocalExecutor: boolean;
+  remoteBranches?: Branch[];
+  remoteOriginMode?: boolean;
+  remoteOriginInspectionLoading: boolean;
+}): { branches: Branch[]; loading: boolean; loaded: boolean } {
+  if (remoteOriginMode === true) {
+    return {
+      branches: remoteBranches ?? [],
+      loading: remoteOriginInspectionLoading || !remoteBranches,
+      loaded: !remoteOriginInspectionLoading && Boolean(remoteBranches),
+    };
+  }
+  if (remoteOriginMode === undefined && !isLocalExecutor && remoteBranches) {
+    return { branches: remoteBranches, loading: false, loaded: true };
+  }
+  return { branches, loading: branchesLoading, loaded: branchesLoaded };
 }

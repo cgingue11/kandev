@@ -395,6 +395,7 @@ test.describe("Create task Remote repo picker on mobile", () => {
     await firstOption.tap();
 
     await openTaskRepositoryPicker(testPage, { mobile: true, provider: "github" });
+    await waitForFiniteAnimations(testPage.locator('[data-slot="drawer-content"]:visible').last());
     const duplicateOption = testPage
       .getByTestId("task-repository-remote-option")
       .filter({ hasText: "mock-user/duplicate" });

@@ -40,6 +40,7 @@ import { useTaskCreateDialogSetup } from "@/components/task-create-dialog-setup"
 
 export type { TaskCreateDialogProps } from "@/components/task-create-dialog-types";
 
+// eslint-disable-next-line max-lines-per-function -- create mode keeps source, prompt, and selector order together.
 function CreateModeBody(props: DialogFormBodyProps) {
   const {
     isCreateMode,
@@ -65,9 +66,12 @@ function CreateModeBody(props: DialogFormBodyProps) {
     isLocalExecutor,
     executorSourcePolicy,
     folderDisabledReason,
+    remoteOriginStates,
+    refreshRemoteOrigins,
     onFolderSelectionAdded,
     onRepositorySelectionAdded,
     onAllWorkspaceSourcesRemoved,
+    onRepositorySelectionRemoved,
     localRepositoryCreation,
   } = props;
   const showTaskName =
@@ -95,6 +99,8 @@ function CreateModeBody(props: DialogFormBodyProps) {
         isLocalExecutor={isLocalExecutor}
         executorSourcePolicy={executorSourcePolicy}
         folderDisabledReason={folderDisabledReason}
+        remoteOriginStates={remoteOriginStates}
+        onRefreshRemoteOrigins={refreshRemoteOrigins}
         lastUsedBranch={props.lastUsedBranch}
         userSettingsLoaded={props.userSettingsLoaded}
         onToggleNoRepository={props.onToggleNoRepository}
@@ -106,6 +112,7 @@ function CreateModeBody(props: DialogFormBodyProps) {
         onFolderSelectionAdded={onFolderSelectionAdded}
         onRepositorySelectionAdded={onRepositorySelectionAdded}
         onAllWorkspaceSourcesRemoved={onAllWorkspaceSourcesRemoved}
+        onRepositorySelectionRemoved={onRepositorySelectionRemoved}
       />
       {showTaskName && (
         <InlineTaskName

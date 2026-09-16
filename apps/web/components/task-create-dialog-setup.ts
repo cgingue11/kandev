@@ -222,6 +222,7 @@ function useSubmitHandlersWiring({
     clearDraft: fs.clearDraft,
     freshBranchEnabled: fs.freshBranchEnabled,
     isLocalExecutor: computed.isLocalExecutor,
+    remoteOriginMode: computed.executorSourcePolicy.capabilities.requiresCloneableLocalRepository,
     sourcePolicyInvalid: computed.executorSourcePolicy?.incompatible ?? false,
     repositoryLocalPath,
     noRepository: fs.noRepository,

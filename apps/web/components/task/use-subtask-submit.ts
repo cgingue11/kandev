@@ -38,6 +38,10 @@ type UseSubtaskSubmitOpts = {
   workspaceMode: SubtaskWorkspaceMode;
   /** Whether the selected executor profile runs directly on the local clone. */
   isLocalExecutor?: boolean;
+  /** True when local repositories must be resolved from their remote origin. */
+  remoteOriginMode?: boolean;
+  /** Shared executor/source compatibility gate from the dialog. */
+  sourcePolicyInvalid?: boolean;
 };
 
 type CreateSubtaskArgs = {
@@ -54,6 +58,7 @@ type CreateSubtaskArgs = {
   autopilot: boolean;
   workspaceMode: SubtaskWorkspaceMode;
   isLocalExecutor: boolean;
+  remoteOriginMode: boolean;
   freshBranchEnabled: boolean;
   onClose: () => void;
   setActiveTask: (taskId: string) => void;
@@ -91,6 +96,7 @@ async function createSubtask({
   autopilot,
   workspaceMode,
   isLocalExecutor,
+  remoteOriginMode,
   freshBranchEnabled,
   onClose,
   setActiveTask,
@@ -108,6 +114,7 @@ async function createSubtask({
           discoveredRepositories: fs.discoveredRepositories,
           workspaceRepositories: availableRepositories,
           isLocalExecutor,
+          remoteOriginMode,
           freshBranch: freshBranchEnabled
             ? { confirmDiscard: false, consentedDirtyFiles: [] }
             : undefined,
@@ -138,11 +145,43 @@ async function createSubtask({
   }
 }
 
+function canStartSubtaskSubmission({
+  fs,
+  trimmedTitle,
+  prompt,
+  autoTitle,
+  workspaceId,
+  workflowId,
+  attachments,
+  workspaceMode,
+  sourcePolicyInvalid,
+}: {
+  fs: UseSubtaskSubmitOpts["fs"];
+  trimmedTitle: string;
+  prompt: string;
+  autoTitle: boolean;
+  workspaceId: string | null;
+  workflowId: string | null;
+  attachments: UseSubtaskSubmitOpts["attachments"];
+  workspaceMode: SubtaskWorkspaceMode;
+  sourcePolicyInvalid: boolean;
+}): boolean {
+  if ((!autoTitle && !trimmedTitle) || !prompt || !workspaceId || !workflowId) return false;
+  if (hasPendingAttachmentUploads(attachments)) return false;
+  if (workspaceMode !== "inherit_parent" && sourcePolicyInvalid) return false;
+  if (workspaceMode === "inherit_parent") return true;
+  return !hasUnavailablePickerRemoteProvider(
+    resolveRepositorySelections(fs),
+    fs.remoteProviderReadiness,
+  );
+}
+
 /**
  * Encapsulates the subtask creation flow: builds the repositories payload,
  * calls createTask, and activates the new session. Returns `handleSubmit`
  * so the surrounding component stays under the per-function complexity cap.
  */
+// eslint-disable-next-line max-lines-per-function -- the hook owns one atomic submit lifecycle.
 export function useSubtaskSubmit(opts: UseSubtaskSubmitOpts) {
   const {
     fs,
@@ -160,6 +199,8 @@ export function useSubtaskSubmit(opts: UseSubtaskSubmitOpts) {
     onClose,
     workspaceMode,
     isLocalExecutor = false,
+    remoteOriginMode = false,
+    sourcePolicyInvalid = false,
   } = opts;
   const { toast } = useToast();
   const setActiveTask = useAppStore((s) => s.setActiveTask);
@@ -171,17 +212,21 @@ export function useSubtaskSubmit(opts: UseSubtaskSubmitOpts) {
       if (isSubmittingRef.current) return;
       const trimmedTitle = title.trim();
       const prompt = resolvePrompt().trim();
-      if ((!autoTitle && !trimmedTitle) || !prompt || !workspaceId || !workflowId) return;
-      if (hasPendingAttachmentUploads(attachments)) return;
       if (
-        workspaceMode !== "inherit_parent" &&
-        hasUnavailablePickerRemoteProvider(
-          resolveRepositorySelections(fs),
-          fs.remoteProviderReadiness,
-        )
-      ) {
+        !canStartSubtaskSubmission({
+          fs,
+          trimmedTitle,
+          prompt,
+          autoTitle,
+          workspaceId,
+          workflowId,
+          attachments,
+          workspaceMode,
+          sourcePolicyInvalid,
+        })
+      )
         return;
-      }
+      if (!workspaceId || !workflowId) return;
       isSubmittingRef.current = true;
       setIsCreating(true);
       try {
@@ -199,6 +244,7 @@ export function useSubtaskSubmit(opts: UseSubtaskSubmitOpts) {
           autopilot,
           workspaceMode,
           isLocalExecutor,
+          remoteOriginMode,
           freshBranchEnabled: shouldSubmitFreshBranch({
             selections: resolveRepositorySelections(fs),
             freshBranchEnabled: fs.freshBranchEnabled,
@@ -236,6 +282,8 @@ export function useSubtaskSubmit(opts: UseSubtaskSubmitOpts) {
       setActiveSession,
       workspaceMode,
       isLocalExecutor,
+      remoteOriginMode,
+      sourcePolicyInvalid,
       setIsCreating,
       onClose,
       toast,

@@ -74,6 +74,12 @@ export function useSubtaskFormState(workspaceId: string | null): CanonicalSubtas
   const prInfoByUrl = usePRInfoByURL(workspaceId);
   const [agentProfileId, setAgentProfileId] = useState("");
   const [executorProfileId, setExecutorProfileId] = useState("");
+  const [executorChoiceTouched, setExecutorChoiceTouched] = useState(false);
+  const [automaticExecutorRestore, setAutomaticExecutorRestore] = useState<{
+    executorId: string;
+    executorProfileId: string;
+  } | null>(null);
+  const [folderOnlyExecutorNotice, setFolderOnlyExecutorNotice] = useState(false);
   const [autopilot, setAutopilot] = useState(false);
   const [freshBranchEnabled, setFreshBranchEnabled] = useState(false);
   const [useRemote, setUseRemote] = useState(false);
@@ -104,6 +110,12 @@ export function useSubtaskFormState(workspaceId: string | null): CanonicalSubtas
         setAgentProfileId,
         executorProfileId,
         setExecutorProfileId,
+        executorChoiceTouched,
+        setExecutorChoiceTouched,
+        automaticExecutorRestore,
+        setAutomaticExecutorRestore,
+        folderOnlyExecutorNotice,
+        setFolderOnlyExecutorNotice,
         autopilot,
         setAutopilot,
         discoveredRepositories,
@@ -143,6 +155,9 @@ export function useSubtaskFormState(workspaceId: string | null): CanonicalSubtas
       prInfoByUrl,
       agentProfileId,
       executorProfileId,
+      executorChoiceTouched,
+      automaticExecutorRestore,
+      folderOnlyExecutorNotice,
       autopilot,
       freshBranchEnabled,
       useRemote,
@@ -167,6 +182,15 @@ type SubtaskFormStateValues = {
   setAgentProfileId: StateSetter<string>;
   executorProfileId: string;
   setExecutorProfileId: StateSetter<string>;
+  executorChoiceTouched: boolean;
+  setExecutorChoiceTouched: StateSetter<boolean>;
+  automaticExecutorRestore: { executorId: string; executorProfileId: string } | null;
+  setAutomaticExecutorRestore: StateSetter<{
+    executorId: string;
+    executorProfileId: string;
+  } | null>;
+  folderOnlyExecutorNotice: boolean;
+  setFolderOnlyExecutorNotice: StateSetter<boolean>;
   autopilot: boolean;
   setAutopilot: StateSetter<boolean>;
   discoveredRepositories: LocalRepository[];
@@ -185,6 +209,28 @@ type SubtaskFormStateValues = {
   setFreshBranchEnabled: StateSetter<boolean>;
 };
 
+function buildSubtaskRepositoryState(repos: SubtaskFormStateValues["repos"]) {
+  return {
+    repositorySelections: repos.repositorySelections,
+    repositorySelectionsTouched: repos.repositorySelectionsTouched,
+    appendRepositorySelection: repos.appendRepositorySelection,
+    repositories: repos.repositories,
+    repositoriesDirty: repos.repositoriesDirty,
+    setRepositories: repos.setRepositories,
+    hydrateRepositories: repos.hydrateRepositories,
+    setRepositoriesDirty: repos.setRepositoriesDirty,
+    addRepository: repos.addRepository,
+    removeRepository: repos.removeRepository,
+    updateRepository: repos.updateRepository,
+    remoteRepos: repos.remoteRepos,
+    setRemoteRepos: repos.setRemoteRepos,
+    addRemoteRepo: repos.addRemoteRepo,
+    removeRemoteRepo: repos.removeRemoteRepo,
+    updateRemoteRepo: repos.updateRemoteRepo,
+    resetRepositorySelections: repos.resetRepositorySelections,
+  };
+}
+
 function buildSubtaskFormState({
   repos,
   branchesByUrl,
@@ -194,6 +240,12 @@ function buildSubtaskFormState({
   setAgentProfileId,
   executorProfileId,
   setExecutorProfileId,
+  executorChoiceTouched,
+  setExecutorChoiceTouched,
+  automaticExecutorRestore,
+  setAutomaticExecutorRestore,
+  folderOnlyExecutorNotice,
+  setFolderOnlyExecutorNotice,
   autopilot,
   setAutopilot,
   discoveredRepositories,
@@ -217,23 +269,7 @@ function buildSubtaskFormState({
     setHasPendingAttachmentUploads: NOOP,
     currentDefaults: EMPTY_DEFAULTS,
     descriptionInputRef,
-    repositorySelections: repos.repositorySelections,
-    repositorySelectionsTouched: repos.repositorySelectionsTouched,
-    appendRepositorySelection: repos.appendRepositorySelection,
-    repositories: repos.repositories,
-    repositoriesDirty: repos.repositoriesDirty,
-    setRepositories: repos.setRepositories,
-    hydrateRepositories: repos.hydrateRepositories,
-    setRepositoriesDirty: repos.setRepositoriesDirty,
-    addRepository: repos.addRepository,
-    removeRepository: repos.removeRepository,
-    updateRepository: repos.updateRepository,
-    remoteRepos: repos.remoteRepos,
-    setRemoteRepos: repos.setRemoteRepos,
-    addRemoteRepo: repos.addRemoteRepo,
-    removeRemoteRepo: repos.removeRemoteRepo,
-    updateRemoteRepo: repos.updateRemoteRepo,
-    resetRepositorySelections: repos.resetRepositorySelections,
+    ...buildSubtaskRepositoryState(repos),
     branchesByUrl,
     prInfoByUrl,
     agentProfileId,
@@ -242,6 +278,14 @@ function buildSubtaskFormState({
     setExecutorId: NOOP,
     executorProfileId,
     setExecutorProfileId,
+    executorChoiceTouched,
+    setExecutorChoiceTouched,
+    automaticExecutorRestore,
+    setAutomaticExecutorRestore,
+    folderOnlyExecutorNotice,
+    setFolderOnlyExecutorNotice,
+    setExecutorProfileIdFromSeed: NOOP,
+    seededExecutorProfileId: null,
     autopilot,
     setAutopilot,
     discoveredRepositories,

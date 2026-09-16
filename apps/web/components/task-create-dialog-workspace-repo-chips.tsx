@@ -62,6 +62,8 @@ type WorkspaceRepoChipsProps = {
   repositoriesRefreshing?: boolean;
   lastUsedBranch?: string | null;
   userSettingsLoaded?: boolean;
+  remoteOriginMode?: boolean;
+  remoteOriginInspectionLoading?: boolean;
 };
 
 /**
@@ -100,6 +102,8 @@ export function WorkspaceRepoChips({
   repositoriesRefreshing,
   lastUsedBranch,
   userSettingsLoaded,
+  remoteOriginMode,
+  remoteOriginInspectionLoading,
 }: WorkspaceRepoChipsProps) {
   return (
     <>
@@ -124,6 +128,8 @@ export function WorkspaceRepoChips({
           preferredDefaultBranchLoading={isLocalExecutor ? currentLocalBranchLoading : false}
           lastUsedBranch={lastUsedBranch}
           userSettingsLoaded={userSettingsLoaded}
+          remoteOriginMode={remoteOriginMode}
+          remoteOriginInspectionLoading={remoteOriginInspectionLoading}
           isLocalExecutor={!!isLocalExecutor}
           branchValue={isLocalExecutor ? row.branch : row.baseBranch || row.branch}
           savedBaseBranch={row.baseBranch}
@@ -250,6 +256,9 @@ export type RepoChipProps = {
   branchValue?: string;
   savedBaseBranch?: string;
   remoteBranches?: import("@/lib/types/http").Branch[];
+  /** In clone mode, only the current origin inspection may supply branches. */
+  remoteOriginMode?: boolean;
+  remoteOriginInspectionLoading?: boolean;
   /**
    * True while preferredDefaultBranch is being resolved. Renders a
    * "Loading branch…" placeholder so the chip doesn't briefly show an empty
@@ -294,6 +303,8 @@ function useRepoChipData({
   branchValue,
   savedBaseBranch,
   remoteBranches,
+  remoteOriginMode,
+  remoteOriginInspectionLoading,
   isLocalExecutor,
 }: Pick<
   RepoChipProps,
@@ -311,6 +322,8 @@ function useRepoChipData({
   | "branchValue"
   | "savedBaseBranch"
   | "remoteBranches"
+  | "remoteOriginMode"
+  | "remoteOriginInspectionLoading"
   | "isLocalExecutor"
 >) {
   const filteredRepos = useMemo(
@@ -340,6 +353,8 @@ function useRepoChipData({
     lastUsedBranch,
     userSettingsLoaded,
     remoteBranches,
+    remoteOriginMode,
+    remoteOriginInspectionLoading,
     isLocalExecutor,
   });
 
@@ -394,6 +409,8 @@ export function RepoChip(props: RepoChipProps) {
     branchValue,
     savedBaseBranch,
     remoteBranches,
+    remoteOriginMode,
+    remoteOriginInspectionLoading,
   } = props;
   const data = useRepoChipData({
     row,
@@ -407,6 +424,8 @@ export function RepoChip(props: RepoChipProps) {
     branchValue: branchValue ?? row.branch,
     savedBaseBranch,
     remoteBranches,
+    remoteOriginMode,
+    remoteOriginInspectionLoading,
     preferredDefaultBranch,
     preferredDefaultBranchLoading,
     lastUsedBranch,

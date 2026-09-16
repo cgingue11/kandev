@@ -313,6 +313,30 @@ describe("useSubtaskSubmit", () => {
     expect(opts.setIsCreating).not.toHaveBeenCalled();
   });
 
+  it("blocks a new workspace subtask when its selected origin is unavailable", async () => {
+    const builders = await import("@/components/task-create-dialog-helpers");
+    const opts = makeSubmitOptions({
+      sourcePolicyInvalid: true,
+      fs: {
+        useRemote: false,
+        remoteRepos: [],
+        repositories: [{ key: "row-1", repositoryId: "repo-1", branch: "main" }],
+        discoveredRepositories: [],
+        agentProfileId: "",
+        executorProfileId: "ssh-profile",
+      } as unknown as Parameters<typeof useSubtaskSubmit>[0]["fs"],
+    });
+    const { result } = renderHook(() => useSubtaskSubmit(opts));
+
+    await act(async () => {
+      await result.current.handleSubmit({ preventDefault: vi.fn() } as never);
+    });
+
+    expect(mockCreateTask).not.toHaveBeenCalled();
+    expect(opts.setIsCreating).not.toHaveBeenCalled();
+    expect(builders.buildWorkspaceSourcesPayload).not.toHaveBeenCalled();
+  });
+
   it("sends the autopilot creation flag for a subtask", async () => {
     const opts = makeSubmitOptions({ autopilot: true });
     const { result } = renderHook(() => useSubtaskSubmit(opts));

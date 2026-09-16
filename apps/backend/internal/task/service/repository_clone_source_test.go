@@ -4,6 +4,9 @@ import (
 	"context"
 	"os/exec"
 	"testing"
+
+	"github.com/kandev/kandev/internal/repoclone"
+	"github.com/kandev/kandev/internal/task/models"
 )
 
 func TestCredentialFreeCloneOrigin(t *testing.T) {
@@ -76,6 +79,70 @@ func TestInspectLocalRepositoryCloneSourceWithoutOrigin(t *testing.T) {
 	}
 	if result.Ready || result.Origin != "" || result.Reason != "missing_origin" {
 		t.Fatalf("inspection = %+v, want missing origin and unavailable", result)
+	}
+}
+
+type recordingRemoteOriginBranchLister struct {
+	names   []string
+	request repoclone.GitCredentialRequest
+	err     error
+}
+
+func (l *recordingRemoteOriginBranchLister) ListLocalOriginBranches(
+	_ context.Context, _ string, request repoclone.GitCredentialRequest,
+) ([]string, error) {
+	l.request = request
+	return l.names, l.err
+}
+
+func TestInspectLocalRepositoryCloneSourceUsesWorkspaceOriginLister(t *testing.T) {
+	t.Parallel()
+	path := t.TempDir()
+	runGitTestCommand(t, path, "init", "--quiet")
+	runGitTestCommand(t, path, "remote", "add", "origin", "https://github.com/acme/api.git")
+	lister := &recordingRemoteOriginBranchLister{names: []string{"main", "feature/api", "--unsafe"}}
+	request := cloneCredentialRequest("workspace-1", &models.Repository{
+		ID:             "repo-1",
+		Provider:       "github",
+		ProviderHost:   "https://github.com",
+		ProviderOwner:  "acme",
+		ProviderName:   "api",
+		ProviderScope:  "scope-1",
+		ProviderRepoID: "provider-1",
+	})
+
+	result, err := inspectLocalRepositoryCloneSourcePathWithLister(
+		context.Background(), path, lister, request,
+	)
+	if err != nil {
+		t.Fatalf("inspectLocalRepositoryCloneSourcePathWithLister: %v", err)
+	}
+	if !result.Ready || result.Origin != "https://github.com/acme/api.git" {
+		t.Fatalf("inspection = %+v, want ready GitHub origin", result)
+	}
+	if len(result.Branches) != 2 || result.Branches[0].Name != "feature/api" || result.Branches[1].Name != "main" {
+		t.Fatalf("branches = %+v, want sorted safe origin branches", result.Branches)
+	}
+	if lister.request != request {
+		t.Fatalf("credential request = %+v, want %+v", lister.request, request)
+	}
+}
+
+func TestInspectLocalRepositoryCloneSourceListerFailureIsUnavailable(t *testing.T) {
+	t.Parallel()
+	path := t.TempDir()
+	runGitTestCommand(t, path, "init", "--quiet")
+	runGitTestCommand(t, path, "remote", "add", "origin", "https://github.com/acme/api.git")
+	lister := &recordingRemoteOriginBranchLister{err: context.DeadlineExceeded}
+
+	result, err := inspectLocalRepositoryCloneSourcePathWithLister(
+		context.Background(), path, lister, repoclone.GitCredentialRequest{WorkspaceID: "workspace-1"},
+	)
+	if err != nil {
+		t.Fatalf("inspectLocalRepositoryCloneSourcePathWithLister: %v", err)
+	}
+	if result.Ready || result.Reason != remoteOriginUnavailableReason {
+		t.Fatalf("inspection = %+v, want unavailable origin", result)
 	}
 }
 

@@ -1,9 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { buildRepositoriesPayload } from "./task-create-dialog-helpers";
+import {
+  buildRepositoriesPayload,
+  buildWorkspaceSourcesPayload,
+} from "./task-create-dialog-helpers";
 import type { TaskRepositorySelection } from "@/components/task-create-dialog-types";
 
 const FRONT_REPOSITORY_ID = "repo-front";
 
+// eslint-disable-next-line max-lines-per-function -- mixed payload cases share one serializer fixture.
 describe("buildRepositoriesPayload — unified rows", () => {
   it("maps mixed selections in their original order", () => {
     const selections: TaskRepositorySelection[] = [
@@ -59,6 +63,45 @@ describe("buildRepositoriesPayload — unified rows", () => {
         default_branch: "trunk",
       },
     ]);
+  });
+
+  it.each([
+    { name: "Local", isLocalExecutor: true },
+    { name: "Worktree", isLocalExecutor: false },
+  ])("drops remote-origin intent when switching back to $name execution", ({ isLocalExecutor }) => {
+    const selections: TaskRepositorySelection[] = [
+      {
+        kind: "local",
+        key: "local-1",
+        repositoryId: "repo-host",
+        branch: "feature/work",
+        baseBranch: "main",
+        checkoutSource: "remote_origin",
+        expectedOrigin: "https://github.com/acme/host.git",
+      },
+    ];
+    const options = {
+      selections,
+      useRemote: false,
+      remoteRepos: [],
+      repositories: [],
+      discoveredRepositories: [],
+      isLocalExecutor,
+      remoteOriginMode: false,
+    };
+
+    const repositoriesPayload = buildRepositoriesPayload(options);
+    expect(repositoriesPayload[0]).toMatchObject({ repository_id: "repo-host" });
+    expect(repositoriesPayload[0]).not.toHaveProperty("checkout_source");
+    expect(repositoriesPayload[0]).not.toHaveProperty("expected_origin");
+
+    const workspaceSourcesPayload = buildWorkspaceSourcesPayload(options);
+    expect(workspaceSourcesPayload[0]).toMatchObject({
+      kind: "repository",
+      repository_id: "repo-host",
+    });
+    expect(workspaceSourcesPayload[0]).not.toHaveProperty("checkout_source");
+    expect(workspaceSourcesPayload[0]).not.toHaveProperty("expected_origin");
   });
 
   it("maps each row in order, dropping empty ones silently", () => {

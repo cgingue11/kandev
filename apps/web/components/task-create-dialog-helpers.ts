@@ -457,6 +457,8 @@ export function buildRepositoriesPayload(opts: {
    * goes empty after a refresh.
    */
   isLocalExecutor?: boolean;
+  /** True when the selected executor will materialize local repositories from their origin. */
+  remoteOriginMode?: boolean;
   /**
    * Optional fresh-branch metadata. The UI gates this to single-row + local
    * executor; when present we apply it to every row (which is at most one).
@@ -627,8 +629,7 @@ function buildLocalRepositoryPayloadRow(
       ...(row.branchPolicyId ? { branch_policy_id: row.branchPolicyId } : {}),
       base_branch: branches.base_branch,
       checkout_branch: branches.checkout_branch,
-      ...(row.checkoutSource ? { checkout_source: row.checkoutSource } : {}),
-      ...(row.expectedOrigin ? { expected_origin: row.expectedOrigin } : {}),
+      ...localRepositoryOriginFields(row, opts),
       ...fresh,
     };
   }
@@ -638,9 +639,19 @@ function buildLocalRepositoryPayloadRow(
     checkout_branch: branches.checkout_branch,
     local_path: row.localPath,
     default_branch: defaultBranch || undefined,
+    ...localRepositoryOriginFields(row, opts),
+    ...fresh,
+  };
+}
+
+function localRepositoryOriginFields(
+  row: TaskRepoRow,
+  opts: Parameters<typeof buildRepositoriesPayload>[0],
+): Pick<CreateTaskRepositoryPayload, "checkout_source" | "expected_origin"> {
+  if (opts.remoteOriginMode === false) return {};
+  return {
     ...(row.checkoutSource ? { checkout_source: row.checkoutSource } : {}),
     ...(row.expectedOrigin ? { expected_origin: row.expectedOrigin } : {}),
-    ...fresh,
   };
 }
 

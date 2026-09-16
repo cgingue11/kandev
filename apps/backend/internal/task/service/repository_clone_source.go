@@ -10,7 +10,8 @@ import (
 	"github.com/kandev/kandev/internal/authz"
 	"github.com/kandev/kandev/internal/common/securityutil"
 	"github.com/kandev/kandev/internal/common/subproc"
-	taskrepository "github.com/kandev/kandev/internal/task/repository"
+	"github.com/kandev/kandev/internal/repoclone"
+	"github.com/kandev/kandev/internal/task/models"
 	"github.com/kandev/kandev/internal/task/repository/repoerrors"
 )
 
@@ -26,7 +27,10 @@ type LocalRepositoryCloneSource struct {
 	Branches      []Branch
 }
 
-const checkoutSourceRemoteOrigin = "remote_origin"
+const (
+	checkoutSourceRemoteOrigin    = "remote_origin"
+	remoteOriginUnavailableReason = "origin_unavailable"
+)
 
 // resolveRemoteOriginInput turns a host checkout into the credential-free
 // provider descriptor used by a remote executor. The browser may provide the
@@ -41,11 +45,9 @@ func (s *Service) resolveRemoteOriginInput(
 	if err := validateRemoteOriginInput(input); err != nil {
 		return input, err
 	}
-	localPath, err := s.resolveRemoteOriginLocalPath(ctx, workspaceID, input)
-	if err != nil {
-		return input, err
-	}
-	inspection, err := inspectLocalRepositoryCloneSourcePath(ctx, localPath)
+	inspection, err := s.inspectLocalRepositoryCloneSource(
+		ctx, workspaceID, input.RepositoryID, input.LocalPath,
+	)
 	if err != nil {
 		return input, fmt.Errorf("%w: inspect local repository: %v", ErrInvalidWorkspaceSource, err)
 	}
@@ -76,39 +78,13 @@ func validateRemoteOriginInput(input TaskRepositoryInput) error {
 	return nil
 }
 
-func (s *Service) resolveRemoteOriginLocalPath(
-	ctx context.Context, workspaceID string, input TaskRepositoryInput,
-) (string, error) {
-	localPath := strings.TrimSpace(input.LocalPath)
-	if input.RepositoryID == "" {
-		if localPath == "" {
-			return "", fmt.Errorf("%w: remote_origin requires a host checkout", ErrInvalidWorkspaceSource)
-		}
-		return localPath, nil
-	}
-	repository, err := s.repoEntities.GetRepository(ctx, input.RepositoryID)
-	if err != nil {
-		return "", err
-	}
-	if repository == nil || repository.WorkspaceID != workspaceID {
-		return "", fmt.Errorf("%w: repository %q", taskrepository.ErrRepositoryNotFound, input.RepositoryID)
-	}
-	if localPath == "" {
-		localPath = repository.LocalPath
-	}
-	if localPath == "" {
-		return "", fmt.Errorf("%w: remote_origin requires a host checkout", ErrInvalidWorkspaceSource)
-	}
-	return localPath, nil
-}
-
 func validateRemoteOriginInspection(
 	input TaskRepositoryInput, inspection LocalRepositoryCloneSource,
 ) error {
 	if !inspection.Ready {
 		reason := inspection.Reason
 		if reason == "" {
-			reason = "origin_unavailable"
+			reason = remoteOriginUnavailableReason
 		}
 		return fmt.Errorf("%w: local repository origin is unavailable (%s)", ErrUnsupportedWorkspaceSource, reason)
 	}
@@ -178,6 +154,17 @@ func (s *Service) InspectLocalRepositoryCloneSource(
 	if (repositoryID == "") == (strings.TrimSpace(localPath) == "") {
 		return LocalRepositoryCloneSource{}, fmt.Errorf("repository_id or local_path is required")
 	}
+	return s.inspectLocalRepositoryCloneSource(ctx, workspaceID, repositoryID, localPath)
+}
+
+func (s *Service) inspectLocalRepositoryCloneSource(
+	ctx context.Context, workspaceID, repositoryID, localPath string,
+) (LocalRepositoryCloneSource, error) {
+	localPath = strings.TrimSpace(localPath)
+	request := repoclone.GitCredentialRequest{
+		WorkspaceID:  workspaceID,
+		RepositoryID: repositoryID,
+	}
 	if repositoryID != "" {
 		repository, err := s.repoEntities.GetRepository(ctx, repositoryID)
 		if err != nil {
@@ -186,12 +173,31 @@ func (s *Service) InspectLocalRepositoryCloneSource(
 		if repository == nil || repository.WorkspaceID != workspaceID {
 			return LocalRepositoryCloneSource{}, repoerrors.ErrRepositoryNotFound
 		}
-		localPath = repository.LocalPath
+		if localPath == "" {
+			localPath = repository.LocalPath
+		}
+		request = cloneCredentialRequest(workspaceID, repository)
 	}
-	return inspectLocalRepositoryCloneSourcePath(ctx, localPath)
+	if localPath == "" {
+		return LocalRepositoryCloneSource{}, fmt.Errorf("%w: remote_origin requires a host checkout", ErrInvalidWorkspaceSource)
+	}
+	return inspectLocalRepositoryCloneSourcePathWithLister(
+		ctx, localPath, s.remoteOriginBranchLister, request,
+	)
 }
 
 func inspectLocalRepositoryCloneSourcePath(ctx context.Context, localPath string) (LocalRepositoryCloneSource, error) {
+	return inspectLocalRepositoryCloneSourcePathWithLister(
+		ctx, localPath, nil, repoclone.GitCredentialRequest{},
+	)
+}
+
+func inspectLocalRepositoryCloneSourcePathWithLister(
+	ctx context.Context,
+	localPath string,
+	lister RemoteOriginBranchLister,
+	request repoclone.GitCredentialRequest,
+) (LocalRepositoryCloneSource, error) {
 	resolved, _, err := resolveExplicitLocalRepositoryPath(strings.TrimSpace(localPath))
 	if err != nil {
 		return LocalRepositoryCloneSource{}, err
@@ -208,9 +214,9 @@ func inspectLocalRepositoryCloneSourcePath(ctx context.Context, localPath string
 		return result, nil
 	}
 	result.Origin = origin
-	branches, err := listRemoteOriginBranches(ctx, resolved)
+	branches, err := listRemoteOriginBranchesWithLister(ctx, resolved, lister, request)
 	if err != nil {
-		result.Reason = "origin_unavailable"
+		result.Reason = remoteOriginUnavailableReason
 		return result, nil
 	}
 	result.Ready = len(branches) > 0
@@ -220,6 +226,19 @@ func inspectLocalRepositoryCloneSourcePath(ctx context.Context, localPath string
 		result.Reason = "origin_has_no_branches"
 	}
 	return result, nil
+}
+
+func cloneCredentialRequest(workspaceID string, repository *models.Repository) repoclone.GitCredentialRequest {
+	return repoclone.GitCredentialRequest{
+		WorkspaceID:          workspaceID,
+		RepositoryID:         repository.ID,
+		Provider:             repository.Provider,
+		ProviderHost:         repository.ProviderHost,
+		ProviderScope:        repository.ProviderScope,
+		ProviderRepositoryID: repository.ProviderRepoID,
+		Owner:                repository.ProviderOwner,
+		Name:                 repository.ProviderName,
+	}
 }
 
 func remoteOriginDefaultBranch(branches []Branch, current string) string {
@@ -278,6 +297,36 @@ func listRemoteOriginBranches(ctx context.Context, repoPath string) ([]Branch, e
 		}
 		name := strings.TrimPrefix(fields[1], "refs/heads/")
 		if !securityutil.IsValidBranchName(name) {
+			continue
+		}
+		if _, exists := seen[name]; exists {
+			continue
+		}
+		seen[name] = struct{}{}
+		branches = append(branches, Branch{Name: name, Type: "remote", Remote: "origin"})
+	}
+	sort.Slice(branches, func(i, j int) bool { return branches[i].Name < branches[j].Name })
+	return branches, nil
+}
+
+func listRemoteOriginBranchesWithLister(
+	ctx context.Context,
+	repoPath string,
+	lister RemoteOriginBranchLister,
+	request repoclone.GitCredentialRequest,
+) ([]Branch, error) {
+	if lister == nil {
+		return listRemoteOriginBranches(ctx, repoPath)
+	}
+	names, err := lister.ListLocalOriginBranches(ctx, repoPath, request)
+	if err != nil {
+		return nil, err
+	}
+	branches := make([]Branch, 0, len(names))
+	seen := make(map[string]struct{}, len(names))
+	for _, name := range names {
+		name = strings.TrimSpace(name)
+		if name == "" || !securityutil.IsValidBranchName(name) {
 			continue
 		}
 		if _, exists := seen[name]; exists {

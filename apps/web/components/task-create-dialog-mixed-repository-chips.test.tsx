@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
-import type { DialogFormState } from "./task-create-dialog-types";
+import type { DialogFormState, TaskRepositorySelection } from "./task-create-dialog-types";
 import type { Repository } from "@/lib/types/http";
 
 const touchDrawer = vi.hoisted(() => ({ enabled: true }));
@@ -136,7 +136,11 @@ function makeFs(): DialogFormState {
 
 function renderMixed(
   fs = makeFs(),
-  options: { repositoryLocked?: boolean; branchLocked?: boolean } = {},
+  options: {
+    repositoryLocked?: boolean;
+    branchLocked?: boolean;
+    onRepositorySelectionRemoved?: (remaining: TaskRepositorySelection[]) => void;
+  } = {},
 ) {
   const props = {
     fs,
@@ -186,6 +190,28 @@ describe("MixedRepositoryChips on touch drawers", () => {
 
     expect(fs.removeRepository).toHaveBeenCalledWith("local-1");
     expect(fs.setNoRepository).toHaveBeenCalledWith(true);
+  });
+
+  it("notifies executor transitions when a repository is removed from a folder mix", () => {
+    touchDrawer.enabled = false;
+    const local = {
+      kind: "local" as const,
+      key: "local-1",
+      repositoryId: "repo-1",
+      branch: "main",
+    };
+    const folder = { kind: "folder" as const, key: "folder-1", localPath: "/work/assets" };
+    const fs = makeFs();
+    fs.repositorySelections = [local, folder];
+    fs.repositories = [local];
+    const onRepositorySelectionRemoved = vi.fn();
+
+    renderMixed(fs, { onRepositorySelectionRemoved });
+
+    fireEvent.click(screen.getByTestId("mixed-local-remove"));
+
+    expect(fs.removeRepository).toHaveBeenCalledWith("local-1");
+    expect(onRepositorySelectionRemoved).toHaveBeenCalledWith([folder]);
   });
 
   it("keeps locked repository rows fixed and hides add controls", () => {

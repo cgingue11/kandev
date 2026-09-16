@@ -36,11 +36,13 @@ import {
   executorSourcePolicyReasonKey,
   type ExecutorSourcePolicy,
 } from "@/components/task-create-dialog-executor-source-policy";
-import { getWorkspaceSourceCapabilities } from "@/components/workspace-source-picker/executor-capabilities";
 import {
-  useRepositoryCloneSource,
-  type RepositoryCloneSourceCandidate,
-  type RepositoryCloneSourceState,
+  useSelectedRemoteOriginInspection,
+  remoteOriginSelectionIsCompatible,
+} from "@/components/task-create-dialog-remote-origin-inspection";
+import type {
+  RepositoryCloneSourceCandidate,
+  RepositoryCloneSourceState,
 } from "@/hooks/domains/repositories/use-repository-clone-source";
 
 /**
@@ -280,35 +282,6 @@ function useExecutorProfileCompat(
   };
 }
 
-function useSelectedRemoteOriginInspection(
-  fs: DialogFormState,
-  workspaceId: string | null,
-  executorType: ExecutorProfile["executor_type"],
-) {
-  const candidates = useMemo<RepositoryCloneSourceCandidate[]>(
-    () =>
-      resolveRepositorySelections(fs)
-        .filter(
-          (selection): selection is Extract<typeof selection, { kind: "local" }> =>
-            selection.kind === "local" && selection.checkoutSource === "remote_origin",
-        )
-        .map((selection) => ({
-          key: selection.key,
-          repositoryId: selection.repositoryId,
-          localPath: selection.localPath,
-        })),
-    [fs.repositorySelections, fs.repositories, fs.remoteRepos, fs.useRemote],
-  );
-  const requiresInspection =
-    getWorkspaceSourceCapabilities(executorType).requiresCloneableLocalRepository;
-  const inspection = useRepositoryCloneSource(workspaceId, candidates, requiresInspection);
-  return {
-    candidates,
-    states: inspection.states,
-    enabled: requiresInspection && Boolean(workspaceId),
-  };
-}
-
 function resolveExecutorSourcePolicyReason(
   inspectionPending: boolean,
   reasonKey: ReturnType<typeof executorSourceIncompatibilityReasonKey>,
@@ -316,6 +289,37 @@ function resolveExecutorSourcePolicyReason(
   if (inspectionPending) return t("task:checkingRepositoryOrigin");
   if (reasonKey) return t(reasonKey);
   return null;
+}
+
+function remoteOriginInspectionPending(
+  enabled: boolean,
+  candidates: RepositoryCloneSourceCandidate[],
+  states: Record<string, RepositoryCloneSourceState>,
+): boolean {
+  return (
+    enabled &&
+    candidates.some((candidate) => {
+      const state = states[candidate.key];
+      return !state || state.status === "checking";
+    })
+  );
+}
+
+function remoteOriginInspectionInvalid(
+  fs: DialogFormState,
+  enabled: boolean,
+  candidates: RepositoryCloneSourceCandidate[],
+  states: Record<string, RepositoryCloneSourceState>,
+): boolean {
+  if (!enabled) return false;
+  const selections = resolveRepositorySelections(fs);
+  return candidates.some((candidate) => {
+    const selection = selections.find(
+      (item): item is Extract<typeof item, { kind: "local" }> =>
+        item.kind === "local" && item.key === candidate.key,
+    );
+    return !selection || !remoteOriginSelectionIsCompatible(selection, states[candidate.key]);
+  });
 }
 
 function useDialogExecutorState({
@@ -382,6 +386,7 @@ function useDialogExecutorState({
     selectedFolderCount,
   );
   const sourceState = useExecutorSourceState({
+    fs,
     executors,
     executorId: fs.executorId,
     selectedExecutorProfile: exec.selectedExecutorProfile,
@@ -400,12 +405,15 @@ function useDialogExecutorState({
   return {
     exec,
     agentProfileOptions,
+    remoteOriginStates: remoteOriginInspection.states,
+    refreshRemoteOrigins: remoteOriginInspection.refresh,
     ...sourceState,
     headerRepositoryOptions,
   };
 }
 
 function useExecutorSourceState({
+  fs,
   executors,
   executorId,
   selectedExecutorProfile,
@@ -420,6 +428,7 @@ function useExecutorSourceState({
   remoteOriginStates,
   remoteOriginInspectionEnabled,
 }: {
+  fs: DialogFormState;
   executors: DialogComputedArgs["executors"];
   executorId: string;
   selectedExecutorProfile: ExecutorProfile | null;
@@ -456,25 +465,25 @@ function useExecutorSourceState({
       selectedRemoteOriginRepositoryCount,
     ],
   );
-  const remoteOriginInspectionPending =
-    remoteOriginInspectionEnabled &&
-    remoteOriginCandidates.some((candidate) => {
-      const state = remoteOriginStates[candidate.key];
-      return !state || state.status === "checking";
-    });
-  const remoteOriginInspectionInvalid =
-    remoteOriginInspectionEnabled &&
-    remoteOriginCandidates.some(
-      (candidate) => remoteOriginStates[candidate.key]?.status !== "ready",
-    );
+  const remoteOriginInspectionPendingState = remoteOriginInspectionPending(
+    remoteOriginInspectionEnabled,
+    remoteOriginCandidates,
+    remoteOriginStates,
+  );
+  const remoteOriginInspectionInvalidState = remoteOriginInspectionInvalid(
+    fs,
+    remoteOriginInspectionEnabled,
+    remoteOriginCandidates,
+    remoteOriginStates,
+  );
   const executorSourcePolicy = useMemo<ExecutorSourcePolicy>(() => {
-    if (!remoteOriginInspectionInvalid) return baseExecutorSourcePolicy;
+    if (!remoteOriginInspectionInvalidState) return baseExecutorSourcePolicy;
     return {
       ...baseExecutorSourcePolicy,
       incompatible: true,
       incompatibleReason: "repository_origin_unavailable",
     };
-  }, [baseExecutorSourcePolicy, remoteOriginInspectionInvalid]);
+  }, [baseExecutorSourcePolicy, remoteOriginInspectionInvalidState]);
   const executorSourceNotice = folderOnlyExecutorNotice
     ? t("task:folderOnlyExecutorSwitched")
     : null;
@@ -486,7 +495,7 @@ function useExecutorSourceState({
     executorSourcePolicy.incompatibleReason,
   );
   const sourcePolicyReason = resolveExecutorSourcePolicyReason(
-    remoteOriginInspectionPending,
+    remoteOriginInspectionPendingState,
     sourcePolicyReasonKey,
   );
   const executorHint =
@@ -602,5 +611,7 @@ export function useDialogComputed({
     noCompatibleAgent: executorState.exec.noCompatibleAgent,
     agentCompatState: executorState.exec.agentCompatState,
     selectedAgentProfileName: executorState.exec.selectedAgentProfileName,
+    remoteOriginStates: executorState.remoteOriginStates,
+    refreshRemoteOrigins: executorState.refreshRemoteOrigins,
   };
 }

@@ -3,7 +3,12 @@
 import { useCallback } from "react";
 import type { Executor, Repository } from "@/lib/types/http";
 import type { WorkspaceSourceRequest } from "@/lib/types/http-workspace-sources";
-import type { DialogFormState, TaskRepoRow } from "@/components/task-create-dialog-types";
+import type {
+  DialogFormState,
+  TaskRepoRow,
+  TaskRepositorySelection,
+} from "@/components/task-create-dialog-types";
+import { resolveRepositorySelections } from "@/components/task-create-dialog-repositories-state";
 import { createDebugLogger } from "@/lib/debug/log";
 import type { TaskCreateLastUsedState } from "@/lib/state/slices/settings/types";
 import { clampTaskTitleInput } from "@/lib/task-title";
@@ -536,30 +541,49 @@ function useGitHubAndFreshBranchHandlers(fs: DialogFormState) {
   };
 }
 
-export function useDialogHandlers(
+type DialogHandlerContext = {
+  workspaceId: string | null;
+  executors: Executor[];
+  upsertWorkspaceRepository: (workspaceId: string, repository: Repository) => void;
+};
+
+function resolveCurrentExecutorType(
   fs: DialogFormState,
-  repositories: Repository[],
-  context?: {
-    workspaceId: string | null;
-    executors: Executor[];
-    upsertWorkspaceRepository: (workspaceId: string, repository: Repository) => void;
-  },
-) {
-  const repo = useRepositoryHandlers(fs, repositories);
-  const profile = useProfileAndNameHandlers(fs);
-  const gh = useGitHubAndFreshBranchHandlers(fs);
+  executors: Executor[],
+): string | undefined {
+  const executor = executors.find((candidate) => candidate.id === fs.executorId);
+  return (
+    executor?.profiles?.find((profile) => profile.id === fs.executorProfileId)?.executor_type ??
+    executor?.type ??
+    executors
+      .flatMap((candidate) => candidate.profiles ?? [])
+      .find((profile) => profile.id === fs.executorProfileId)?.executor_type
+  );
+}
+
+function selectionHasRepository(selection: TaskRepositorySelection): boolean {
+  if (selection.kind === "folder") return false;
+  if (selection.kind === "remote") return Boolean(selection.url.trim());
+  return Boolean(selection.repositoryId || selection.localPath);
+}
+
+function selectionHasFolder(selection: TaskRepositorySelection): boolean {
+  return selection.kind === "folder" && Boolean(selection.localPath.trim());
+}
+
+function useFolderOnlyExecutorHandlers(fs: DialogFormState, context?: DialogHandlerContext) {
+  const executors = context?.executors ?? [];
   const directLocalExecutorSelection = findDirectLocalExecutorProfile(
-    context?.executors ?? [],
+    executors,
     fs.executorProfileId,
   );
-  const currentExecutorType =
-    context?.executors
-      ?.find((executor) => executor.id === fs.executorId)
-      ?.profiles?.find((profile) => profile.id === fs.executorProfileId)?.executor_type ??
-    context?.executors?.find((executor) => executor.id === fs.executorId)?.type;
-  const handleFolderSelectionAdded = useCallback(
-    (wasEmpty: boolean) => {
-      if (!wasEmpty || currentExecutorType !== "worktree") return;
+  const currentExecutorType = resolveCurrentExecutorType(fs, executors);
+  const transitionToFolderOnly = useCallback(
+    (remaining: TaskRepositorySelection[], folderAdded = false) => {
+      if (fs.executorChoiceTouched || currentExecutorType !== "worktree") return;
+      const hasRepository = remaining.some(selectionHasRepository);
+      const hasFolder = folderAdded || remaining.some(selectionHasFolder);
+      if (hasRepository || !hasFolder) return;
       fs.setFolderOnlyExecutorNotice?.(true);
       if (!directLocalExecutorSelection) return;
       fs.setAutomaticExecutorRestore?.({
@@ -571,7 +595,18 @@ export function useDialogHandlers(
     },
     [currentExecutorType, directLocalExecutorSelection, fs],
   );
-  const handleRepositorySelectionAdded = useCallback(
+  const onFolderSelectionAdded = useCallback(
+    (wasEmpty: boolean) => {
+      if (!wasEmpty) return;
+      transitionToFolderOnly(resolveRepositorySelections(fs), true);
+    },
+    [fs, transitionToFolderOnly],
+  );
+  const onRepositorySelectionRemoved = useCallback(
+    (remaining: TaskRepositorySelection[]) => transitionToFolderOnly(remaining),
+    [transitionToFolderOnly],
+  );
+  const onRepositorySelectionAdded = useCallback(
     (wasFolderOnly: boolean) => {
       if (!wasFolderOnly || fs.executorChoiceTouched || !fs.automaticExecutorRestore) return;
       const restore = fs.automaticExecutorRestore;
@@ -582,7 +617,7 @@ export function useDialogHandlers(
     },
     [fs],
   );
-  const handleAllWorkspaceSourcesRemoved = useCallback(() => {
+  const onAllWorkspaceSourcesRemoved = useCallback(() => {
     if (!fs.executorChoiceTouched && fs.automaticExecutorRestore) {
       const restore = fs.automaticExecutorRestore;
       fs.setExecutorId(restore.executorId);
@@ -591,6 +626,24 @@ export function useDialogHandlers(
     fs.setAutomaticExecutorRestore?.(null);
     fs.setFolderOnlyExecutorNotice?.(false);
   }, [fs]);
+  return {
+    directLocalExecutorSelection,
+    onFolderSelectionAdded,
+    onRepositorySelectionAdded,
+    onAllWorkspaceSourcesRemoved,
+    onRepositorySelectionRemoved,
+  };
+}
+
+export function useDialogHandlers(
+  fs: DialogFormState,
+  repositories: Repository[],
+  context?: DialogHandlerContext,
+) {
+  const repo = useRepositoryHandlers(fs, repositories);
+  const profile = useProfileAndNameHandlers(fs);
+  const gh = useGitHubAndFreshBranchHandlers(fs);
+  const executorHandlers = useFolderOnlyExecutorHandlers(fs, context);
   const handleLocalRepositoryCreated = useCallback(
     (rowKey: string, repository: Repository) => {
       if (!context?.workspaceId) return;
@@ -600,22 +653,23 @@ export function useDialogHandlers(
         repository,
         workspaceId: context.workspaceId,
         upsertWorkspaceRepository: context.upsertWorkspaceRepository,
-        executorSelection: directLocalExecutorSelection,
+        executorSelection: executorHandlers.directLocalExecutorSelection,
       });
       if (fs.repositories.length === 1 && fs.repositories.some((row) => row.key === rowKey)) {
         clearFreshBranch(fs);
       }
     },
-    [context, directLocalExecutorSelection, fs],
+    [context, executorHandlers.directLocalExecutorSelection, fs],
   );
   return {
     ...repo,
     ...profile,
     ...gh,
-    directLocalExecutorSelection,
+    directLocalExecutorSelection: executorHandlers.directLocalExecutorSelection,
     handleLocalRepositoryCreated,
-    onFolderSelectionAdded: handleFolderSelectionAdded,
-    onRepositorySelectionAdded: handleRepositorySelectionAdded,
-    onAllWorkspaceSourcesRemoved: handleAllWorkspaceSourcesRemoved,
+    onFolderSelectionAdded: executorHandlers.onFolderSelectionAdded,
+    onRepositorySelectionAdded: executorHandlers.onRepositorySelectionAdded,
+    onAllWorkspaceSourcesRemoved: executorHandlers.onAllWorkspaceSourcesRemoved,
+    onRepositorySelectionRemoved: executorHandlers.onRepositorySelectionRemoved,
   };
 }

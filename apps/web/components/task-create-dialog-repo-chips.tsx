@@ -63,9 +63,17 @@ type RepoChipsRowProps = {
   isLocalExecutor?: boolean;
   executorSourcePolicy?: import("@/components/task-create-dialog-executor-source-policy").ExecutorSourcePolicy;
   folderDisabledReason?: string;
+  remoteOriginStates?: Record<
+    string,
+    import("@/hooks/domains/repositories/use-repository-clone-source").RepositoryCloneSourceState
+  >;
+  onRefreshRemoteOrigins?: () => void;
   onFolderSelectionAdded?: (wasEmpty: boolean) => void;
   onRepositorySelectionAdded?: (wasFolderOnly: boolean) => void;
   onAllWorkspaceSourcesRemoved?: () => void;
+  onRepositorySelectionRemoved?: (
+    remaining: import("@/components/task-create-dialog-types").TaskRepositorySelection[],
+  ) => void;
   /** "No repository" mode: replace the chip row with a folder picker. */
   onToggleNoRepository?: () => void;
   onWorkspacePathChange?: (value: string) => void;
@@ -224,9 +232,12 @@ function MixedRepositorySurface({
   isLocalExecutor,
   executorSourcePolicy,
   folderDisabledReason,
+  remoteOriginStates,
+  onRefreshRemoteOrigins,
   onFolderSelectionAdded,
   onRepositorySelectionAdded,
   onAllWorkspaceSourcesRemoved,
+  onRepositorySelectionRemoved,
   onWorkspacePathChange,
   lastUsedBranch,
   userSettingsLoaded,
@@ -245,6 +256,8 @@ function MixedRepositorySurface({
         isLocalExecutor={!!isLocalExecutor}
         executorSourcePolicy={executorSourcePolicy}
         folderDisabledReason={folderDisabledReason}
+        remoteOriginStates={remoteOriginStates}
+        onRefreshRemoteOrigins={onRefreshRemoteOrigins}
         repositoryLocked={repositoryLocked}
         branchLocked={branchLocked}
         freshBranchEnabled={freshBranchEnabled}
@@ -270,6 +283,7 @@ function MixedRepositorySurface({
         onFolderSelectionAdded={onFolderSelectionAdded}
         onRepositorySelectionAdded={onRepositorySelectionAdded}
         onAllWorkspaceSourcesRemoved={onAllWorkspaceSourcesRemoved}
+        onRepositorySelectionRemoved={onRepositorySelectionRemoved}
       />
       <LocalRepositoryCreationSurface
         creation={localRepositoryCreation}
