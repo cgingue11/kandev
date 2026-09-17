@@ -142,6 +142,7 @@ test.describe("Mobile workspace repository sets", () => {
     const basePicker = testPage.getByTestId(`repository-set-base-${seedData.repositoryId}`);
     await basePicker.tap();
     const dropdown = testPage.getByTestId(`repository-set-base-dropdown-${seedData.repositoryId}`);
+    await waitForFiniteAnimations(testPage.locator('[data-slot="drawer-content"]:visible').last());
     await expect(dropdown).toBeVisible();
     await expect(dropdown.getByPlaceholder("Search branches...")).toBeVisible();
     await expect(dropdown.getByText("origin/main")).toBeVisible();
