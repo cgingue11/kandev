@@ -37,7 +37,7 @@ import { getFileTabKey, upsertOpenFileTab } from "./task-center-panel-file-tabs"
 import { TaskCenterReviewContent } from "./task-center-review-content";
 import { useTaskCenterFileOpen } from "@/hooks/use-task-center-file-open";
 import { getFilePreviewKind } from "@/lib/utils/file-types";
-import { defaultMarkdownFileMode, type MarkdownFileMode } from "./markdown-file-mode";
+import type { MarkdownFileMode } from "./markdown-file-mode";
 
 import type { SelectedDiff } from "./task-layout";
 import { useTranslation } from "react-i18next";
