@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- the setup hook owns one dialog lifecycle boundary. */
 "use client";
 
 import { FormEvent, useCallback, useState } from "react";

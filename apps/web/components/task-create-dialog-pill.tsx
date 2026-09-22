@@ -2,12 +2,7 @@
 
 import { useCallback, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
-import { Popover, PopoverContent, PopoverTrigger } from "@kandev/ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@kandev/ui/tooltip";
-import { Command, CommandInput } from "@kandev/ui/command";
-import { BranchRefreshButton } from "@/components/branch-refresh-button";
-import { PillCommandList } from "@/components/task-create-dialog-pill-command-list";
-import { controlSizingClassName } from "@kandev/ui/control-sizing";
 import { useTaskCreateDialogPortalContainer } from "@/hooks/use-task-create-dialog-popover-container";
 import { usePillTooltipSuppression } from "@/hooks/use-pill-tooltip-suppression";
 import { useTooltipMountGate } from "@/hooks/use-tooltip-mount-gate";

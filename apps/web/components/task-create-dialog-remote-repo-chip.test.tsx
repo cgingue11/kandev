@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- remote chip regressions share one caller-shaped fixture. */
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { screen, fireEvent, cleanup } from "@testing-library/react";
 import type { Branch } from "@/lib/types/http";

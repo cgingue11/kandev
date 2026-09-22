@@ -76,6 +76,7 @@ export function resolveDialogLaunchPreview(
   });
 }
 
+// eslint-disable-next-line max-lines-per-function -- one projection keeps the form contract assembled in one place.
 export function buildDialogFormBodyProps(
   setup: ReturnType<typeof useTaskCreateDialogSetup>,
   props: TaskCreateDialogProps,
