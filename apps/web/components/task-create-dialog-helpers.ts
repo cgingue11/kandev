@@ -1,3 +1,5 @@
+/* eslint-disable max-lines -- task creation payload and source mapping share one request boundary. */
+
 import type { useRouter } from "@/lib/routing/client-router";
 import type { Task, Branch, LocalRepository, Repository, TaskPriority } from "@/lib/types/http";
 import type { AgentProfileOption } from "@/lib/state/slices";
@@ -241,15 +243,6 @@ function nonEmptyRecord<T extends Record<string, string>>(value?: T): T | undefi
   return value && Object.keys(value).length > 0 ? value : undefined;
 }
 
-type CreateTaskTitleFields =
-  | { title: string; auto_title?: false }
-  | { title?: never; auto_title: true };
-
-function buildCreateTaskTitle(args: BuildCreatePayloadArgs): CreateTaskTitleFields {
-  if (args.autoTitle) return { auto_title: true };
-  return { title: args.trimmedTitle };
-}
-
 type CreateTaskStateFields = {
   state: "IN_PROGRESS" | "CREATED";
   start_agent?: boolean;
@@ -289,7 +282,6 @@ export function buildCreateTaskPayload(args: BuildCreatePayloadArgs): CreateTask
   const commonPayload = {
     workspace_id: args.workspaceId,
     workflow_id: args.effectiveWorkflowId,
-    ...buildCreateTaskTitle(args),
     description: args.trimmedDescription,
     ...createTaskSourceFields(args),
     ...buildCreateTaskState(args.withAgent),

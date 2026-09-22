@@ -308,6 +308,8 @@ function buildSubtaskFormState({
     setGitHubUrlError,
     remoteProviderReadiness,
     setRemoteProviderReadiness,
+    workflowAgentOverrides: {},
+    setWorkflowAgentOverrides: NOOP,
     workflowAgentProfileId: "",
     setWorkflowAgentProfileId: NOOP,
     clearDraft: NOOP,
