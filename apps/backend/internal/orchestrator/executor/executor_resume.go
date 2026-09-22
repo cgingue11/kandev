@@ -174,14 +174,14 @@ func (e *Executor) resolveTaskRepoInfoForSession(
 		return nil, err
 	}
 	info := &repoInfo{
-		CheckoutOptions:  options,
-		TaskRepositoryID: tr.ID,
-		RepositoryID:     tr.RepositoryID,
-		BaseBranch:       tr.BaseBranch,
-		IntegrationRef:   tr.BranchPolicyPullRequestTarget,
-		CheckoutBranch:   tr.CheckoutBranch,
-		PRNumber:         prNumberFromMetadata(tr.Metadata),
-		Position:         tr.Position,
+		CheckoutOptions:       options,
+		TaskRepositoryID:      tr.ID,
+		RepositoryID:          tr.RepositoryID,
+		BaseBranch:            tr.BaseBranch,
+		IntegrationRef:        tr.BranchPolicyPullRequestTarget,
+		CheckoutBranch:        tr.CheckoutBranch,
+		PRNumber:              prNumberFromMetadata(tr.Metadata),
+		Position:              tr.Position,
 		WorkspaceRelativePath: tr.WorkspaceRelativePath,
 	}
 	if binding, found, err := models.LoadRemoteContribution(tr.Metadata); err != nil {

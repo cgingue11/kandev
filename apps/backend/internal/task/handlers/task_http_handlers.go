@@ -1032,8 +1032,6 @@ func (h *TaskHandlers) httpCreateTask(c *gin.Context) {
 		ParentID:                    body.ParentID,
 		WorkspacePath:               body.WorkspacePath,
 		InitialWorkspaceLayout:      body.InitialWorkspaceLayout,
-		ExecutorID:                  body.ExecutorID,
-		ExecutorProfileID:           body.ExecutorProfileID,
 		BlockedBy:                   body.BlockedBy,
 		StartWhenUnblocked:          body.StartWhenUnblocked,
 		ProjectID:                   body.ProjectID,
