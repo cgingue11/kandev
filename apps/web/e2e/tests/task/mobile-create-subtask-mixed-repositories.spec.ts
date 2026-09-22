@@ -70,7 +70,7 @@ test.describe("New Subtask mixed repository selection on mobile", () => {
     const session = new SessionPage(testPage);
     await session.waitForLoad();
     await session.waitForChatIdle({ timeout: 30_000 });
-    await testPage.getByTestId("mobile-session-menu").tap();
+    await session.mobileSessionMenu.tap();
     const taskSheet = testPage.getByRole("dialog", { name: "Tasks" });
     const taskRow = taskSheet.getByTestId("sidebar-task-item").filter({ hasText: parentTitle });
     await taskRow.getByRole("button", { name: "Task actions" }).tap();

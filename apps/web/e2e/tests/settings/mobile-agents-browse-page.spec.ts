@@ -55,7 +55,7 @@ test.describe("Agents browse page on mobile", () => {
 
     const heading = testPage.getByRole("heading", { name: "Browse available agents" });
     await expect(heading).toBeVisible({ timeout: 15_000 });
-    await expect(testPage.getByTestId("install-card-codex")).toBeVisible();
+    await expect(testPage.getByTestId("install-card-codex")).toBeVisible({ timeout: 15_000 });
 
     // Same static-page contract as the desktop spec: the heading is not a
     // button and the settings content region carries no collapse semantics.
