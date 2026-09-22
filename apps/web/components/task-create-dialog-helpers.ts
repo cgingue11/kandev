@@ -548,6 +548,7 @@ function workspaceRepositorySource(
 ): WorkspaceSourceRequest & { kind: "repository" } {
   return {
     kind: "repository",
+    ...(repository.checkout_options ? { checkout_options: repository.checkout_options } : {}),
     ...repositoryIdentityFields(repository),
     ...repositoryBranchFields(repository),
     ...repositoryFreshBranchFields(repository),

@@ -264,6 +264,7 @@ function RepositorySelectionRows({
               row={selection}
               rows={remoteRows}
               fs={fs}
+              workspaceId={workspaceId}
               accessible={accessible}
               repositoryLocked={repositoryLocked}
               branchLocked={branchLocked}
@@ -476,6 +477,7 @@ function RemoteSelectionChip({
   row,
   rows,
   fs,
+  workspaceId,
   accessible,
   repositoryLocked,
   branchLocked,
@@ -484,6 +486,7 @@ function RemoteSelectionChip({
   row: TaskRemoteRepoRow & { kind: "remote" };
   rows: TaskRemoteRepoRow[];
   fs: DialogFormState;
+  workspaceId: string | null;
   accessible: ReturnType<typeof useRemoteRepositories>;
   repositoryLocked?: boolean;
   branchLocked?: boolean;
@@ -497,6 +500,9 @@ function RemoteSelectionChip({
   return (
     <RemoteRepoChip
       row={row}
+      workspaceId={workspaceId}
+      executorProfileId={fs.executorProfileId}
+      onOptionsChange={(checkoutOptions) => fs.updateRemoteRepo(row.key, { checkoutOptions })}
       branches={fs.branchesByUrl.branches(row.url)}
       branchesLoading={fs.branchesByUrl.loading(row.url)}
       prInfo={fs.prInfoByUrl.info(row.url)}

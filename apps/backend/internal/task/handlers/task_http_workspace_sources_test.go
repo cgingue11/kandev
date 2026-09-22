@@ -6,6 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/kandev/kandev/internal/task/models"
 	"github.com/kandev/kandev/internal/task/service"
 )
 
@@ -14,6 +15,7 @@ func TestParseHTTPTaskWorkspaceSourcesPreservesFreshBranchFields(t *testing.T) {
 		"kind":"repository",
 		"repository_id":"repo-1",
 		"base_branch":"develop",
+		"checkout_options":{"version":1,"download_mode":"on_demand","sparse_directories":["extensions/shared"]},
 		"fresh_branch":true,
 		"new_branch_name":"feature/task",
 		"confirm_discard":true,
@@ -26,6 +28,10 @@ func TestParseHTTPTaskWorkspaceSourcesPreservesFreshBranchFields(t *testing.T) {
 	require.Equal(t, "feature/task", sources[0].NewBranchName)
 	require.True(t, sources[0].ConfirmDiscard)
 	require.Equal(t, []string{"src/app.ts"}, sources[0].ConsentedDirtyFiles)
+	require.NotNil(t, sources[0].CheckoutOptions)
+	require.Equal(t, 1, sources[0].CheckoutOptions.Version)
+	require.Equal(t, "on_demand", sources[0].CheckoutOptions.DownloadMode)
+	require.Equal(t, []string{"extensions/shared"}, sources[0].CheckoutOptions.SparseDirectories)
 }
 
 func TestParseHTTPWorkspaceSourcesRejectsFreshBranchFields(t *testing.T) {
@@ -46,6 +52,7 @@ func TestWorkspaceSourceRepositoryInputsSkipsFoldersAndMapsFreshBranchFields(t *
 			RepositoryID:        "repo-1",
 			BaseBranch:          "develop",
 			BranchPolicyID:      "policy-1",
+			CheckoutOptions:     &models.RepositoryCheckoutOptions{Version: 1, DownloadMode: "on_demand"},
 			FreshBranch:         true,
 			NewBranchName:       "feature/task",
 			ConfirmDiscard:      true,
@@ -61,4 +68,6 @@ func TestWorkspaceSourceRepositoryInputsSkipsFoldersAndMapsFreshBranchFields(t *
 	require.Equal(t, "repo-1", repos[0].RepositoryID)
 	require.Equal(t, "develop", repos[0].BaseBranch)
 	require.Equal(t, "policy-1", repos[0].BranchPolicyID)
+	require.NotNil(t, repos[0].CheckoutOptions)
+	require.Equal(t, "on_demand", repos[0].CheckoutOptions.DownloadMode)
 }

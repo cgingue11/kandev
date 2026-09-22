@@ -30,6 +30,7 @@ const (
 
 type WorkspaceSourceInput struct {
 	Kind                                                                                                                              WorkspaceSourceKind
+	CheckoutOptions                                                                                                                   *models.RepositoryCheckoutOptions
 	RepositoryID, LocalPath, GitHubURL, RemoteURL, Provider, ProviderHost, ProviderScope, ProviderRepoID, ProviderOwner, ProviderName string
 	BaseBranch, CheckoutBranch, BranchPolicyID, DisplayName, CheckoutSource, ExpectedOrigin                                           string
 	PRNumber                                                                                                                          int
@@ -363,8 +364,9 @@ func (s *Service) prepareRepositoryWorkspaceSource(ctx context.Context, task *mo
 		return nil, createdID, false, fmt.Errorf("%w: %v", ErrWorkspaceSourceConflict, duplicate)
 	}
 	metadata, err := buildTaskRepositoryMetadata(TaskRepositoryInput{
-		CheckoutSource: input.CheckoutSource,
-		ExpectedOrigin: input.ExpectedOrigin,
+		CheckoutOptions: input.CheckoutOptions,
+		CheckoutSource:  input.CheckoutSource,
+		ExpectedOrigin:  input.ExpectedOrigin,
 	})
 	if err != nil {
 		return nil, createdID, false, err

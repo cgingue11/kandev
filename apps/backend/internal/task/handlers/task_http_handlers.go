@@ -37,28 +37,29 @@ type httpWorkspaceSourcesRequest struct {
 }
 
 type workspaceSourceJSON struct {
-	Kind                string   `json:"kind"`
-	RepositoryID        string   `json:"repository_id"`
-	LocalPath           string   `json:"local_path"`
-	GitHubURL           string   `json:"github_url"`
-	RemoteURL           string   `json:"remote_url"`
-	Provider            string   `json:"provider"`
-	ProviderHost        string   `json:"provider_host"`
-	ProviderScope       string   `json:"provider_scope"`
-	ProviderRepoID      string   `json:"provider_repo_id"`
-	ProviderOwner       string   `json:"provider_owner"`
-	ProviderName        string   `json:"provider_name"`
-	CheckoutSource      string   `json:"checkout_source,omitempty"`
-	ExpectedOrigin      string   `json:"expected_origin,omitempty"`
-	BaseBranch          string   `json:"base_branch"`
-	CheckoutBranch      string   `json:"checkout_branch"`
-	BranchPolicyID      string   `json:"branch_policy_id"`
-	PRNumber            int      `json:"pr_number,omitempty"`
-	DisplayName         string   `json:"display_name"`
-	FreshBranch         bool     `json:"fresh_branch,omitempty"`
-	NewBranchName       string   `json:"new_branch_name,omitempty"`
-	ConfirmDiscard      bool     `json:"confirm_discard,omitempty"`
-	ConsentedDirtyFiles []string `json:"consented_dirty_files,omitempty"`
+	Kind                string                            `json:"kind"`
+	CheckoutOptions     *models.RepositoryCheckoutOptions `json:"checkout_options,omitempty"`
+	RepositoryID        string                            `json:"repository_id"`
+	LocalPath           string                            `json:"local_path"`
+	GitHubURL           string                            `json:"github_url"`
+	RemoteURL           string                            `json:"remote_url"`
+	Provider            string                            `json:"provider"`
+	ProviderHost        string                            `json:"provider_host"`
+	ProviderScope       string                            `json:"provider_scope"`
+	ProviderRepoID      string                            `json:"provider_repo_id"`
+	ProviderOwner       string                            `json:"provider_owner"`
+	ProviderName        string                            `json:"provider_name"`
+	CheckoutSource      string                            `json:"checkout_source,omitempty"`
+	ExpectedOrigin      string                            `json:"expected_origin,omitempty"`
+	BaseBranch          string                            `json:"base_branch"`
+	CheckoutBranch      string                            `json:"checkout_branch"`
+	BranchPolicyID      string                            `json:"branch_policy_id"`
+	PRNumber            int                               `json:"pr_number,omitempty"`
+	DisplayName         string                            `json:"display_name"`
+	FreshBranch         bool                              `json:"fresh_branch,omitempty"`
+	NewBranchName       string                            `json:"new_branch_name,omitempty"`
+	ConfirmDiscard      bool                              `json:"confirm_discard,omitempty"`
+	ConsentedDirtyFiles []string                          `json:"consented_dirty_files,omitempty"`
 }
 
 func (h *TaskHandlers) httpAttachWorkspaceSources(c *gin.Context) {
@@ -105,7 +106,7 @@ func parseHTTPWorkspaceSourcesWithFreshBranch(raw []json.RawMessage, allowFreshB
 		allowed := map[string]bool{"kind": true, "local_path": true}
 		switch kind {
 		case string(service.WorkspaceSourceRepository):
-			for _, key := range []string{"repository_id", "remote_url", "github_url", "provider", "provider_host", "provider_scope", "provider_repo_id", "provider_owner", "provider_name", "checkout_source", "expected_origin", "base_branch", "checkout_branch", "branch_policy_id", "pr_number"} {
+			for _, key := range []string{"repository_id", "remote_url", "github_url", "provider", "provider_host", "provider_scope", "provider_repo_id", "provider_owner", "provider_name", "checkout_options", "checkout_source", "expected_origin", "base_branch", "checkout_branch", "branch_policy_id", "pr_number"} {
 				allowed[key] = true
 			}
 			if allowFreshBranch {
@@ -129,6 +130,7 @@ func parseHTTPWorkspaceSourcesWithFreshBranch(raw []json.RawMessage, allowFreshB
 		}
 		sources = append(sources, service.WorkspaceSourceInput{
 			Kind:                service.WorkspaceSourceKind(source.Kind),
+			CheckoutOptions:     source.CheckoutOptions,
 			RepositoryID:        source.RepositoryID,
 			LocalPath:           source.LocalPath,
 			GitHubURL:           source.GitHubURL,
@@ -1539,6 +1541,7 @@ func workspaceSourceRepositoryInputs(sources []service.WorkspaceSourceInput) ([]
 			continue
 		}
 		input := httpTaskRepositoryInput{
+			CheckoutOptions:     source.CheckoutOptions,
 			RepositoryID:        source.RepositoryID,
 			LocalPath:           source.LocalPath,
 			GitHubURL:           source.GitHubURL,

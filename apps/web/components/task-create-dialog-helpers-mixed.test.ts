@@ -104,6 +104,38 @@ describe("buildRepositoriesPayload — unified rows", () => {
     expect(workspaceSourcesPayload[0]).not.toHaveProperty("expected_origin");
   });
 
+  it("carries remote checkout options through ordered workspace sources", () => {
+    const checkoutOptions = {
+      version: 1 as const,
+      download_mode: "on_demand" as const,
+      sparse_directories: ["extensions/shared"],
+    };
+    const workspaceSourcesPayload = buildWorkspaceSourcesPayload({
+      selections: [
+        {
+          kind: "remote",
+          key: "remote-1",
+          url: "https://github.com/acme/remote",
+          branch: "main",
+          source: "paste",
+          checkoutOptions,
+        },
+      ],
+      useRemote: false,
+      remoteRepos: [],
+      repositories: [],
+      discoveredRepositories: [],
+    });
+
+    expect(workspaceSourcesPayload).toEqual([
+      expect.objectContaining({
+        kind: "repository",
+        github_url: "https://github.com/acme/remote",
+        checkout_options: checkoutOptions,
+      }),
+    ]);
+  });
+
   it("maps each row in order, dropping empty ones silently", () => {
     const payload = buildRepositoriesPayload({
       useRemote: false,

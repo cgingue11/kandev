@@ -4,6 +4,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/kandev/kandev/internal/task/models"
 )
 
 func TestNormalizeWorkspaceSourcesForCreationMakesExplicitEmptyAuthoritative(t *testing.T) {
@@ -34,4 +36,23 @@ func TestNormalizeWorkspaceSourcesForCreationRejectsInheritedEdits(t *testing.T)
 	}
 
 	require.ErrorIs(t, normalizeWorkspaceSourcesForCreation(req), ErrInvalidWorkspaceSource)
+}
+
+func TestNormalizeWorkspaceSourcesForCreationPreservesCheckoutOptions(t *testing.T) {
+	options := &models.RepositoryCheckoutOptions{
+		Version:           1,
+		DownloadMode:      models.DownloadOnDemand,
+		SparseDirectories: []string{"extensions/shared"},
+	}
+	sources := []WorkspaceSourceInput{{
+		Kind:            WorkspaceSourceRepository,
+		GitHubURL:       "https://github.com/acme/repository",
+		BaseBranch:      "main",
+		CheckoutOptions: options,
+	}}
+	req := &CreateTaskRequest{WorkspaceSources: &sources}
+
+	require.NoError(t, normalizeWorkspaceSourcesForCreation(req))
+	require.Len(t, req.Repositories, 1)
+	require.Equal(t, options, req.Repositories[0].CheckoutOptions)
 }

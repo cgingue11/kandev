@@ -47,6 +47,7 @@ export type WorkspaceFolder = {
 
 export type WorkspaceRepositorySourceRequest = {
   kind: "repository";
+  checkout_options?: RepositoryCheckoutOptions;
   repository_id?: string;
   local_path?: string;
   github_url?: string;
