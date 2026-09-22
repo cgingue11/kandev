@@ -5788,6 +5788,10 @@ func (s *Service) PromptTask(ctx context.Context, taskID, sessionID string, prom
 }
 
 type promptTaskOptions struct {
+	// recoveryAction is populated only by the explicit context-continuation
+	// path. It allows the already-authorized prompt to cross the recovery block
+	// without reopening the ordinary launch gate.
+	recoveryAction  string
 	claimEntryID    string
 	lifecyclePrompt bool
 	afterClaim      func() error
@@ -5978,8 +5982,10 @@ func (s *Service) promptTask(ctx context.Context, taskID, sessionID string, prom
 	if err := s.validatePromptTaskPreconditions(sessionID, options.resumeAttempt); err != nil {
 		return nil, err
 	}
-	if err := s.checkSessionRecoveryBlock(ctx, sessionID); err != nil {
-		return nil, err
+	if options.recoveryAction == "" {
+		if err := s.checkSessionRecoveryBlock(ctx, sessionID); err != nil {
+			return nil, err
+		}
 	}
 
 	session, foregroundClaim, err := s.prepareSessionAndForegroundClaimForPrompt(ctx, taskID, sessionID, options)
@@ -6873,7 +6879,7 @@ func (s *Service) claimDispatchAndAcquireGuard(
 		ctx, taskID, sessionID, options.claimEntryID, options.lifecyclePrompt,
 		options.reserveTurnUntilDispatch, options.promptDispatchRecovery,
 		options.afterClaim, foregroundClaim, options.expectedCurrentTurnID,
-		options.requireNonterminalSession, resumeAttempt, admissionGuard, options.expectedSessionIdentity,
+		options.requireNonterminalSession, resumeAttempt, admissionGuard, options.recoveryAction != "", options.expectedSessionIdentity,
 	)
 	if err != nil {
 		if errors.Is(err, ErrResumeAttemptCancelled) {
@@ -7216,7 +7222,7 @@ func (s *Service) claimPromptDispatch(
 	return s.claimPromptDispatchWithResumeAttempt(
 		ctx, taskID, sessionID, claimEntryID, lifecyclePrompt,
 		reserveTurnUntilDispatch, promptDispatchRecovery, afterClaim, foregroundClaim,
-		expectedCurrentTurnID, requireNonterminalSession, nil, nil, expectedIdentities...,
+		expectedCurrentTurnID, requireNonterminalSession, nil, nil, false, expectedIdentities...,
 	)
 }
 
@@ -7232,6 +7238,7 @@ func (s *Service) claimPromptDispatchWithResumeAttempt(
 	requireNonterminalSession bool,
 	resumeAttempt *resumeAttempt,
 	admissionGuard *lockedCancelInFlightGuard,
+	bypassRecoveryBlock bool,
 	expectedIdentities ...*messagequeue.QueueSessionIdentity,
 ) (*models.TaskSession, promptClaimRollback, error) {
 	claimCtx := ctx
@@ -7248,6 +7255,9 @@ func (s *Service) claimPromptDispatchWithResumeAttempt(
 		)
 	}
 	claimArgs := []interface{}{expectedIdentity, afterClaim}
+	if bypassRecoveryBlock {
+		claimArgs = append(claimArgs, true)
+	}
 	if admissionGuard != nil {
 		claimArgs = append(claimArgs, admissionGuard)
 	}
@@ -7655,10 +7665,11 @@ func (s *Service) claimSessionRunningForPrompt(
 	optionalClaimArgs ...interface{},
 ) (*models.TaskSession, models.TaskSessionState, string, bool, *models.Turn, func(), error) {
 	var (
-		afterClaim       func() error
-		expectedIdentity *messagequeue.QueueSessionIdentity
-		startupAttempt   *resumeAttempt
-		admissionGuard   *lockedCancelInFlightGuard
+		afterClaim          func() error
+		expectedIdentity    *messagequeue.QueueSessionIdentity
+		startupAttempt      *resumeAttempt
+		admissionGuard      *lockedCancelInFlightGuard
+		bypassRecoveryBlock bool
 	)
 	for _, arg := range optionalClaimArgs {
 		switch value := arg.(type) {
@@ -7670,6 +7681,8 @@ func (s *Service) claimSessionRunningForPrompt(
 			startupAttempt = value
 		case *lockedCancelInFlightGuard:
 			admissionGuard = value
+		case bool:
+			bypassRecoveryBlock = value
 		}
 	}
 	if admissionGuard == nil {
@@ -7748,8 +7761,10 @@ func (s *Service) claimSessionRunningForPrompt(
 	); promptErr != nil {
 		return nil, "", "", false, nil, nil, promptErr
 	}
-	if err := s.checkSessionRecoveryBlock(ctx, sessionID); err != nil {
-		return nil, "", "", false, nil, err
+	if !bypassRecoveryBlock {
+		if err := s.checkSessionRecoveryBlock(ctx, sessionID); err != nil {
+			return nil, "", "", false, nil, nil, err
+		}
 	}
 	previousState := freshSession.State
 	switch {
