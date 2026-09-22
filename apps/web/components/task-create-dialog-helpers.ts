@@ -273,7 +273,9 @@ function buildOptionalCreateTaskFields(args: BuildCreatePayloadArgs): OptionalCr
     plan_mode: args.planMode || undefined,
     attachments: args.attachments,
     parent_id: optionalString(args.parentId),
-    workspace_path: optionalString(args.workspacePath),
+    ...(args.workspaceSourcesPayload === undefined
+      ? { workspace_path: optionalString(args.workspacePath) }
+      : {}),
     autopilot: args.autopilot || undefined,
   };
 }
