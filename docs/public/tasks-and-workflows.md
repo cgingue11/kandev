@@ -23,7 +23,7 @@ The task carries the outcome through the workflow. The repository and session pr
 
 ## Keep your view when creating tasks
 
-In **Settings > Task Behavior**, turn off **Auto-focus new tasks**
+In **Settings > Preferences > Task Behavior**, turn off **Open new tasks automatically**
 and select **Save changes** to create tasks without leaving your current view.
 The setting is on by default and is saved with your user preferences across
 reloads. It works on desktop and mobile.
@@ -66,6 +66,12 @@ Changing the options refreshes that preview.
 The preview is advisory. **Move here** checks routing, permissions, WIP, and
 current session state again when the move runs. A preview can therefore change
 while a turn is running or while another session becomes available.
+
+After you move an open task with **Move here**, Kandev follows the conversation
+committed for the destination step on desktop and phone. It waits for that
+conversation to become available, so a pending or failed move keeps the
+conversation you selected. If you select another conversation while routing is
+in progress, that selection stays active.
 
 ## Move a task with one-time entry options
 
@@ -127,7 +133,7 @@ Use **New Task** in the sidebar. In an open task, the **Task** split button also
 
 1. When the title field is shown, enter a concise title of up to 60 characters. Titles prefilled from
    a remote pull request, issue, or merge request are shortened with an ellipsis when needed; the
-   detailed context belongs in the description. If **Settings → General → Task Actions → Agent-generated
+   detailed context belongs in the description. If **Settings → Preferences → Task Behavior → Tasks → Agent-generated
    task titles** is enabled, the New Task dialog hides this field, requires a nonempty prompt, and uses
    the prompt's first six words as a provisional title while the first eligible agent session chooses
    the final title. The empty-description Plan Mode exception applies only when this setting is disabled.
@@ -149,6 +155,35 @@ Use **New Task** in the sidebar. In an open task, the **Task** split button also
    - **Create without starting agent** requires a nonempty description and starts in **Start step**. A structured ACP profile prepares the session/workspace without starting an agent turn. Passthrough/TUI is an exception: the backend launches it immediately so its native PTY exists.
 
    On mobile, the two non-primary actions are separate buttons labeled **Plan mode** and **Create only**; they have the same plan-mode and create-without-agent behavior.
+
+### Reduce downloads for a large remote repository
+
+In **New Task → Remote**, select a repository and open its gear (**Repository options**).
+These settings apply only to that repository row in this task.
+
+1. Choose **On demand** to download file contents as Git needs them while retaining
+   full commit history. **Standard** keeps the existing download behavior.
+2. Choose **Selected folders** and enter repository-relative directories, one per
+   line, for example `extensions/my-extension`. Include shared packages your work
+   needs. Up to 64 directories are supported; wildcards and parent paths are not.
+3. Select **Apply**. A summary below the repository shows the applied choices.
+   **Cancel** discards draft edits; **Reset** restores Standard and All folders.
+
+Advanced options are available for GitHub repositories using **Worktree** or
+**Local Docker** with the built-in preparation script and Kandev-managed Git
+credentials. Other preparation paths
+show an explanation and keep advanced controls disabled. On phones, the gear
+opens a drawer with the same settings.
+
+Selected folders use Git's directory-based sparse checkout: root and ancestor
+files remain available, and omitted files are not reported as deleted. Git can
+materialize additional files during conflict resolution. This is not an access
+restriction. Settings cannot change after the task environment is created;
+create a new task for a different scope. A new independent task starts with the
+default settings.
+
+These options reduce download and checkout work. They do not change the existing
+clone timeout or guarantee that every repository will finish within it.
 
 ### Branch policies
 
@@ -192,7 +227,7 @@ If another person or tool initializes the remote before the first publication, K
 
 ### Let the agent name new tasks
 
-Open **Settings → General → Task Actions → Agent-generated task titles** and choose **Save changes**.
+Open **Settings → Preferences → Task Behavior → Tasks → Agent-generated task titles** and choose **Save changes**.
 The setting is enabled by default; an explicitly saved **off** value remains off. When enabled, new task
 and subtask dialogs use the prompt as the source of the title: the prompt must contain text, and Kandev
 immediately displays its first six normalized words as a provisional title. The first eligible task-mode
@@ -208,7 +243,7 @@ tool. Config and Office sessions never receive the title tool.
 
 ### Choose the profile for tasks created by agents
 
-Open **Settings → General → Task Actions → Profile for Tasks Created by Agents** to choose which agent profile Kandev assigns when an agent calls `create_task_kandev` without choosing `agent_profile_id`. The preference covers new tasks and subtasks, and it also controls the effective model, mode, and dynamic options used by the first session:
+Open **Settings → Preferences → Task Behavior → Tasks → Profile for Tasks Created by Agents** to choose which agent profile Kandev assigns when an agent calls `create_task_kandev` without choosing `agent_profile_id`. The preference covers new tasks and subtasks, and it also controls the effective model, mode, and dynamic options used by the first session:
 
 - **Creating session profile** is useful when follow-up work needs the same live setup. For a session-bound task-mode call, Kandev uses the verified creating session's profile and its effective model, mode, and dynamic options, including changes made during that session. A workflow launch profile wins first. When no workflow profile wins, the creating session profile is used. This option can reuse a more expensive setup.
 - **Workspace default profile** is useful when you want agent-created tasks to follow a consistent workspace cost policy. It skips the creating session and source, parent, or current task profiles. Kandev uses the workflow launch profile first, then the **Default Agent Profile** from the workspace that will own the new task. It does not copy the creating session's model, mode, or dynamic options. If neither source supplies a profile, task creation fails.
@@ -216,6 +251,27 @@ Open **Settings → General → Task Actions → Profile for Tasks Created by Ag
 Select an option, then choose **Save changes**. Workflow-selected profiles always win when the new task lands on a workflow step. Away from a workflow step, an explicit `agent_profile_id` wins and prevents creator-session runtime inheritance. The only affected Kandev MCP tool is `create_task_kandev`. `spawn_session_kandev` adds a session to the current task, so it does not use this preference. Tasks you create in the UI are not affected.
 
 External MCP calls have no verified creating session. With **Creating session profile**, those calls keep the compatibility fallback to the parent task when one exists, then workflow and target-workspace defaults. The preference applies across workspaces, but **Workspace default profile** resolves the default from each new task's target workspace. A resolved profile and runtime seed are stored even when `start_agent=false`, so a later manual start uses the same decision.
+
+### Choose task-specific workflow profiles
+
+When a workflow has fixed agent profiles on its steps, expand **Advanced
+settings** while creating a task to replace one or more of them for that task.
+Kandev groups steps that use the same fixed profile into one row and lists the
+affected steps. Select an enabled profile from the replacement picker, or
+choose **Use workflow profile** to keep the workflow choice.
+
+These replacements belong to the task only. They do not change the workflow,
+the profile definitions, or another task in the same workflow. Kandev also
+keeps the choices out of recently used task settings. Use **Reset** to remove
+all replacements. Closing and reopening **Advanced settings** keeps the current
+choices, while changing the workflow or starting a new task clears them.
+
+Explicit **Initial agent session** and earlier-step session targets keep their
+existing conversation selection. A replacement applies when a fixed step
+starts or reuses a session. If the session already exists, the workflow
+disclosure shows its actual model and session. Before a session exists, it
+shows the planned replacement model. A profile that becomes unavailable blocks
+creation until you choose another profile or reset the row.
 
 ### Navigate long chat transcripts
 
@@ -226,8 +282,8 @@ arrow points the direction the transcript will actually scroll: upward once
 you've scrolled further down past your prompt, or downward if you've scrolled
 back up above it while browsing earlier history. **Scroll to start of
 transcript** appears when the first prompt is no longer fully visible. You can
-show or hide each action independently in **Settings → General → Task
-Actions → Transcript Navigation**.
+show or hide each action independently in **Settings → Preferences → Task
+Behavior → Conversation and panels**.
 
 For a compact reminder while you read later replies, enable **Show anchored
 prompt bar** in the same settings section. On desktop, it pins a shortened
@@ -388,7 +444,7 @@ foreground-generating Claude turns retain the coarse queueing behavior.
 
 ### Prevent auto-start on open
 
-Under **Settings → General → Task actions**, the **Prevent auto-start on open**
+Under **Settings → Preferences → Task Behavior**, the **Prevent auto-start on open**
 preference is off by default. When enabled, opening a task never launches or
 resumes its agent on its own; it shows the **Start agent** button instead. The
 preference applies in two situations:
@@ -397,13 +453,34 @@ preference applies in two situations:
   prepared session and the agent stays stopped until you select **Start agent**.
   Opening the same task with the preference off keeps the workflow step's
   normal auto-start behavior.
-- **Opening a task whose agent was stopped by a Kandev restart.** The session
-  is recovered and shown stopped instead of being resumed automatically. Select
-  **Start agent** to resume it.
+- **Opening a task whose agent was interrupted by a Kandev restart.** Kandev
+  restores the selected session when the task opens, unless this preference is
+  enabled. It restores the existing conversation and workspace without
+  replaying the previous prompt. A new message continues that conversation,
+  including while the agent is starting. Opening the application does not
+  resume every interrupted task; each task starts recovery when you focus it.
 
 The preference only gates opening a task. Choosing **Start agent** (or a
 workflow step transition) always starts the agent as usual, and a failed or
 interrupted session still shows its recovery actions.
+
+An interrupted task keeps a warning indicator until the agent confirms
+recovery. Opening the task or starting a recovery attempt does not clear the
+indicator; a failed attempt keeps it visible with the existing retry actions.
+
+## Answer clarification questions
+
+When an agent asks a clarification question, answer it from the question panel
+while the session is waiting. If the question becomes inactive before you
+answer, its entry remains in the conversation with **Answer as new message**.
+That action includes the question and your answer in a normal conversation
+message. It does not reopen the old tool request.
+
+Normal message rules still apply. An idle session receives the message; a busy
+session sends or queues it according to its current input mode. If delivery
+fails, the form keeps your answer so you can retry. **Close question** removes
+the answer surface without sending anything, while the question stays in the
+conversation history.
 
 ## Task dependencies
 
@@ -480,16 +557,17 @@ On desktop and tablet, the header switches between **Kanban**, **Pipeline**,
 **Threads**, and **List**. Kanban and Pipeline show the same workflow steps in
 different layouts. Threads shows agent conversations side by side. Kandev
 remembers the last selected view in that browser on the current device. Phones
-offer **Kanban**, **Threads**, and **List** in the topbar menu, with a native
+offer **Kanban**, **Threads**, and **List** under **View options**, with a native
 Threads deck showing one conversation at a time. A saved desktop Pipeline
 preference is kept but shown as Kanban on the phone.
 
 Kanban and List share a compact phone header showing the workspace and current
-mode. Tap that context or the menu button to change views, workspaces, or display
-options, or return **Home**. In Threads, tap the view name to choose a saved
-Threads view. Phone **Search tasks** lives in the menu: selecting it reveals
-and focuses the search field below the header. Selecting it again hides the
-field and clears the query.
+mode. Tap the **Kanban**, **Threads**, or **List** title dropdown to open view options and change display settings, or tap the
+Kanban/List context to open the same controls. The hamburger opens app
+navigation, including the workspace picker and **Home**. In Threads, tap the
+view name to choose a saved Threads view. Phone **Search tasks** lives under
+**View options**: selecting it reveals and focuses the search field below the
+header. Selecting it again hides the field and clears the query.
 
 Under **Settings → Preferences → Appearance → Startup Page**, choose a destination, then select **Save changes**:
 
@@ -515,7 +593,7 @@ The **TASKS** list in the left sidebar has two time-based sort choices. These ch
 Choose **Last activity** when you want to review tasks by the least recent user or agent interaction.
 
 - Search matches tasks without changing their state.
-- The display menu groups its controls into collapsible **Filters**, **Sort**, **Preview panel**, and, in **List**, **List rows** sections. Each section shows its current values while collapsed. Filters cover **Workflow**, **Repository**, and, in Kanban, **Priority**; registered plugin filters appear there when available. In Kanban/Pipeline, each workflow lane has a **Columns** menu outside these groups to hide individual steps. Unticking a step hides its column and tasks on that board, scoped to its own workflow, until you re-tick it. The optional **Auto-hide empty columns** setting collapses unoccupied steps without changing those manual choices; auto-hidden empty steps return as move destinations while a task is being moved, while manually hidden steps remain unavailable for pointer and bulk moves. On phones, open the existing menu drawer to expand the same display groups and change columns for the focused workflow.
+- The display menu groups its controls into collapsible **Filters**, **Sort**, **Preview panel**, and, in **List**, **List rows** sections. Each section shows its current values while collapsed. Filters cover **Workflow**, **Repository**, and, in Kanban, **Priority**; registered plugin filters appear there when available. In Kanban/Pipeline, each workflow lane has a **Columns** menu outside these groups to hide individual steps. Unticking a step hides its column and tasks on that board, scoped to its own workflow, until you re-tick it. The optional **Auto-hide empty columns** setting collapses unoccupied steps without changing those manual choices; auto-hidden empty steps return as move destinations while a task is being moved, while manually hidden steps remain unavailable for pointer and bulk moves. On phones, tap the listing-title dropdown to open **View options** and expand the same display groups and change columns for the focused workflow.
 - In **List**, the display menu can enable **Show task details** to include available repository, description, pull-request, session, parent, review, and archive context in each row. This option is off by default and follows the user across devices.
 - **List** can group by **State**, **Workflow**, **Repository**, or **None**.
 - **List** can sort by updated time, created time, or title in either direction.
@@ -597,6 +675,17 @@ the parked switch, it keeps the current session recoverable and reports the
 error. The destination step controls start behavior; the source step controls
 end behavior.
 
+Answering a parked session starts an agent process for it again, in the same
+task workspace the destination step's session may still be using. Kandev
+permits more than one session of a task to write that shared workspace
+concurrently; it does not serialize them or lock the workspace to one writer.
+If the destination session is still active when you answer the parked one,
+both write the same files. Kandev records this condition (a structured log
+entry and an operational counter) but does not prevent, delay, or queue it. To
+avoid concurrent writers, confirm the destination session has finished before
+answering a parked one, or use **Complete the session** instead of **Park the
+session** for steps that pin a different agent profile.
+
 When **Reset agent context** creates a fresh ACP session, Kandev preserves the
 selected ACP model, permission mode, and provider options. It restores these
 settings before the next automatic prompt. If the provider rejects a setting,
@@ -622,17 +711,38 @@ destination queue. If the configured
 feeder is also full, creation returns a conflict. Ephemeral tasks are not
 counted.
 
+A queued task detail shows a **Workflow WIP limit** banner. It names the
+destination workflow and step, reports task counts, and links to that
+workflow's WIP settings when the destination identity is available. The
+banner can appear before the task has a session. A feeder's name or limit is
+never shown as the destination.
+
 A task can also show **Queued** after workflow entry selects a session but the
-agent session ceiling blocks automatic launch. This is different from WIP
-queueing: WIP waits before destination entry, while session-capacity queueing
-keeps the selected session and retries it automatically. Task details and the
-task navigator show the destination, the latest capacity observation, queue
+global session capacity blocks automatic launch. This is a separate queue:
+WIP queueing waits before destination entry, while global capacity queueing
+keeps the selected session and retries it automatically. The task detail and
+task navigator identify this cause as **Global session limit**, state that it
+applies to all workspaces, and link to Settings > Preferences > Task Behavior > Runtime
+capacity. They show the destination, the latest capacity observation, queue
 time, and retry state. They do not show a queue position or estimated start
 time. Capacity counts older than 40 seconds, or counts unavailable because the
 client is disconnected, are labelled stale while the destination remains
 visible. Opening a task or a parked predecessor does not start it. Use the
 explicit **Start** or **Resume** action, or send a message, to override the
 automatic ceiling for that conversation.
+
+The instance session capacity is disabled by default. An administrator can
+enable it in Settings > Preferences > Task Behavior > Runtime, enter a positive
+maximum, and save the change. The saved value applies to later automatic
+starts without a restart and persists across restarts. Disabling it retains
+the maximum for later use. Manual starts can exceed the limit. Workflow WIP
+limits remain separate and are checked before session capacity.
+
+`KANDEV_MAX_CONCURRENT_SESSIONS` is an optional startup override. A valid
+non-negative value takes precedence over the saved setting, and `0` disables
+the ceiling. When the override is present, Settings shows the effective value
+and prevents edits. Change the environment and restart Kandev to remove the
+override.
 
 Integration watchers use the same admission rule. For example, a GitHub review
 watch targeting a `Review` step with a limit of two admits at most two newly
@@ -658,6 +768,8 @@ The child-completion event ignores archived and ephemeral children, does not ins
 Generic comment, blocker-resolution, approval, heartbeat, budget, and error triggers, plus participant quorum, belong to the in-progress Office workflow surface. They are not configurable regular-Kanban step events.
 
 When **On Turn Complete** moves a task, **Wait for agent completion signal** is available. With it enabled, a bare turn end leaves the task waiting; the agent must call `step_complete_kandev`. The call requires a summary and can include a handoff or blockers. It is idempotent within the step, runs asynchronously, and a user message sent before the transition is applied cancels that pending signal. Without the option, turn end counts as completion.
+
+If the task changes steps before the agent sends the signal, Kandev rejects the call and names both the turn's launch step and the current step. Retrying in that same turn cannot recover. End the turn and have the user resume the session, then satisfy the current step and call `step_complete_kandev` from the fresh turn. An operator can also use the normal manual workflow move after checking the work and destination. Waiting, reconnecting, or retrying the stale turn does not change its eligibility.
 
 **Run completion actions when a turn is cancelled** is available beneath a configured turn-complete transition. It applies only when a user explicitly presses **Cancel** on the active turn. The normal completion pipeline still applies, including `on_exit`, the configured transition, and the destination step's `on_enter` actions; an `auto_start_agent` action there can start another turn immediately. An eligible explicit cancellation bypasses the `auto_advance_requires_signal` / `step_complete_kandev` gate, but a pending clarification still blocks the transition. The setting does not turn other interruption or failure paths into completion events. When the setting is off, an explicit cancel leaves the task in its current step and ready for input.
 
@@ -828,7 +940,12 @@ On a phone, archive uses a focused confirmation step in the open Tasks sheet,
 or a compact bottom sheet from a page. [Phone confirmation controls](mobile-remote-access.md#confirm-an-action-on-a-phone)
 explain how to review the action and return to your list without losing your place.
 
-After you confirm archive, the task stays in the active sidebar and phone task picker in a dimmed, busy state with a spinner while the request is pending. It disappears after a successful archive. If the request fails, the task returns to its normal state. Saved views that include archived tasks still show confirmed archives.
+After you confirm archive, the task stays in the active sidebar and phone task
+picker in a dimmed, busy state with a spinner while the request is pending. A
+bottom-right **Archiving in progress** toast remains visible until the request
+settles. The task disappears after a successful archive. If the request fails,
+the task returns to its normal state. Saved views that include archived tasks
+still show confirmed archives.
 
 Archive records the task as archived and removes it from active views immediately. Runtime stopping and physical cleanup then run in the background with a 60-second timeout. Cleanup is best-effort: a stop or deletion failure is logged and does not undo the archive, and Kandev preserves a runtime or environment when a nonterminal session cannot be stopped. Shared inherited environments and borrowed worktrees are also preserved while another active task still uses them.
 
@@ -842,7 +959,7 @@ Archive records the task as archived and removes it from active views immediatel
 | Sprites       | Attempts to destroy the sandbox; if cleanup succeeds, uncommitted sandbox work is lost.                                                                                                                               |
 | SSH           | Attempts to stop the remote session runtime, but the remote task directory remains. Audit and remove retained task directories manually after confirming that no session needs them.                                  |
 
-The archive confirmation is enabled by default at **Settings → General → Task Actions → Archive Confirmation** under **Confirm before archiving tasks**. If a parent has children, **Also archive _N_ subtasks** is unchecked by default; without it, the children remain active. Task MCP archive/delete operations affect only the selected task and do not offer the cascade checkbox. MCP delete also does not reparent direct children the way the UI's non-cascade delete does; use the UI rather than task MCP to delete a parent that still has children.
+The archive confirmation is enabled by default at **Settings → Preferences → Task Behavior → Tasks → Archiving** under **Confirm before archiving tasks**. If a parent has children, **Also archive _N_ subtasks** is unchecked by default; without it, the children remain active. Task MCP archive/delete operations affect only the selected task and do not offer the cascade checkbox. MCP delete also does not reparent direct children the way the UI's non-cascade delete does; use the UI rather than task MCP to delete a parent that still has children.
 
 To restore a task, open **List**, enable **Show archived**, and choose **Unarchive**. You can also choose **Unarchive** in the open task view on desktop or a phone. If unarchive fails, the task stays archived and recovery stays disabled. If the parent was archived with its children, the cascade-owned children are restored with it.
 
