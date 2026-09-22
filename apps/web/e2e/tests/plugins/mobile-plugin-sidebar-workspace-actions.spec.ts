@@ -33,8 +33,10 @@ test.describe("Mobile plugin workspace actions", () => {
 
     const box = await slot.boundingBox();
     expect(box).not.toBeNull();
-    expect(box!.width).toBeGreaterThanOrEqual(44);
-    expect(box!.height).toBeGreaterThanOrEqual(44);
+    // Chromium can expose the CSS 44px minimum as 43.9999... after the
+    // drawer's fractional mobile layout has been applied.
+    expect(Math.round(box!.width)).toBeGreaterThanOrEqual(44);
+    expect(Math.round(box!.height)).toBeGreaterThanOrEqual(44);
 
     await slot.tap();
     await expect(slot).toHaveAttribute("data-clicked", "true");
