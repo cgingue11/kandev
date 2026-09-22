@@ -74,9 +74,13 @@ async function selectFixtureBranch(page: Page): Promise<void> {
   await expect(branch).toHaveCount(1);
   await expect(branch).toBeEnabled({ timeout: 15_000 });
   await branch.tap();
+  const branchPicker = page.getByRole("dialog", { name: "Branch" });
+  await expect(branchPicker).toBeVisible();
+  await waitForFiniteAnimations(branchPicker);
   const option = page.getByRole("option", { name: FIXTURE_BRANCH, exact: false });
   await expect(option).toHaveCount(1);
   await expect(option).toBeVisible({ timeout: 30_000 });
+  await expect(option).toBeInViewport();
   await option.tap({ force: true });
   await expect(branch).toContainText(FIXTURE_BRANCH);
 }
