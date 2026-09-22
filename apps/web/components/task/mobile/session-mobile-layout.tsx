@@ -52,7 +52,7 @@ import { useTranslation } from "react-i18next";
 import { useTaskStatusSummary } from "@/hooks/domains/task/use-task-status-summary";
 import { LaunchQueueStatus } from "../launch-queue-status";
 import { WipQueueStatus } from "../wip-queue-status";
-import { SessionTaskSwitcherSheet } from "./session-task-switcher-sheet";
+import { useRegisterMobileNavigationGuard } from "./mobile-navigation-guard";
 
 export { resolveMobilePluginPanel } from "./mobile-plugin-panel-lifecycle";
 
@@ -870,7 +870,6 @@ export const SessionMobileLayout = memo(function SessionMobileLayout(
     handlePanelChange,
     isTaskSwitcherOpen,
     handleMenuClick,
-    setMobileSessionTaskSwitcherOpen,
   } = useSessionLayoutState({ sessionId: props.sessionId });
   const {
     selectedFile,
@@ -887,6 +886,7 @@ export const SessionMobileLayout = memo(function SessionMobileLayout(
     confirmPendingNavigation,
     cancelPendingNavigation,
   } = useMobilePanelHandlers({ effectiveSessionId, handlePanelChange });
+  useRegisterMobileNavigationGuard(requestNavigation);
   const workflowFocusRequest = useAppStore((state) => {
     const request = state.workflowSessionFocus.request;
     return request && request.taskId === activeTaskId && request.sessionId === effectiveSessionId
@@ -1002,14 +1002,6 @@ export const SessionMobileLayout = memo(function SessionMobileLayout(
         showPromptHistory={!isPassthroughMode && effectiveSessionId !== null}
         taskCanvases={props.taskCanvases}
         onOpenCanvas={props.onOpenCanvas}
-      />
-      <SessionTaskSwitcherSheet
-        open={isTaskSwitcherOpen}
-        onOpenChange={setMobileSessionTaskSwitcherOpen}
-        workspaceId={props.workspaceId}
-        workflowId={props.workflowId}
-        presentation="drawer"
-        onRequestNavigation={requestNavigation}
       />
       <SessionMobileReviewDialog
         sessionId={effectiveSessionId}
