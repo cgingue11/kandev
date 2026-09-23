@@ -46,7 +46,7 @@ export function TaskTopBarTools({
             </div>
             <div className="flex items-center justify-between gap-3">
               <span className="text-xs text-muted-foreground">{t("common:workspace")}</span>
-              <div className="flex items-center gap-1 [@media(pointer:coarse)]:[&>div]:h-11">
+              <div className="flex items-center gap-1">
                 <EditorsMenu
                   activeSessionId={activeSessionId ?? null}
                   embeddedVscodeSupported={embeddedVscodeSupported ?? false}

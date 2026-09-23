@@ -28,7 +28,8 @@ import {
 } from "@/components/task/editors-menu-availability";
 import { useTranslation } from "react-i18next";
 
-const menuItemClass = "cursor-pointer";
+const menuItemClass =
+  "cursor-pointer [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11";
 
 type EditorsMenuProps = {
   activeSessionId: string | null;
@@ -204,7 +205,7 @@ export function EditorsMenu({
   };
 
   return (
-    <div className="inline-flex h-7 rounded-md border border-border overflow-hidden">
+    <div className="inline-flex h-7 rounded-md border border-border overflow-hidden [@media(pointer:coarse)]:h-auto">
       <OpenEditorButton
         disabled={!activeSessionId || openEditor.isLoading || enabledEditors.length === 0}
         isLoading={openEditor.isLoading}

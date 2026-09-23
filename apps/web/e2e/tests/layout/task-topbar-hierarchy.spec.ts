@@ -134,6 +134,28 @@ test("wide touch chrome uses contained drawers with usable controls", async ({
     expect((await requireBox(layout, "touch layout picker")).height).toBeGreaterThanOrEqual(44);
     await layout.tap();
     await expect(page.getByRole("menu")).toBeVisible();
+    await waitForFiniteAnimations(page.getByRole("menu"));
+    for (const item of await page.getByRole("menuitem").all()) {
+      const box = await requireBox(item, "touch layout option");
+      expect(box.height).toBeGreaterThanOrEqual(44);
+      expect(box.width).toBeGreaterThanOrEqual(44);
+    }
+    await page.keyboard.press("Escape");
+    const editor = drawer.getByTestId("editors-menu-list");
+    const editorGroup = editor.locator("..");
+    const editorBox = await requireBox(editor, "touch editor button");
+    const groupBox = await requireBox(editorGroup, "touch editor group");
+    expect(editorBox.height).toBeGreaterThanOrEqual(44);
+    expect(editorBox.y).toBeGreaterThanOrEqual(groupBox.y + 1);
+    expect(editorBox.y + editorBox.height).toBeLessThanOrEqual(groupBox.y + groupBox.height - 1);
+    await editor.tap();
+    await expect(page.getByRole("menu")).toBeVisible();
+    await waitForFiniteAnimations(page.getByRole("menu"));
+    for (const item of await page.getByRole("menuitem").all()) {
+      const box = await requireBox(item, "touch editor option");
+      expect(box.height).toBeGreaterThanOrEqual(44);
+      expect(box.width).toBeGreaterThanOrEqual(44);
+    }
     await assertNoDocumentHorizontalOverflow(page);
   } finally {
     await context.close();

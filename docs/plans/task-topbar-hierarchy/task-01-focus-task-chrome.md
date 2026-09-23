@@ -80,7 +80,8 @@ See the plan's nested-picker and touch-target risks.
 - Scoped ESLint, TypeScript, i18n, whitespace, specification validation, and
   public-documentation validation passed. Specification-validator tests: 36;
   public-doc-validator tests: 62.
-- 38 distinct desktop/touch scenarios passed across the serial runs below.
+- 39 distinct desktop/touch scenarios passed across the serial runs below and
+  the touch review follow-up.
   The new regression first failed with inline layout controls still visible;
   another failed with Task tools remaining open after editor launch. Both now pass.
   Existing layout tests now reopen Task tools after applying a preset. The helper
@@ -146,9 +147,31 @@ reported missing-focus regression does not reproduce.
 The focused Vitest command above passes all 32 tests. The exact browser command
 is below and passes both scenarios. Changed-file ESLint and TypeScript pass.
 The editor response guard now documents the hook's null-on-failure contract.
-These follow-ups change tests, documentation, and one production comment only;
-the published screenshots still show the current rendered UI.
+This first follow-up changed tests, documentation, and one production comment.
 
 ```bash
 pnpm e2e:run --host --shards 1 --no-build --project chromium tests/layout/task-topbar-hierarchy.spec.ts -- --retries=0
+```
+
+The aggregate CodeRabbit review identified undersized portaled options on wide
+touch screens. The new browser assertion reproduced the layout option failure.
+Layout options, editor options, submenu triggers, and nested worktree choices
+now have 44px minimum targets on coarse pointers. The editor group sizes to its
+buttons instead of clipping them; the browser check verifies their bounds fit
+inside its border. Fine-pointer sizing stays unchanged. No shared menu primitive
+or unrelated menu was changed.
+
+The two updated hierarchy scenarios and both desktop/touch multi-worktree
+scenarios pass (four tests). Six layout-profile scenarios also passed. The
+32 unit tests, TypeScript, and changed-file ESLint pass. The aggregate review's
+generic docstring-coverage suggestion is optional: no additional comments are
+needed for these self-describing controls or tests.
+
+All six screenshots were captured again after the touch fix and visually
+checked. Updated raw/delivery assets and teardown proof are retained in
+`/tmp/kandev-topbar-evidence.pelfn5/touch-review`.
+
+```bash
+pnpm e2e:run --host --shards 1 --no-build --project chromium tests/layout/task-topbar-hierarchy.spec.ts tests/task/editors-menu-worktree-picker.spec.ts tests/settings/layout-profiles.spec.ts -- --retries=0
+pnpm e2e:run --host --shards 1 --no-build --project chromium tests/layout/task-topbar-hierarchy.spec.ts tests/task/editors-menu-worktree-picker.spec.ts -- --retries=0
 ```

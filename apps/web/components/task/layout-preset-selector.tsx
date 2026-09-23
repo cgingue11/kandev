@@ -406,7 +406,7 @@ function PresetDropdown({
         onCloseAutoFocus={onCloseAutoFocus}
         ref={deleteMenuRef}
         align="end"
-        className="w-60"
+        className="w-60 [@media(pointer:coarse)]:[&_[role=menuitem]]:min-h-11 [@media(pointer:coarse)]:[&_[role=menuitem]]:min-w-11"
         onFocusOutside={(event) => {
           if (confirmingDeleteId && isSavedLayoutConfirmationTarget(event.target)) {
             event.preventDefault();
