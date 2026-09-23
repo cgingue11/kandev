@@ -68,7 +68,7 @@ assignment errors, auth, archived state, and header domain wiring.
 
 ## Verification results
 
-Implemented and checked: 28 unit tests, 38 desktop/touch scenarios, and four
+Implemented and checked: 32 unit tests, 38 desktop/touch scenarios, and four
 phone scenarios passed. Six screenshots from a disposable Northstar workspace
 were inspected for desktop, compact desktop, tools, metrics, wide touch, and
 phone states. The prepared workspace, fictional assignee, conversation, and

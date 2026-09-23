@@ -44,7 +44,7 @@ Tools:   Layout [picker] / Workspace [editor picker] [folder action]
 ## Verification
 
 ```bash
-(cd apps/web && pnpm exec vitest run components/task/task-top-bar.test.tsx components/task/task-assignee-control.test.tsx components/task/layout-preset-selector.test.tsx)
+(cd apps/web && pnpm exec vitest run components/task/task-top-bar.test.tsx components/task/task-assignee-control.test.tsx components/task/layout-preset-selector.test.tsx components/task/task-chrome-disclosure.test.tsx)
 (cd apps/web && pnpm e2e:run --host --shards 1 --project chromium tests/layout/task-topbar-hierarchy.spec.ts tests/layout/task-topbar-long-title.spec.ts)
 (cd apps/web && pnpm e2e:run --host --shards 1 --no-build --project mobile-chrome tests/task/mobile-task-topbar-long-title.spec.ts tests/settings/mobile-resource-metrics-display.spec.ts)
 (cd apps/web && pnpm run typecheck && pnpm run i18n:check)
@@ -76,7 +76,7 @@ See the plan's nested-picker and touch-target risks.
 
 ## Results
 
-- Focused Vitest command above: 3 files, 28 tests passed.
+- Focused Vitest command above: 4 files, 32 tests passed.
 - Scoped ESLint, TypeScript, i18n, whitespace, specification validation, and
   public-documentation validation passed. Specification-validator tests: 36;
   public-doc-validator tests: 62.
@@ -131,4 +131,24 @@ Temporary capture command from `apps/web` (harness removed after capture):
 
 ```bash
 TOPBAR_CAPTURE_ROOT=/tmp/kandev-topbar-evidence.pelfn5 CAPTURE_PR_ASSETS=true pnpm e2e:run --host --shards 1 --no-build --project auth tests/auth/task-topbar-capture.spec.ts -- --retries=0
+```
+
+
+## Review verification
+
+Added four real-primitive disclosure tests covering desktop/touch selection,
+uncontrolled dismissal, controlled state ownership, and desktop focus entry and
+restoration. The browser regression now opens both disclosures with Enter and
+checks dialog focus, Tab into the layout selector, and Escape focus restoration.
+Radix FocusScope supplies `tabIndex=-1` to the rendered popover content; the
+reported missing-focus regression does not reproduce.
+
+The focused Vitest command above passes all 32 tests. The exact browser command
+is below and passes both scenarios. Changed-file ESLint and TypeScript pass.
+The editor response guard now documents the hook's null-on-failure contract.
+These follow-ups change tests, documentation, and one production comment only;
+the published screenshots still show the current rendered UI.
+
+```bash
+pnpm e2e:run --host --shards 1 --no-build --project chromium tests/layout/task-topbar-hierarchy.spec.ts -- --retries=0
 ```

@@ -198,6 +198,7 @@ export function EditorsMenu({
   const openWith = (editorId: string, worktreeId?: string) => {
     if (!editorId) return;
     void openEditor.open({ editorId, worktreeId }).then((response) => {
+      // The hook returns null when opening fails or no session is selected.
       if (response) onEditorOpened?.();
     });
   };
