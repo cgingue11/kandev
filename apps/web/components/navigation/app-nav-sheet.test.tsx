@@ -290,6 +290,11 @@ describe("AppNavSheet", () => {
     fireEvent.click(screen.getByTestId(NAV_TRIGGER));
 
     expect(screen.getByTestId("mobile-workspace-action")).not.toBeNull();
+    expect(
+      screen
+        .getByTestId("mobile-workspace-action")
+        .closest('[data-testid="mobile-plugin-nav-section"]'),
+    ).not.toBeNull();
     expect(captured).toEqual({ workspaceId: "ws-1", presentation: "mobile" });
   });
 });

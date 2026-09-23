@@ -294,11 +294,30 @@ quick-action row; use min-width zero and wrapping labels with minimum 44px heigh
 Do not move plugin content, search or metrics into that row.
 
 Phone sequence: workspace picker; Home and quick actions; existing page-local
-navigation; Tasks; existing workspace plugin/canvas and fallback metric content;
-Automations; existing plugin navigation groups; Integrations; Utilities. Optional
+navigation; Tasks; canvases; Automations; Plugins; Integrations; optional fallback
+system metrics; Utilities. Optional
 extension slots remain reachable without breaking the adjacency of Home/quick
 actions or the relative order of the named sections. Office retains its local
 navigation and suppression of the Kanban task and automation sections.
+
+The September 23 composition refinement groups `main-top-bar`,
+`sidebar-workspace-actions`, and page-scoped `chat-top-bar` contributions inside
+`MobilePluginNavSection`. `AppNavSheet` supplies phone workspace context through
+`AppNavSections`; the section checks registrations before rendering workspace
+controls. When both workspace and task actions exist, localized context labels
+separate them. Keep each registration and its original props; identical-looking
+status controls can have different scopes and must not be deduplicated by the
+host. Empty sections disappear. `MobileWorkspaceActionsSection` retains canvases
+and opts out of rendering plugin actions only for phone app navigation.
+
+`NavigationMetrics` retains the status-bar preference gate and reuses
+`StatusSurfaceMetrics` after navigation. No new subscription, metric setting,
+or resource card is introduced. The phone scroller uses a 16px section gap;
+plugin controls wrap within its width. Main-toolbar host buttons retain a 44px
+minimum touch target without forcing labeled buttons into square icon geometry.
+Wider consumers of the existing listing menu and inline plugin slots retain
+their composition. The delivery record is the
+[coherent mobile plugin menu plan](../../../plans/mobile-plugin-menu-coherence/plan.md).
 
 A saved sidebar layout owns its configured section order and visibility instead
 of the default sequence. Keep phone quick actions immediately after its Home row,
