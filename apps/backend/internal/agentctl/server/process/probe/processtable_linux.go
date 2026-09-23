@@ -10,8 +10,6 @@ import (
 	"strings"
 	"syscall"
 	"time"
-
-	"golang.org/x/sys/unix"
 )
 
 // clockTicksPerSecond is Linux's USER_HZ, the tick rate /proc/<pid>/stat's
