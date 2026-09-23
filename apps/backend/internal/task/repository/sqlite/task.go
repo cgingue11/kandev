@@ -193,6 +193,16 @@ func (r *Repository) CreateTask(ctx context.Context, task *models.Task) error {
 	return r.createTask(ctx, task, "", 0)
 }
 
+// CreateTaskWithConversationFork inserts the task and attaches its frozen
+// conversation snapshot in the same transaction.
+func (r *Repository) CreateTaskWithConversationFork(ctx context.Context, task *models.Task, admission models.ConversationForkAdmission) error {
+	if task.WorkflowStepID != "" && task.QueuedForStepID == "" && !task.IsEphemeral {
+		task.WIPAdmitted = true
+		models.DropWIPDeferredLaunch(task)
+	}
+	return r.createTask(ctx, task, "", 0, admission)
+}
+
 // CreateTaskIfWorkflowStepHasCapacity atomically admits a task into a
 // WIP-limited workflow step. The occupancy check and insert share one writer
 // transaction, so concurrent watcher events cannot overfill the step.
@@ -217,12 +227,34 @@ func (r *Repository) CreateTaskWithWorkflowStepAdmission(
 	feederStepID string,
 	feederLimit int,
 ) error {
+	return r.createTaskWithWorkflowStepAdmission(ctx, task, targetStepID, targetLimit, feederStepID, feederLimit, nil)
+}
+
+// CreateTaskWithWorkflowStepAdmissionAndConversationFork combines WIP
+// placement, task insertion, and fork attachment in one writer transaction.
+func (r *Repository) CreateTaskWithWorkflowStepAdmissionAndConversationFork(
+	ctx context.Context,
+	task *models.Task,
+	targetStepID string,
+	targetLimit int,
+	feederStepID string,
+	feederLimit int,
+	admission models.ConversationForkAdmission,
+) error {
+	return r.createTaskWithWorkflowStepAdmission(ctx, task, targetStepID, targetLimit, feederStepID, feederLimit, &admission)
+}
+
+func (r *Repository) createTaskWithWorkflowStepAdmission(
+	ctx context.Context,
+	task *models.Task,
+	targetStepID string,
+	targetLimit int,
+	feederStepID string,
+	feederLimit int,
+	conversationFork *models.ConversationForkAdmission,
+) error {
 	if task.IsEphemeral || targetStepID == "" || targetLimit <= 0 {
-		task.WIPAdmitted = !task.IsEphemeral
-		task.QueuedForStepID = ""
-		task.QueuedAt = nil
-		models.DropWIPDeferredLaunch(task)
-		return r.CreateTask(ctx, task)
+		return r.createTaskWithoutWorkflowStepAdmission(ctx, task, conversationFork)
 	}
 
 	if err := r.prepareTaskForCreate(task); err != nil {
@@ -272,11 +304,31 @@ func (r *Repository) CreateTaskWithWorkflowStepAdmission(
 	if err != nil {
 		return err
 	}
+	if conversationFork != nil {
+		if err := r.attachConversationForkToDestinationTx(ctx, tx, *conversationFork); err != nil {
+			return err
+		}
+	}
 	if err := tx.Commit(); err != nil {
 		return err
 	}
 	r.dispatchStepEntry(ctx, task.ID, task.WorkflowID, task.WorkflowStepID, entryID, 0)
 	return nil
+}
+
+func (r *Repository) createTaskWithoutWorkflowStepAdmission(
+	ctx context.Context,
+	task *models.Task,
+	conversationFork *models.ConversationForkAdmission,
+) error {
+	task.WIPAdmitted = !task.IsEphemeral
+	task.QueuedForStepID = ""
+	task.QueuedAt = nil
+	models.DropWIPDeferredLaunch(task)
+	if conversationFork != nil {
+		return r.createTask(ctx, task, "", 0, *conversationFork)
+	}
+	return r.CreateTask(ctx, task)
 }
 
 func (r *Repository) applyAdmissionPlacement(
@@ -319,7 +371,7 @@ func (r *Repository) applyAdmissionPlacement(
 	return nil
 }
 
-func (r *Repository) createTask(ctx context.Context, task *models.Task, targetStepID string, limit int) error {
+func (r *Repository) createTask(ctx context.Context, task *models.Task, targetStepID string, limit int, conversationForks ...models.ConversationForkAdmission) error {
 	if err := r.prepareTaskForCreate(task); err != nil {
 		return err
 	}
@@ -372,6 +424,11 @@ func (r *Repository) createTask(ctx context.Context, task *models.Task, targetSt
 			return fmt.Errorf("failed to rollback task insert: %w", rollbackErr)
 		}
 		return err
+	}
+	if len(conversationForks) > 0 {
+		if err := r.attachConversationForkToDestinationTx(ctx, tx, conversationForks[0]); err != nil {
+			return err
+		}
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -3066,6 +3123,11 @@ func (r *Repository) DeleteTaskWithVacatedStep(ctx context.Context, id string) (
 	if err != nil {
 		return "", err
 	}
+	if _, err := tx.ExecContext(ctx, r.db.Rebind(`
+		DELETE FROM task_conversation_forks WHERE destination_task_id = ? AND state = 'attached'
+	`), id); err != nil && !internaldb.IsMissingTableError(err) {
+		return "", fmt.Errorf("delete destination conversation forks: %w", err)
+	}
 	result, err := tx.ExecContext(ctx, r.db.Rebind(`DELETE FROM tasks WHERE id = ?`), id)
 	if err != nil {
 		return "", err
@@ -4304,6 +4366,10 @@ func (r *Repository) purgeQueueSessionPoliciesInTx(
 	tx *sqlx.Tx,
 	sessionIDs []string,
 ) error {
+	const savepoint = "purge_queue_session_policies"
+	if _, err := tx.ExecContext(ctx, "SAVEPOINT "+savepoint); err != nil {
+		return err
+	}
 	for _, sessionID := range sessionIDs {
 		if _, err := tx.ExecContext(
 			ctx,
@@ -4311,10 +4377,19 @@ func (r *Repository) purgeQueueSessionPoliciesInTx(
 			sessionID,
 		); err != nil {
 			if internaldb.IsMissingTableError(err) {
+				if _, rollbackErr := tx.ExecContext(ctx, "ROLLBACK TO SAVEPOINT "+savepoint); rollbackErr != nil {
+					return fmt.Errorf("rollback missing queue session policy schema: %w", rollbackErr)
+				}
+				if _, releaseErr := tx.ExecContext(ctx, "RELEASE SAVEPOINT "+savepoint); releaseErr != nil {
+					return fmt.Errorf("release missing queue session policy savepoint: %w", releaseErr)
+				}
 				return nil
 			}
 			return fmt.Errorf("purge queue session policy for %s: %w", sessionID, err)
 		}
+	}
+	if _, err := tx.ExecContext(ctx, "RELEASE SAVEPOINT "+savepoint); err != nil {
+		return fmt.Errorf("release queue session policy savepoint: %w", err)
 	}
 	return nil
 }

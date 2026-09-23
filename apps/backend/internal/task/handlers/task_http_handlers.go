@@ -784,8 +784,10 @@ type httpCreateTaskRequest struct {
 	ProjectID          string `json:"project_id,omitempty"`
 	// ExternalID is a caller-supplied identity used for create-idempotency
 	// (docs/specs/tasks/requirements/external-id-idempotency.md).
-	ExternalID string   `json:"external_id,omitempty"`
-	Labels     []string `json:"labels,omitempty"`
+	ExternalID                string   `json:"external_id,omitempty"`
+	Labels                    []string `json:"labels,omitempty"`
+	ConversationForkID        string   `json:"conversation_fork_id,omitempty"`
+	ConversationForkRequestID string   `json:"creation_request_id,omitempty"`
 	// Office task-handoffs phase 5 — workspace policy. Optional; same
 	// shape as the MCP create_task_kandev fields.
 	WorkspaceMode         string `json:"workspace_mode,omitempty"`
@@ -993,6 +995,8 @@ func (h *TaskHandlers) httpCreateTask(c *gin.Context) {
 		ProjectID:                   body.ProjectID,
 		Labels:                      labels,
 		ExternalID:                  body.ExternalID,
+		ConversationForkID:          body.ConversationForkID,
+		ConversationForkRequestID:   body.ConversationForkRequestID,
 		WorkspacePolicy:             &wsPolicy,
 	})
 	if err != nil {
