@@ -7,6 +7,7 @@ import { KanbanPage } from "../../pages/kanban-page";
 import {
   applyHarmlessPreviewUpdate,
   movePreviewRequestPredicate,
+  waitForPreviewTaskSessionsLoaded,
 } from "./workflow-move-preview-stability-helpers";
 
 test.describe("mobile: workflow move preview", () => {
@@ -50,6 +51,7 @@ test.describe("mobile: workflow move preview", () => {
 
       const previewPanel = tabletTestPage.getByTestId("task-preview-panel");
       await expect(previewPanel).toBeVisible({ timeout: 10_000 });
+      await waitForPreviewTaskSessionsLoaded(tabletTestPage, task.id);
       const trigger = previewPanel.getByTestId("workflow-stepper-minimal");
       await expect(trigger).toBeVisible({ timeout: 15_000 });
 
@@ -92,6 +94,13 @@ test.describe("mobile: workflow move preview", () => {
         expect(toggleBox.width).toBeGreaterThanOrEqual(44);
         await detailsToggle.tap();
         await expect(row.getByTestId("workflow-move-preview-details")).toBeVisible();
+        await dwell(
+          tabletTestPage,
+          500,
+          "negative-assertion",
+          "observe no duplicate preview request when opening move options",
+        );
+        expect(requestCount).toBe(1);
 
         let unexpectedRequest = false;
         void tabletTestPage
