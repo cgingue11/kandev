@@ -45,6 +45,50 @@ func TestAppendSessionModelsMessageFallsBackToPersistedFlatModels(t *testing.T) 
 	}
 }
 
+func TestAppendSessionModelsMessageRestoresPersistedSnapshotWithoutRuntimeCache(t *testing.T) {
+	session := &models.TaskSession{
+		ID:     "session-1",
+		TaskID: "task-1",
+		Metadata: map[string]interface{}{
+			models.SessionMetaKeyACPModelState: lifecycle.SessionModelsSnapshot{
+				CurrentModelID: "mock-fast",
+				Models: []streams.SessionModelInfo{{
+					ModelID: "mock-fast",
+					Name:    "Mock Fast",
+				}},
+				ConfigOptions: []streams.ConfigOption{{
+					Type:         "select",
+					ID:           "effort",
+					CurrentValue: "high",
+				}},
+				ConfigOptionsSettled: true,
+			},
+		},
+	}
+
+	messages := appendSessionModelsMessageFromState(session.ID, session, nil, nil)
+
+	if len(messages) != 1 {
+		t.Fatalf("messages = %d, want 1", len(messages))
+	}
+	var payload lifecycle.SessionModelsEventPayload
+	if err := json.Unmarshal(messages[0].Payload, &payload); err != nil {
+		t.Fatalf("decode session models payload: %v", err)
+	}
+	if payload.CurrentModelID != "mock-fast" {
+		t.Fatalf("current model = %q, want %q", payload.CurrentModelID, "mock-fast")
+	}
+	if len(payload.Models) != 1 || payload.Models[0].Name != "Mock Fast" {
+		t.Fatalf("models = %#v, want the persisted Mock Fast option", payload.Models)
+	}
+	if len(payload.ConfigOptions) != 1 || payload.ConfigOptions[0].CurrentValue != "high" {
+		t.Fatalf("config options = %#v, want the persisted effort value", payload.ConfigOptions)
+	}
+	if !payload.ConfigOptionsSettled {
+		t.Fatal("config options should remain settled when replayed from persistence")
+	}
+}
+
 func TestAppendSessionModelsMessageKeepsLiveStateAuthoritative(t *testing.T) {
 	session := &models.TaskSession{
 		ID:     "session-1",

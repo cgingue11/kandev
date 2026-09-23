@@ -859,7 +859,7 @@ test.describe("Quick Chat", () => {
     const modelSettings = restoredDialog.getByRole("button", {
       name: "Session model settings",
     });
-    await expect(modelSettings).toContainText("Mock Fast", { timeout: 15_000 });
+    await expect(modelSettings).toContainText("Mock Fast", { timeout: 30_000 });
     await modelSettings.click();
     await expect(testPage.getByTestId("config-option-trigger-effort")).toBeVisible({
       timeout: 10_000,

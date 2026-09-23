@@ -631,7 +631,7 @@ func appendSessionModeMessage(sessionID string, session *models.TaskSession, lif
 	return result
 }
 
-// appendSessionModelsMessage adds session models state notification to result if cached.
+// appendSessionModelsMessage adds the current or persisted session model state to result.
 func appendSessionModelsMessage(sessionID string, session *models.TaskSession, lifecycleMgr *lifecycle.Manager, result []*ws.Message) []*ws.Message {
 	if lifecycleMgr == nil {
 		return result
@@ -645,16 +645,26 @@ func appendSessionModelsMessage(sessionID string, session *models.TaskSession, l
 }
 
 func appendSessionModelsMessageFromState(sessionID string, session *models.TaskSession, modelState *lifecycle.CachedModelState, result []*ws.Message) []*ws.Message {
+	snapshot, hasSnapshot := lifecycle.LoadSessionModelsSnapshot(session.Metadata[models.SessionMetaKeyACPModelState])
+	var replayState lifecycle.CachedModelState
 	if modelState == nil {
-		return result
-	}
-	snapshot, _ := lifecycle.LoadSessionModelsSnapshot(session.Metadata[models.SessionMetaKeyACPModelState])
-	replayState := *modelState
-	if len(replayState.Models) == 0 &&
-		len(replayState.ConfigOptions) == 0 &&
-		!replayState.ConfigOptionsSettled &&
-		len(snapshot.Models) > 0 {
-		replayState.Models = snapshot.Models
+		if !hasSnapshot {
+			return result
+		}
+		replayState = lifecycle.CachedModelState{
+			CurrentModelID:       snapshot.CurrentModelID,
+			Models:               snapshot.Models,
+			ConfigOptions:        snapshot.ConfigOptions,
+			ConfigOptionsSettled: snapshot.ConfigOptionsSettled,
+		}
+	} else {
+		replayState = *modelState
+		if len(replayState.Models) == 0 &&
+			len(replayState.ConfigOptions) == 0 &&
+			!replayState.ConfigOptionsSettled &&
+			len(snapshot.Models) > 0 {
+			replayState.Models = snapshot.Models
+		}
 	}
 	if replayState.CurrentModelID == "" && len(replayState.Models) == 0 {
 		return result

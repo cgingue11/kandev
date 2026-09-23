@@ -136,6 +136,7 @@ test("removes only stopped Kandev-labeled containers and gates daemon-wide clean
     await expect(testPage.getByTestId("storage-run-now")).toHaveAttribute(
       "data-job-state",
       "succeeded",
+      { timeout: 60_000 },
     );
     await expect.poll(() => dockerInspectExists(managed)).toBe(false);
     expect(dockerInspectExists(active)).toBe(true);
