@@ -171,9 +171,11 @@ test.describe("Routines UI", () => {
 
     await testPage.goto(`/office/routines/${routine.id}`);
     await expect(testPage.getByText(name)).toBeVisible({ timeout: 10_000 });
+    const agent = await officeApi.getAgent(officeSeed.agentId);
+    const agentName = typeof agent.name === "string" ? agent.name : "CEO";
 
     await comboboxNear(testPage, "Assignee").click();
-    await testPage.getByRole("option", { name: "CEO" }).click();
+    await testPage.getByRole("option", { name: agentName, exact: true }).click();
     await comboboxNear(testPage, "Concurrency policy").click();
     await testPage.getByRole("option", { name: "Always create" }).click();
     await comboboxNear(testPage, "Catch-up policy").click();
@@ -195,7 +197,7 @@ test.describe("Routines UI", () => {
     // values this same save just wrote.
     await testPage.waitForLoadState("load");
     await expect(testPage.getByText(name)).toBeVisible({ timeout: 10_000 });
-    await expect(comboboxNear(testPage, "Assignee")).toHaveText("CEO");
+    await expect(comboboxNear(testPage, "Assignee")).toHaveText(agentName);
     await expect(comboboxNear(testPage, "Concurrency policy")).toHaveText("Always create");
     await expect(comboboxNear(testPage, "Catch-up policy")).toHaveText("Skip missed");
     await expect(textboxNear(testPage, "Cron expression")).toHaveValue("15 3 * * *");
