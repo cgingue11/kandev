@@ -6,6 +6,12 @@ type RoutineRun = {
   status: string;
 };
 
+type AgentRun = {
+  id: string;
+  agent_profile_id: string;
+  reason: string;
+};
+
 async function routineRuns(
   officeApi: { listRoutineRuns(id: string): Promise<Record<string, unknown>> },
   id: string,
@@ -27,11 +33,19 @@ test.describe("Office taskless routine sessions", () => {
       name: `Taskless E2E ${Date.now()}`,
       description: "Taskless routine session smoke test",
       assignee_agent_profile_id: officeSeed.agentId,
+      // This test asserts that each manual fire creates a distinct agent
+      // session. Keep that contract independent of unrelated in-flight
+      // coordinator work in the shared office workspace.
+      concurrency_policy: "always_create",
     });
     const routineId = routine.id as string;
 
     const existing = await officeApi.listRuns(officeSeed.workspaceId);
-    const seenAgentRuns = new Set(((existing.runs ?? []) as { id: string }[]).map((run) => run.id));
+    const seenAgentRuns = new Set(
+      ((existing.runs ?? []) as AgentRun[])
+        .filter((run) => run.agent_profile_id === officeSeed.agentId)
+        .map((run) => run.id),
+    );
     const sessions: string[] = [];
     for (let attempt = 1; attempt <= 2; attempt += 1) {
       await backend.ensureReady();
@@ -45,9 +59,11 @@ test.describe("Office taskless routine sessions", () => {
         .poll(
           async () => {
             const result = await officeApi.listRuns(officeSeed.workspaceId);
-            const run = ((result.runs ?? []) as { id: string; reason: string }[]).find(
+            const run = (result.runs as AgentRun[] | undefined)?.find(
               (candidate) =>
-                !seenAgentRuns.has(candidate.id) && candidate.reason.startsWith("routine_"),
+                candidate.agent_profile_id === officeSeed.agentId &&
+                !seenAgentRuns.has(candidate.id) &&
+                candidate.reason.startsWith("routine_"),
             );
             runId = run?.id ?? "";
             return runId;
