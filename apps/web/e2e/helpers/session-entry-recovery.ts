@@ -1,10 +1,13 @@
 import type { Page } from "@playwright/test";
+import type { SeedData } from "../fixtures/test-base";
+import type { ApiClient } from "./api-client";
 import { injectLatency } from "./causal-waits";
 
 type WireFrame = {
   id?: unknown;
   type?: unknown;
   action?: unknown;
+  payload?: unknown;
 };
 
 type DelayRule = {
@@ -16,13 +19,46 @@ type DelayRule = {
 export type SessionEntryRecoveryProxy = {
   delayNextResponses: (action: string, count: number, delayMs: number, reason: string) => void;
   dropNextResponses: (action: string, count: number) => void;
+  failResponses: (action: string, message: string) => void;
+  allowResponses: (action: string) => void;
   holdResponses: (action: string) => void;
   releaseHeldResponses: (action: string) => void;
+  pendingRequestCount: (action: string) => number;
   requestCount: (action: string) => number;
   delayedResponseCount: (action: string) => number;
   droppedResponseCount: (action: string) => number;
+  failedResponseCount: (action: string) => number;
   heldResponseCount: (action: string) => number;
 };
+
+export async function createSettledHistoryTask(
+  apiClient: ApiClient,
+  seedData: SeedData,
+  title: string,
+) {
+  const task = await apiClient.createTask(seedData.workspaceId, title, {
+    workflow_id: seedData.workflowId,
+    workflow_step_id: seedData.startStepId,
+    agent_profile_id: seedData.agentProfileId,
+    repository_ids: [seedData.repositoryId],
+  });
+  const { session_id: sessionId } = await apiClient.seedTaskSession(task.id, {
+    state: "WAITING_FOR_INPUT",
+    agentProfileId: seedData.agentProfileId,
+    repositoryId: seedData.repositoryId,
+  });
+  await apiClient.seedSessionMessage(sessionId, {
+    type: "message",
+    authorType: "user",
+    content: "Earlier user message",
+  });
+  await apiClient.seedSessionMessage(sessionId, {
+    type: "message",
+    authorType: "agent",
+    content: "This is a simple mock response for e2e testing.",
+  });
+  return task;
+}
 
 function parseFrame(value: string): WireFrame | null {
   try {
@@ -88,7 +124,7 @@ function consumeDelayRule(
 }
 
 /**
- * Delay or drop selected gateway responses while forwarding every other frame.
+ * Fail, delay, or drop selected gateway responses while forwarding other frames.
  * Rules correlate replies by request id, so the test never relies on
  * action-only or payload timing and does not inspect message contents.
  */
@@ -97,9 +133,11 @@ export async function routeSessionEntryRecovery(page: Page): Promise<SessionEntr
   const requestCounts = new Map<string, number>();
   const delayedCounts = new Map<string, number>();
   const droppedCounts = new Map<string, number>();
+  const failedCounts = new Map<string, number>();
   const heldCounts = new Map<string, number>();
   const rules = new Map<string, DelayRule>();
   const dropRules = new Map<string, number>();
+  const failureMessages = new Map<string, string>();
   const heldActions = new Set<string>();
 
   await page.routeWebSocket(/\/ws$/, (ws) => {
@@ -138,6 +176,20 @@ export async function routeSessionEntryRecovery(page: Page): Promise<SessionEntr
             heldCounts.set(action, (heldCounts.get(action) ?? 0) + 1);
             continue;
           }
+          if (frame && action && failureMessages.has(action)) {
+            failedCounts.set(action, (failedCounts.get(action) ?? 0) + 1);
+            ws.send(
+              JSON.stringify({
+                ...frame,
+                type: "error",
+                payload: {
+                  code: "INTERNAL_ERROR",
+                  message: failureMessages.get(action),
+                },
+              }),
+            );
+            continue;
+          }
           if (consumeDropRule(action, dropRules, droppedCounts)) continue;
           if (consumeDelayRule(action, trimmed, rules, delayedCounts, ws.send.bind(ws))) continue;
         }
@@ -157,15 +209,25 @@ export async function routeSessionEntryRecovery(page: Page): Promise<SessionEntr
       if (count < 1) throw new Error("dropNextResponses requires a positive response count");
       dropRules.set(action, count);
     },
+    failResponses: (action, message) => {
+      if (!message) throw new Error("failResponses requires an error message");
+      failureMessages.set(action, message);
+    },
+    allowResponses: (action) => {
+      failureMessages.delete(action);
+    },
     holdResponses: (action) => {
       heldActions.add(action);
     },
     releaseHeldResponses: (action) => {
       heldActions.delete(action);
     },
+    pendingRequestCount: (action) =>
+      [...requestActions.values()].filter((requestAction) => requestAction === action).length,
     requestCount: (action) => requestCounts.get(action) ?? 0,
     delayedResponseCount: (action) => delayedCounts.get(action) ?? 0,
     droppedResponseCount: (action) => droppedCounts.get(action) ?? 0,
+    failedResponseCount: (action) => failedCounts.get(action) ?? 0,
     heldResponseCount: (action) => heldCounts.get(action) ?? 0,
   };
 }
