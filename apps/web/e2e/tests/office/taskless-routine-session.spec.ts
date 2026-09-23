@@ -19,8 +19,9 @@ test.describe("Office taskless routine sessions", () => {
     officeApi,
     apiClient,
     officeSeed,
+    backend,
   }) => {
-    test.setTimeout(180_000);
+    test.setTimeout(300_000);
     const before = await apiClient.listTasks(officeSeed.workspaceId);
     const routine = await officeApi.createRoutine(officeSeed.workspaceId, {
       name: `Taskless E2E ${Date.now()}`,
@@ -33,6 +34,7 @@ test.describe("Office taskless routine sessions", () => {
     const seenAgentRuns = new Set(((existing.runs ?? []) as { id: string }[]).map((run) => run.id));
     const sessions: string[] = [];
     for (let attempt = 1; attempt <= 2; attempt += 1) {
+      await backend.ensureReady();
       const response = await officeApi.runRoutine(routineId);
       expect(response.status).toBe(200);
       await expect
@@ -50,7 +52,7 @@ test.describe("Office taskless routine sessions", () => {
             runId = run?.id ?? "";
             return runId;
           },
-          { timeout: 90_000, message: "routine dispatch did not create an agent run" },
+          { timeout: 120_000, message: "routine dispatch did not create an agent run" },
         )
         .not.toBe("");
       seenAgentRuns.add(runId);
@@ -63,7 +65,7 @@ test.describe("Office taskless routine sessions", () => {
             const detail = await result.json();
             return detail.status;
           },
-          { timeout: 90_000, message: "routine agent run detail did not become available" },
+          { timeout: 120_000, message: "routine agent run detail did not become available" },
         )
         .toMatch(/^(finished|failed|cancelled)$/);
       const detail = await (await officeApi.rawRequest("GET", detailPath)).json();
