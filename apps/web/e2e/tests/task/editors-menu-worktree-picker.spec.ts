@@ -1,3 +1,4 @@
+import { openTaskTools } from "../../helpers/task-tools";
 import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -66,6 +67,7 @@ test.describe("Editors menu worktree picker", () => {
     await session.idleInput().click();
 
     // The IDE button now opens a worktree picker instead of launching directly.
+    await openTaskTools(testPage);
     await testPage.getByTestId("editors-menu-open").click();
     const items = testPage.getByTestId("editors-menu-worktree-item");
     await expect(items).toHaveCount(2);

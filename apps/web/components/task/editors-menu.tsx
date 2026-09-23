@@ -33,6 +33,7 @@ const menuItemClass = "cursor-pointer";
 type EditorsMenuProps = {
   activeSessionId: string | null;
   embeddedVscodeSupported: boolean;
+  onEditorOpened?: () => void;
 };
 
 function useWorktreeOptions(sessionId: string | null): WorktreeOption[] {
@@ -107,6 +108,7 @@ function OpenEditorButton({
                   variant="outline"
                   className={buttonClass}
                   data-testid="editors-menu-open"
+                  aria-label={tooltip}
                   disabled={disabled}
                 >
                   {icon}
@@ -132,6 +134,7 @@ function OpenEditorButton({
             variant="outline"
             className={buttonClass}
             data-testid="editors-menu-open"
+            aria-label={tooltip}
             onClick={() => onOpen()}
             disabled={disabled}
           >
@@ -173,7 +176,11 @@ function EditorMenuEntry({
   );
 }
 
-export function EditorsMenu({ activeSessionId, embeddedVscodeSupported }: EditorsMenuProps) {
+export function EditorsMenu({
+  activeSessionId,
+  embeddedVscodeSupported,
+  onEditorOpened,
+}: EditorsMenuProps) {
   const { t } = useTranslation();
   const openEditor = useOpenSessionInEditor(activeSessionId ?? null);
   const { editors } = useEditors();
@@ -190,7 +197,9 @@ export function EditorsMenu({ activeSessionId, embeddedVscodeSupported }: Editor
 
   const openWith = (editorId: string, worktreeId?: string) => {
     if (!editorId) return;
-    void openEditor.open({ editorId, worktreeId });
+    void openEditor.open({ editorId, worktreeId }).then((response) => {
+      if (response) onEditorOpened?.();
+    });
   };
 
   return (
@@ -209,6 +218,7 @@ export function EditorsMenu({ activeSessionId, embeddedVscodeSupported }: Editor
             variant="outline"
             className="rounded-none border-0 border-l px-2 cursor-pointer focus-visible:ring-inset"
             data-testid="editors-menu-list"
+            aria-label={t("task:openInOtherEditor")}
             disabled={!activeSessionId || enabledEditors.length === 0}
           >
             <IconChevronDown className="h-4 w-4" />
