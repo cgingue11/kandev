@@ -111,7 +111,7 @@ containment and test host buttons and raw sidebar controls separately.
 
 - RED: the unit grouping assertion failed on `closest(...) === null`, and the
   browser assertion returned false for workspace controls inside Plugins.
-- Focused Vitest command: 42 tests passed. Typecheck and changed-file
+- Focused Vitest command: 44 tests passed. Typecheck and changed-file
   ESLint/Prettier passed without warnings; the i18n ratchet passed.
 - Final browser command: `pnpm run build:e2e`, followed by the listed managed
   capture command with `--no-build`, passed all 15 scenarios. Backend and fixture
@@ -124,3 +124,24 @@ containment and test host buttons and raw sidebar controls separately.
   47 pages. `git diff --check` passed. Desktop/tablet composition is covered by
   retained slot tests and the resource suite's 768px boundary; this phone-only
   surface does not require an unrelated desktop screenshot.
+
+### PR CI and review follow-up
+
+- Added direct AppNavSheet coverage of both status-bar preference branches and
+  selected the Plugins region by its accessible name in grouping assertions.
+- The mobile autopilot CI failure reproduced locally with retries disabled.
+  Its resumed child can finish before a state poll sees RUNNING; assert the
+  durable second turn, as the desktop test already does.
+- The history-recovery flake did not reproduce in six fresh two-core runs or
+  after its four preceding CI specs. An experiment that settled the initial
+  turn and avoided the reload-capable entry helper still failed on repetition
+  two; it was not retained. The cause remains unresolved. Failure artifacts
+  and the experimental patch are handed to the owner of PR #3890, which will
+  consolidate this work and own combined verification and new screenshots.
+- Reproduction used `taskset -c 0,1 pnpm e2e:run --host --no-build --project
+  mobile-chrome` with `--retries=0 --max-failures=1`. Six isolated history runs
+  passed, followed by all ten tests across display settings, automation
+  webhooks, PR link copying, port forwarding, history recovery, and autopilot.
+  The history suite's retry override was temporarily removed for these runs
+  and restored when the unsuccessful experiment was removed.
+  No production behavior or screenshot changed during this follow-up.

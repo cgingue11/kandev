@@ -96,7 +96,7 @@ AC-UI-MOBILE-TASK-CHROME-001.6/.7.
 
 - RED: navigation unit and managed mobile browser assertions reproduced workspace
   contributions outside Plugins before production changes.
-- GREEN: 42 focused Vitest tests passed; web typecheck, targeted ESLint (zero
+- GREEN: 44 focused Vitest tests passed; web typecheck, targeted ESLint (zero
   warnings), Prettier, and the i18n ratchet passed.
 - Final rendered checks: 15 mobile-chrome scenarios passed across plugin menus,
   resource preferences, and menu hierarchy after a fresh `pnpm run build:e2e`.
@@ -110,6 +110,13 @@ AC-UI-MOBILE-TASK-CHROME-001.6/.7.
   desktop screenshot is required.
 - Public-doc validation: 62 tests and 47 pages passed. Specification catalog and
   lint passed (300 decisions, 1,131 specifications); diff checks passed.
+- PR review added direct coverage of the status-bar preference and semantic
+  Plugins-region queries. CI exposed a mobile autopilot assertion that polled
+  a transient state; it now checks the durable resumed turn, matching desktop.
+  The affected tests and nearby CI ordering passed with one worker, retries
+  disabled, and CPU affinity restricted to two cores. An intermittent
+  history-recovery failure remains open; its evidence and an unsuccessful
+  fixture experiment are handed to PR #3890 for combined verification.
 
 ## Risks
 

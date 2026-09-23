@@ -61,7 +61,7 @@ describe("MobilePluginNavSection workspace grouping", () => {
       .registerNavItem({ id: "hello", label: "Hello", path: HELLO_PATH });
     renderSection(undefined, <button>Task control</button>, false, workspaceContext);
 
-    const section = screen.getByTestId("mobile-plugin-nav-section");
+    const section = screen.getByRole("region", { name: "Plugins" });
     for (const label of ["main-top-bar", "sidebar-workspace-actions", "Task control"]) {
       expect(section.contains(screen.getByRole("button", { name: label }))).toBe(true);
     }
