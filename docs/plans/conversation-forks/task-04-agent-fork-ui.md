@@ -134,7 +134,7 @@ Run targeted ESLint on the TS/TSX files changed by this work order before comple
 - `apps/web/hooks/domains/task/use-conversation-fork.ts` (new)
 - `apps/web/components/task/conversation-fork-flow.tsx`, `conversation-fork-chip.tsx`, `conversation-fork-preview.tsx` (new)
 - `apps/web/components/task/chat/messages/message-actions.tsx` and destination first-message rendering
-- `apps/web/components/task/new-session-dialog.tsx`, `new-session-form-actions.ts`
+- `apps/web/components/task/new-session-dialog.tsx`, `new-session-dialog-surface.tsx`, `new-session-form-actions.ts`
 - `apps/web/lib/services/session-launch-helpers.ts`, `session-launch-service.ts`
 - `apps/web/src/locales/{en,pt-pt,zh-cn,zh-hk,zh-tw,ja}/task.json` and generated pseudo resources
 - `apps/web/lib/api/domains/conversation-fork-api.test.ts` (new API contract tests)

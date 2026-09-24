@@ -331,4 +331,6 @@ It checked `docs/public/agents-and-profiles.md`, `README.md`, and `docs/screensh
 
 ## PR fixup status
 
-The worktree contains fixes and regression coverage for the review threads recorded on PR #3897. Local backend lint/build, targeted PostgreSQL-enabled Go tests, web typecheck, targeted ESLint, and desktop/phone fork E2E checks passed. The fixup commit, exact-head GitHub checks, review-thread dispositions, and advanced-base merge check remain delivery steps and are not claimed complete in this plan yet.
+PR #3897 is updated with commit `0d567522d20f2d3b4ba316fa717f65dcde284414`. The review fixes cover one-shot fork delivery, copied attachment admission and launch, executor isolation, retryable draft replacement, active-turn user cutoffs, known model limits, destination receipts and rollback, nested history, prompt trust boundaries, and expiry/discard cleanup.
+
+The exact-head GitHub run finished with 60 checks passed, 0 failed, and 0 pending. All actionable review threads are resolved. The desktop and phone form/preview screenshots were recaptured after the final code commit and published at media commit `b600d5b3ec32f73eadd837bd5bbf85124d94fff4`; the PR body was verified unchanged outside its screenshot sentinels. The synthetic merge check against current main (`9885fd40baa4396c5098e3e81cd257bbe733ab0a`) returned tree `efba63e753b3b068e4b4f943938c819ffcfc23ad` without conflicts. The PR remains open and unmerged.
