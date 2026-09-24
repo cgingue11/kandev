@@ -50,7 +50,7 @@ func TestCaptureAndCleanup(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read capture: %v", err)
 	}
-	if entries[len(entries)-1].Event != "close" || entries[len(entries)-1].Meta["reason"] != "cancelled" {
+	if entries[len(entries)-1].Event != captureEventClose || entries[len(entries)-1].Meta["reason"] != "cancelled" {
 		t.Fatalf("capture close entry = %#v", entries[len(entries)-1])
 	}
 }

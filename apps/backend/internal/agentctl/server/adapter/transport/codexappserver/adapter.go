@@ -18,6 +18,7 @@ import (
 	"github.com/kandev/kandev/internal/common/logger"
 	v1 "github.com/kandev/kandev/pkg/api/v1"
 	protocol "github.com/kandev/kandev/pkg/codexappserver"
+	"go.uber.org/zap"
 )
 
 const (
@@ -311,10 +312,16 @@ func (a *Adapter) Prompt(ctx context.Context, message string, attachments []v1.M
 	go func() {
 		var response protocol.TurnStartResponse
 		if err := client.Call(ctx, protocol.MethodTurnStart, params, &response); err != nil {
+			if flushErr := client.FlushInbound(context.Background()); flushErr != nil {
+				a.log.Warn("failed to flush Codex events before turn error", zap.Error(flushErr))
+			}
 			a.emitTerminal(threadID, "", generation, err.Error())
 			return
 		}
 		if isTerminal(response.Turn.Status) {
+			if err := client.FlushInbound(context.Background()); err != nil {
+				a.log.Warn("failed to flush Codex events before turn completion", zap.Error(err))
+			}
 			a.emitTerminal(threadID, response.Turn.ID, generation, turnError(response.Turn))
 		}
 	}()

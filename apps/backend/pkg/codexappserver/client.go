@@ -87,6 +87,7 @@ type inboundMessage struct {
 	method  string
 	params  json.RawMessage
 	request bool
+	barrier chan struct{}
 }
 
 type wireMessage struct {
@@ -238,6 +239,35 @@ func (c *Client) CallRaw(ctx context.Context, method string, params any) (json.R
 	case <-c.done:
 		c.removePending(key)
 		return nil, c.terminalError()
+	}
+}
+
+// FlushInbound waits until every server message read before this call has been
+// dispatched. RPC responses bypass the serialized notification dispatcher, so
+// callers that synthesize terminal events from a response can use this barrier
+// to preserve wire order.
+func (c *Client) FlushInbound(ctx context.Context) error {
+	if ctx == nil {
+		return errors.New("JSON-RPC flush context is required")
+	}
+	if err := c.terminalError(); err != nil {
+		return err
+	}
+	barrier := make(chan struct{})
+	select {
+	case c.inbound <- inboundMessage{barrier: barrier}:
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-c.done:
+		return c.terminalError()
+	}
+	select {
+	case <-barrier:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-c.done:
+		return c.terminalError()
 	}
 }
 
@@ -492,6 +522,10 @@ func (c *Client) dispatchLoop() {
 		case <-c.done:
 			return
 		case message := <-c.inbound:
+			if message.barrier != nil {
+				close(message.barrier)
+				continue
+			}
 			if message.request {
 				c.dispatchRequest(message)
 				continue

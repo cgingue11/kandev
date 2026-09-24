@@ -166,6 +166,77 @@ func TestClientAcceptsCodexAppServerResponseWithoutJSONRPCVersion(t *testing.T) 
 	}
 }
 
+func TestClientFlushInboundWaitsForEarlierNotifications(t *testing.T) {
+	clientInput, serverOutput := io.Pipe()
+	serverInput, clientOutput := io.Pipe()
+	client := NewClient(clientOutput, clientInput, Options{})
+	t.Cleanup(func() {
+		_ = client.Close()
+		_ = serverOutput.Close()
+		_ = serverInput.Close()
+	})
+
+	notificationStarted := make(chan struct{})
+	releaseNotification := make(chan struct{})
+	var releaseOnce sync.Once
+	release := func() { releaseOnce.Do(func() { close(releaseNotification) }) }
+	t.Cleanup(release)
+	client.SetNotificationHandler(func(_ context.Context, _ string, _ json.RawMessage) {
+		close(notificationStarted)
+		<-releaseNotification
+	})
+
+	serverDone := make(chan error, 1)
+	go func() {
+		line, err := bufio.NewReader(serverInput).ReadBytes('\n')
+		if err != nil {
+			serverDone <- err
+			return
+		}
+		var request map[string]json.RawMessage
+		if err := json.Unmarshal(line, &request); err != nil {
+			serverDone <- err
+			return
+		}
+		for _, frame := range []any{
+			map[string]any{"method": "test/notification", "params": map[string]string{"text": "before response"}},
+			map[string]any{"id": request["id"], "result": map[string]string{"status": "complete"}},
+		} {
+			encoded, err := json.Marshal(frame)
+			if err == nil {
+				_, err = serverOutput.Write(append(encoded, '\n'))
+			}
+			if err != nil {
+				serverDone <- err
+				return
+			}
+		}
+		serverDone <- nil
+	}()
+
+	if err := client.Call(context.Background(), "test/call", nil, nil); err != nil {
+		t.Fatalf("Call: %v", err)
+	}
+	select {
+	case <-notificationStarted:
+	case <-time.After(time.Second):
+		t.Fatal("notification handler did not start")
+	}
+	if err := <-serverDone; err != nil {
+		t.Fatalf("fake server: %v", err)
+	}
+
+	flushCtx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	if err := client.FlushInbound(flushCtx); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("FlushInbound while notification is blocked = %v, want context deadline exceeded", err)
+	}
+	release()
+	if err := client.FlushInbound(context.Background()); err != nil {
+		t.Fatalf("FlushInbound after notification completed: %v", err)
+	}
+}
+
 func TestClientAcceptsCodexAppServerRequestWithoutJSONRPCVersion(t *testing.T) {
 	clientInput, serverOutput := io.Pipe()
 	serverInput, clientOutput := io.Pipe()

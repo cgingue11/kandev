@@ -18,6 +18,7 @@ const (
 	defaultMaxCaptureBytes = 100 * 1024 * 1024
 	reservedCaptureBytes   = 512
 	maxCaptureLineBytes    = 21 * 1024 * 1024
+	captureEventClose      = "close"
 )
 
 var ErrCaptureLimit = errors.New("capture size limit reached")
@@ -163,7 +164,7 @@ func (r *Recorder) Close(reason string) error {
 		r.mu.Lock()
 		defer r.mu.Unlock()
 		if !r.closed {
-			r.closeErr = r.writeLocked(CaptureEntry{Kind: "meta", Event: "close", Meta: map[string]any{"reason": reason}})
+			r.closeErr = r.writeLocked(CaptureEntry{Kind: "meta", Event: captureEventClose, Meta: map[string]any{"reason": reason}})
 			r.closed = true
 		}
 		if r.file != nil {
@@ -187,7 +188,7 @@ func (r *Recorder) writeLocked(entry CaptureEntry) error {
 		return fmt.Errorf("encode capture entry: %w", err)
 	}
 	encoded = append(encoded, '\n')
-	if r.maxBytes > 0 && r.bytesWritten+int64(len(encoded))+reservedCaptureBytes > r.maxBytes && entry.Event != "capture_truncated" && entry.Event != "close" {
+	if r.maxBytes > 0 && r.bytesWritten+int64(len(encoded))+reservedCaptureBytes > r.maxBytes && entry.Event != "capture_truncated" && entry.Event != captureEventClose {
 		r.sequence--
 		if !r.truncated {
 			r.truncated = true

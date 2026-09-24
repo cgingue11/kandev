@@ -3,7 +3,10 @@ import { openNativeCodexProfile, stubNativeCodexModels } from "./codex-app-serve
 
 test.describe("Codex app-server profile on desktop", () => {
   test.beforeAll(async ({ backend }) => {
-    await backend.restart({ KANDEV_FEATURES_CODEX_APP_SERVER: "true" });
+    await backend.restart({
+      KANDEV_FEATURES_CODEX_APP_SERVER: "true",
+      KANDEV_MOCK_AGENT: "true",
+    });
   });
   test.afterAll(async ({ backend }) => {
     await backend.restart();

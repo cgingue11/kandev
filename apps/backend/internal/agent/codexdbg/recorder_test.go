@@ -114,7 +114,7 @@ func TestCaptureLimitMarksTruncationAndPreservesCloseReason(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read bounded capture: %v", err)
 	}
-	if entries[len(entries)-1].Event != "close" || entries[len(entries)-1].Meta["reason"] != "timeout" {
+	if entries[len(entries)-1].Event != captureEventClose || entries[len(entries)-1].Meta["reason"] != "timeout" {
 		t.Fatalf("final capture entry = %#v", entries[len(entries)-1])
 	}
 	truncated := false

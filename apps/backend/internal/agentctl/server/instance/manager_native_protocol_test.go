@@ -18,7 +18,7 @@ func TestCreateInstanceRejectsCodexAppServerWhenDisabled(t *testing.T) {
 		WorkspacePath: t.TempDir(),
 		Protocol:      string(agent.ProtocolCodexAppServer),
 	})
-	if err == nil || !strings.Contains(err.Error(), "Codex app-server feature is disabled") {
+	if err == nil || !strings.Contains(err.Error(), "codex app-server feature is disabled") {
 		t.Fatalf("CreateInstance error = %v", err)
 	}
 }
