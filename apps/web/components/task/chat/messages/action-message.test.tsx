@@ -17,6 +17,8 @@ vi.mock("@/components/toast-provider", () => ({
   useToast: () => ({ toast: vi.fn() }),
 }));
 
+const MANAGED_RETRY_ID = "managed-runtime-npm-retry-button";
+
 const requestMock = vi.fn().mockResolvedValue({});
 const getWebSocketClientMock = vi.fn<() => { request: typeof requestMock } | null>(() => ({
   request: requestMock,
@@ -619,7 +621,7 @@ describe("ActionMessage — managed npm runtime recovery", () => {
             {
               type: "ws_request",
               label: "backend label is ignored",
-              test_id: "managed-runtime-npm-retry-button",
+              test_id: MANAGED_RETRY_ID,
               params: {
                 method: SESSION_RECOVER_METHOD,
                 payload: {
@@ -640,12 +642,14 @@ describe("ActionMessage — managed npm runtime recovery", () => {
     expect(card.textContent).toContain("Kandev refreshed package data");
     expect(card.textContent).not.toMatch(/ACP/i);
     expect(screen.getByText(TECHNICAL_DETAILS).closest("details")?.open).toBe(false);
-    expect(screen.getAllByRole("button")).toHaveLength(1);
-    expect(screen.getByTestId("managed-runtime-npm-retry-button").textContent).toContain(
-      "Retry runtime",
-    );
+    expect(
+      screen
+        .getAllByRole("button")
+        .filter((button) => button.getAttribute("data-testid") === MANAGED_RETRY_ID),
+    ).toHaveLength(1);
+    expect(screen.getByTestId(MANAGED_RETRY_ID).textContent).toContain("Retry runtime");
 
-    fireEvent.click(screen.getByTestId("managed-runtime-npm-retry-button"));
+    fireEvent.click(screen.getByTestId(MANAGED_RETRY_ID));
     await waitFor(() =>
       expect(requestMock).toHaveBeenCalledWith(SESSION_RECOVER_METHOD, {
         task_id: TEST_TASK_ID,
@@ -719,4 +723,15 @@ describe("ActionMessage — remediation link", () => {
     expect(screen.queryByTestId("remediation-link")).toBeNull();
     expect(screen.getByTestId(RESUME_TEST_ID)).toBeTruthy();
   });
+});
+
+it("moves unsafe long legacy summaries into redacted technical details", () => {
+  const comment = {
+    ...recoveryMessage(true),
+    content: "failed: token=synthetic-private-value\n" + "nested diagnostic ".repeat(100),
+  };
+  const { container } = renderAction(comment, "FAILED");
+  expect(container.textContent).not.toContain("synthetic-private-value");
+  expect(screen.getByText("An error occurred")).toBeTruthy();
+  expect(container.querySelector("pre")?.textContent).toContain("nested diagnostic");
 });

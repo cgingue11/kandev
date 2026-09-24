@@ -2280,5 +2280,11 @@
   "planCommentMigrationNeedsPlan": "Create or restore a plan to recover saved comments.",
   "planCommentMigrationPending": "Saved plan comments are still being restored. Your message is kept.",
   "toolPayloadRemovedAt": "Tool details removed on {{date}}.",
-  "toolPayloadRemoved": "Tool details removed."
+  "toolPayloadRemoved": "Tool details removed.",
+  "copyRecoveryDetails": "Copy details",
+  "recoveryDetailsCopied": "Details copied",
+  "recoveryDetailsCopyFailed": "Could not copy details. Select the text to copy it.",
+  "recoveryMoreOptions": "More options",
+  "recoveryOptions": "Recovery options",
+  "viewRecovery": "View recovery"
 }

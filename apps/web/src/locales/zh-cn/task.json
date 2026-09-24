@@ -2280,5 +2280,11 @@
   "planCommentMigrationNeedsPlan": "请创建或恢复计划，以恢复已保存的评论。",
   "planCommentMigrationPending": "仍在恢复已保存的计划评论。您的消息会保留。",
   "toolPayloadRemovedAt": "工具详细数据已于 {{date}} 删除。",
-  "toolPayloadRemoved": "工具详细数据已删除。"
+  "toolPayloadRemoved": "工具详细数据已删除。",
+  "copyRecoveryDetails": "复制详情",
+  "recoveryDetailsCopied": "已复制详情",
+  "recoveryDetailsCopyFailed": "无法复制详情。请选择文本进行复制。",
+  "recoveryMoreOptions": "更多选项",
+  "recoveryOptions": "恢复选项",
+  "viewRecovery": "查看恢复选项"
 }

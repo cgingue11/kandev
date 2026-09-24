@@ -56,9 +56,9 @@ test("keeps managed npm recovery touch-safe on mobile", async ({
   const session = new SessionPage(testPage);
   await session.waitForLoad();
 
-  const recovery = session.activeChat().getByTestId("managed-runtime-npm-recovery");
+  const recovery = session.activeChat().getByTestId("session-recovery-card");
   await expect(recovery).toBeVisible();
-  await expect(recovery.getByRole("button")).toHaveCount(1);
+  await expect(recovery.getByTestId("managed-runtime-npm-retry-button")).toHaveCount(1);
   const retry = recovery.getByTestId("managed-runtime-npm-retry-button");
   await expect(retry).toBeInViewport();
   const box = await retry.boundingBox();

@@ -22,6 +22,7 @@ vi.mock("@/lib/ws/connection", () => ({
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  requestMock.mockReset().mockResolvedValue({});
 });
 
 const RECOVERY_MESSAGE = "Agent encountered an error";
@@ -196,6 +197,7 @@ describe("ActionMessage — recovery history remains after the agent is back", (
     expect(await screen.findByTestId(RECOVERY_ERROR_TEST_ID)).toBeTruthy();
     expect(screen.getByText(BRANCH_FAILURE_MESSAGE)).toBeTruthy();
     expect(screen.getByTestId("recovery-new-branch-button")).toBeTruthy();
+
     expect(screen.getByTestId("recovery-restore-workspace-button")).toBeTruthy();
   });
 
@@ -233,6 +235,7 @@ describe("ActionMessage — recovery history remains after the agent is back", (
 
     expect(await screen.findByText("Provider is unavailable")).toBeTruthy();
     expect(screen.queryByTestId("recovery-new-branch-button")).toBeNull();
+
     expect(screen.getByTestId("recovery-restore-workspace-button")).toBeTruthy();
   });
 });
@@ -251,13 +254,11 @@ describe("ActionMessage recovery retry", () => {
     fireEvent.click(screen.getByTestId(RESUME_TEST_ID));
     expect(await screen.findByTestId(RECOVERY_ERROR_TEST_ID)).toBeTruthy();
 
-    fireEvent.click(screen.getByTestId("ensure-session-error-retry"));
+    fireEvent.click(screen.getByTestId(RESUME_TEST_ID));
     await waitFor(() =>
-      expect((screen.getByTestId("ensure-session-error-retry") as HTMLButtonElement).disabled).toBe(
-        true,
-      ),
+      expect((screen.getByTestId(RESUME_TEST_ID) as HTMLButtonElement).disabled).toBe(true),
     );
-    fireEvent.click(screen.getByTestId("ensure-session-error-retry"));
+    fireEvent.click(screen.getByTestId(RESUME_TEST_ID));
     expect(requestMock).toHaveBeenCalledTimes(2);
 
     resolveRetry?.();
@@ -324,6 +325,7 @@ describe("ActionMessage — a recovery that failed keeps its controls", () => {
     live.setSessionState("WAITING_FOR_INPUT");
 
     expect(screen.getByText(RECOVERY_MESSAGE)).toBeTruthy();
+
     expect(screen.getByTestId(FRESH_TEST_ID)).toBeTruthy();
   });
 
@@ -336,6 +338,7 @@ describe("ActionMessage — a recovery that failed keeps its controls", () => {
     live.setSessionState("FAILED");
 
     expect(screen.getByText(RECOVERY_MESSAGE)).toBeTruthy();
+
     expect(screen.getByTestId(FRESH_TEST_ID)).toBeTruthy();
   });
 
@@ -352,4 +355,9 @@ describe("ActionMessage — a recovery that failed keeps its controls", () => {
     expect(screen.getByText(RECOVERY_MESSAGE)).toBeTruthy();
     expect(screen.queryByTestId(RESUME_TEST_ID)).toBeNull();
   });
+});
+
+it("shows fresh start directly beside resume", () => {
+  renderWithTranscript("FAILED", []);
+  expect(screen.getByTestId(FRESH_TEST_ID)).toBeTruthy();
 });

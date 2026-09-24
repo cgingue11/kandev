@@ -5,6 +5,8 @@ import { TooltipProvider } from "@kandev/ui/tooltip";
 import type { SessionStoppedBannerProps } from "./session-stopped-banner";
 import { WebSocketRequestError } from "@/lib/ws/client";
 
+const MORE_OPTIONS = "More options";
+
 const mocks = vi.hoisted(() => ({
   request: vi.fn(),
   agentProfiles: [{ id: "profile-1" }],
@@ -52,6 +54,7 @@ vi.mock("react-i18next", () => ({
         "task:continueOnNewBranch": "Continue on a new branch",
         "task:restoreReadOnlyWorkspace": "Restore read-only workspace",
         "task:retry": "Retry",
+        "task:recoveryMoreOptions": MORE_OPTIONS,
         "task:couldnTStartASession": "Session recovery failed",
       })[key] ?? key,
   }),
@@ -101,7 +104,7 @@ describe("SessionStoppedBanner basics", () => {
 
     expect(screen.getByTestId("completed-session-banner")).toBeTruthy();
     expect(screen.getByText("This session is complete.")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "New Agent" })).toBeTruthy();
+    expect(screen.getByTestId("completed-session-new-agent-button")).toBeTruthy();
     expect(screen.getByTestId(RESUME_BUTTON_TEST_ID)).toBeTruthy();
     expect(screen.queryByTestId(FRESH_BUTTON_TEST_ID)).toBeNull();
 
@@ -114,7 +117,7 @@ describe("SessionStoppedBanner basics", () => {
       ),
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "New Agent" }));
+    fireEvent.click(screen.getByTestId("completed-session-new-agent-button"));
 
     expect(await screen.findByTestId("new-session-dialog")).toBeTruthy();
   });
@@ -133,10 +136,7 @@ describe("SessionStoppedBanner basics", () => {
       </TooltipProvider>,
     );
 
-    const button = screen.getByRole("button", { name: "New Agent" }) as HTMLButtonElement;
-    expect(button.disabled).toBe(true);
-
-    fireEvent.click(button);
+    expect(screen.queryByRole("button", { name: "New Agent" })).toBeNull();
 
     expect(onShowDialog).not.toHaveBeenCalled();
   });
@@ -167,7 +167,8 @@ describe("SessionStoppedBanner basics", () => {
     mocks.agentProfiles.splice(0, mocks.agentProfiles.length);
     render(<BannerHarness mode="recoverable" />);
 
-    expect(screen.getByTestId(RESUME_BUTTON_TEST_ID).getAttribute("disabled")).not.toBeNull();
+    expect(screen.getByText("The agent profile no longer exists.")).toBeTruthy();
+
     fireEvent.click(screen.getByTestId(FRESH_BUTTON_TEST_ID));
 
     expect(await screen.findByTestId("new-session-dialog")).toBeTruthy();
@@ -186,9 +187,10 @@ describe("SessionStoppedBanner basics", () => {
     );
 
     expect(screen.getByText("Executor environment is unavailable")).toBeTruthy();
-    expect(screen.getByText("(Docker is offline)")).toBeTruthy();
+    expect(screen.getByText("Docker is offline")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Restart" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Start fresh session" })).toBeTruthy();
+
+    expect(screen.getByTestId(FRESH_BUTTON_TEST_ID)).toBeTruthy();
   });
 });
 
@@ -211,6 +213,7 @@ describe("SessionStoppedBanner recovery failures", () => {
 
     expect(await screen.findByText("The saved branch is no longer available.")).toBeTruthy();
     expect(screen.getByTestId("recovery-new-branch-button")).toBeTruthy();
+
     expect(screen.getByTestId("recovery-restore-workspace-button")).toBeTruthy();
 
     fireEvent.click(screen.getByTestId("recovery-new-branch-button"));
@@ -233,6 +236,7 @@ describe("SessionStoppedBanner recovery failures", () => {
 
     expect(await screen.findByText("Provider is unavailable")).toBeTruthy();
     expect(screen.queryByTestId("recovery-new-branch-button")).toBeNull();
+
     expect(screen.getByTestId("recovery-restore-workspace-button")).toBeTruthy();
   });
 });

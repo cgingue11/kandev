@@ -1,16 +1,11 @@
 "use client";
 
+import { useSessionComposerRecovery } from "./session-recovery-context";
 import { useCallback, useState } from "react";
-import {
-  IconAlertTriangle,
-  IconInfoCircle,
-  IconLoader2,
-  IconPlayerPlay,
-  IconRefresh,
-} from "@tabler/icons-react";
-import { Button } from "@kandev/ui/button";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@kandev/ui/tooltip";
+import { IconAlertTriangle, IconInfoCircle } from "@tabler/icons-react";
+import { RecoveryActions, type RecoveryChoice } from "@/components/task/recovery-actions";
 import { useTranslation } from "react-i18next";
+import { SessionErrorDetails } from "@/components/task/session-error-details";
 import { NewSessionDialog } from "@/components/task/new-session-dialog";
 import {
   type ManualSessionRecoveryFailure,
@@ -19,6 +14,7 @@ import {
 } from "@/hooks/domains/session/use-session-recovery-actions";
 import {
   isSessionRecoveryBusy,
+  sessionRecoveryOwnerId,
   type SessionRecoveryOwner,
 } from "@/lib/session-recovery-presentation";
 import { useSessionProfileExists } from "./session-stopped-banner";
@@ -35,7 +31,7 @@ type SessionBootstrapRecoveryCardProps = {
   automaticRecovery?: SessionRecoveryOwner | null;
 };
 
-function causeLabel(code: string | undefined, translate: (key: string) => string): string {
+export function causeLabel(code: string | undefined, translate: (key: string) => string): string {
   switch (code) {
     case "authentication_required":
       return translate("task:sessionBootstrapCauseAuthenticationRequired");
@@ -54,43 +50,21 @@ function causeLabel(code: string | undefined, translate: (key: string) => string
   }
 }
 
-function operationLabel(operation: string | undefined, translate: (key: string) => string): string {
+export function operationLabel(
+  operation: string | undefined,
+  translate: (key: string) => string,
+): string {
   if (operation === "restore_workspace") {
     return translate("task:sessionRecoveryRestoreAttempt");
   }
   return translate("task:sessionRecoveryResumeAttempt");
 }
 
-function CauseDetails({
-  causes,
-  translate,
-}: {
-  causes: AgentErrorCause[];
-  translate: (key: string) => string;
-}) {
-  return (
-    <dl className="mt-2 grid min-w-0 gap-2 text-xs" data-testid="session-bootstrap-cause-details">
-      {causes.map((cause, index) => (
-        <div
-          className="min-w-0"
-          key={`${cause.operation ?? "cause"}-${cause.code ?? "unknown"}-${index}`}
-        >
-          <dt className="font-medium">
-            {operationLabel(cause.operation, translate)}: {causeLabel(cause.code, translate)}
-          </dt>
-          {cause.detail ? (
-            <dd className="mt-0.5 break-words text-muted-foreground">{cause.detail}</dd>
-          ) : null}
-        </div>
-      ))}
-    </dl>
-  );
-}
-
 function BootstrapRecoveryActions({
   profileExists,
   busyAction,
   hasBranchRecovery,
+  blocked,
   onResume,
   onRestore,
   onFreshStart,
@@ -99,78 +73,52 @@ function BootstrapRecoveryActions({
   profileExists: boolean;
   busyAction: SessionRecoveryBusyAction;
   hasBranchRecovery: boolean;
+  blocked: boolean;
   onResume: () => void;
   onRestore: () => void;
   onFreshStart: () => void;
   onNewBranch: () => void;
 }) {
   const { t } = useTranslation();
+  const actions: RecoveryChoice[] = [
+    {
+      kind: "resume",
+      label: busyAction === "resume" ? t("task:resuming") : t("task:resume"),
+      onClick: onResume,
+      disabled: !profileExists,
+      testId: "recovery-resume-button",
+    },
+    {
+      kind: "restore",
+      label:
+        busyAction === "restore"
+          ? t("task:workspaceRestorePending")
+          : t("task:restoreReadOnlyWorkspace"),
+      onClick: onRestore,
+      testId: "recovery-restore-workspace-button",
+    },
+    {
+      kind: "fresh_start",
+      label: t("task:startFreshSession"),
+      onClick: onFreshStart,
+      testId: "recovery-fresh-button",
+    },
+  ];
+  if (hasBranchRecovery)
+    actions.push({
+      kind: "resume_new_branch",
+      label: t("task:continueOnNewBranch"),
+      onClick: onNewBranch,
+      testId: "recovery-new-branch-button",
+    });
   return (
-    <div className="mt-3 flex min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span
-            className="inline-flex w-full sm:w-auto"
-            data-testid="bootstrap-recovery-resume-wrapper"
-            tabIndex={busyAction !== null || !profileExists ? 0 : -1}
-          >
-            <Button
-              variant="default"
-              className="h-auto min-h-7 w-full cursor-pointer justify-start gap-1.5 text-xs sm:w-auto [@media(pointer:coarse)]:min-h-11"
-              onClick={onResume}
-              disabled={busyAction !== null || !profileExists}
-              data-testid="recovery-resume-button"
-            >
-              {busyAction === "resume" ? (
-                <IconLoader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <IconPlayerPlay className="h-3.5 w-3.5" />
-              )}
-              {busyAction === "resume" ? t("task:resuming") : t("task:resume")}
-            </Button>
-          </span>
-        </TooltipTrigger>
-        {!profileExists ? (
-          <TooltipContent>{t("task:agentProfileNoLongerExists")}</TooltipContent>
-        ) : null}
-      </Tooltip>
-      <Button
-        variant="outline"
-        className="h-auto min-h-7 w-full cursor-pointer justify-start gap-1.5 text-xs sm:w-auto [@media(pointer:coarse)]:min-h-11"
-        onClick={onRestore}
-        disabled={busyAction !== null}
-        data-testid="recovery-restore-workspace-button"
-      >
-        {busyAction === "restore" ? (
-          <IconLoader2 className="h-3.5 w-3.5 animate-spin" />
-        ) : (
-          <IconRefresh className="h-3.5 w-3.5" />
-        )}
-        {t("task:restoreReadOnlyWorkspace")}
-      </Button>
-      <Button
-        variant="outline"
-        className="h-auto min-h-7 w-full cursor-pointer justify-start gap-1.5 text-xs sm:w-auto [@media(pointer:coarse)]:min-h-11"
-        onClick={onFreshStart}
-        disabled={busyAction !== null}
-        data-testid="recovery-fresh-button"
-      >
-        <IconRefresh className="h-3.5 w-3.5" />
-        {busyAction === "fresh_start" ? t("task:starting") : t("task:startFreshSession")}
-      </Button>
-      {hasBranchRecovery ? (
-        <Button
-          variant="outline"
-          className="h-auto min-h-7 w-full cursor-pointer justify-start gap-1.5 text-xs sm:w-auto [@media(pointer:coarse)]:min-h-11"
-          onClick={onNewBranch}
-          disabled={busyAction !== null}
-          data-testid="recovery-new-branch-button"
-        >
-          <IconRefresh className="h-3.5 w-3.5" />
-          {t("task:continueOnNewBranch")}
-        </Button>
-      ) : null}
-    </div>
+    <RecoveryActions
+      actions={actions}
+      busy={busyAction !== null}
+      busyAction={busyAction}
+      blocked={blocked}
+      preferred={!profileExists ? "fresh_start" : undefined}
+    />
   );
 }
 
@@ -184,12 +132,18 @@ function automaticRecoveryCauses(
       {
         operation: "resume",
         code: "unknown",
-        detail: translate("task:failedToResumeSession"),
+        detail: [
+          translate("task:failedToResumeSession"),
+          recovery.recoveryFailure.resumeError,
+        ].join("\n"),
       },
       {
         operation: "restore_workspace",
         code: "unknown",
-        detail: translate("task:failedToRestoreWorkspace"),
+        detail: [
+          translate("task:failedToRestoreWorkspace"),
+          recovery.recoveryFailure.restoreError,
+        ].join("\n"),
       },
     ];
   }
@@ -198,7 +152,14 @@ function automaticRecoveryCauses(
       {
         operation: "resume",
         code: "unknown",
-        detail: translate("task:failedToResumeSession"),
+        detail: [
+          translate("task:failedToResumeSession"),
+          recovery.recoveryFailure?.outcome === "workspace_read_only"
+            ? recovery.recoveryFailure.resumeError
+            : recovery.error,
+        ]
+          .filter(Boolean)
+          .join("\n"),
       },
     ];
   }
@@ -207,6 +168,7 @@ function automaticRecoveryCauses(
 
 function manualRecoveryCauses(
   failure: ManualSessionRecoveryFailure | null,
+  manualError: Error | null,
   translate: (key: string) => string,
 ): AgentErrorCause[] {
   if (!failure) return [];
@@ -215,7 +177,9 @@ function manualRecoveryCauses(
     {
       operation: restore ? "restore_workspace" : "resume",
       code: "unknown",
-      detail: translate(restore ? "task:failedToRestoreWorkspace" : "task:failedToResumeSession"),
+      detail:
+        manualError?.message ??
+        translate(restore ? "task:failedToRestoreWorkspace" : "task:failedToResumeSession"),
     },
   ];
 }
@@ -252,23 +216,25 @@ function recoverySummary(
   return translate("task:sessionBootstrapRecoverySummary");
 }
 
-function buildRecoveryCardModel({
+export function buildRecoveryCardModel({
   error,
   automaticRecovery,
   manualFailure,
+  manualError,
   recoveryNotice,
   translate,
 }: {
   error: TaskStatusSummaryActiveError;
   automaticRecovery?: SessionRecoveryOwner | null;
   manualFailure: ManualSessionRecoveryFailure | null;
+  manualError: Error | null;
   recoveryNotice: string | null;
   translate: (key: string) => string;
 }): RecoveryCardModel {
   const causes = [
     ...(error.causes ?? []),
     ...automaticRecoveryCauses(automaticRecovery, translate),
-    ...manualRecoveryCauses(manualFailure, translate),
+    ...manualRecoveryCauses(manualFailure, manualError, translate),
   ];
   const displayNotice = manualFailure
     ? null
@@ -294,8 +260,7 @@ function RecoveryCardContent({
   profileExists,
   busyAction,
   hasBranchRecovery,
-  showDetails,
-  onDetailsToggle,
+  blocked,
   onResume,
   onRestore,
   onFreshStart,
@@ -308,8 +273,7 @@ function RecoveryCardContent({
   profileExists: boolean;
   busyAction: SessionRecoveryBusyAction;
   hasBranchRecovery: boolean;
-  showDetails: boolean;
-  onDetailsToggle: (open: boolean) => void;
+  blocked: boolean;
   onResume: () => void;
   onRestore: () => void;
   onFreshStart: () => void;
@@ -317,6 +281,17 @@ function RecoveryCardContent({
   copy: RecoveryCardCopy;
   translate: (key: string) => string;
 }) {
+  const profileMissing = translate("task:agentProfileNoLongerExists");
+  const details = [
+    ...model.causes.map((cause) =>
+      [operationLabel(cause.operation, translate), causeLabel(cause.code, translate), cause.detail]
+        .filter(Boolean)
+        .join("\n"),
+    ),
+    error.details,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
   return (
     <div className="min-w-0 flex-1">
       <div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -329,38 +304,31 @@ function RecoveryCardContent({
       <p className="mt-2 text-xs text-muted-foreground" data-testid="session-bootstrap-no-change">
         {copy.launchErrorNoChanges}
       </p>
-      {model.hasDetails ? (
-        <details
-          className="mt-2 min-w-0 text-xs"
-          open={showDetails}
-          onToggle={(event) => onDetailsToggle(event.currentTarget.open)}
-          data-testid="session-bootstrap-recovery-details"
-        >
-          <summary className="block min-h-11 max-w-full cursor-pointer select-none rounded-sm py-3 underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-7">
-            {copy.sessionRecoveryDetails}
-          </summary>
-          <CauseDetails causes={model.causes} translate={translate} />
-          {error.details ? (
-            <pre className="mt-2 max-w-prose whitespace-pre-wrap break-words rounded bg-muted/50 p-2 font-mono text-[11px] leading-relaxed text-muted-foreground">
-              {error.details}
-            </pre>
-          ) : null}
-        </details>
-      ) : null}
+      {!profileExists && <p className="mt-1 text-xs text-muted-foreground">{profileMissing}</p>}
       <BootstrapRecoveryActions
         profileExists={profileExists}
         busyAction={busyAction}
         hasBranchRecovery={hasBranchRecovery}
+        blocked={blocked}
         onResume={onResume}
         onRestore={onRestore}
         onFreshStart={onFreshStart}
         onNewBranch={onNewBranch}
       />
+      {model.hasDetails ? (
+        <SessionErrorDetails
+          testId="session-bootstrap-recovery-details"
+          textTestId="session-bootstrap-cause-details"
+          label={copy.sessionRecoveryDetails}
+        >
+          {details}
+        </SessionErrorDetails>
+      ) : null}
     </div>
   );
 }
 
-export function SessionBootstrapRecoveryCard({
+function BootstrapRecoveryControls({
   taskId,
   sessionId,
   workspaceId,
@@ -369,12 +337,12 @@ export function SessionBootstrapRecoveryCard({
 }: SessionBootstrapRecoveryCardProps) {
   const { t } = useTranslation();
   const [showDialog, setShowDialog] = useState(false);
-  const [showDetails, setShowDetails] = useState(false);
   const {
     busyAction,
     recoveryError,
     manualRecoveryFailure,
     branchDetails,
+    guardDetails,
     recoveryNotice,
     handleRecover,
     handleRestore,
@@ -390,9 +358,12 @@ export function SessionBootstrapRecoveryCard({
     error,
     automaticRecovery,
     manualFailure,
+    manualError: recoveryError,
     recoveryNotice,
     translate: t,
   });
+  if (guardDetails && recoveryError) model.summary = recoveryError.message;
+  if (branchDetails) model.summary = t("task:branchIsNoLongerAvailable");
   const copy = {
     launchNeedsAttention: t("task:launchNeedsAttention"),
     launchErrorNoChanges: t("task:launchErrorNoChanges"),
@@ -423,7 +394,9 @@ export function SessionBootstrapRecoveryCard({
     <div
       className={`flex min-w-0 gap-3 rounded-md border p-3 sm:p-4 ${cardClassName}`}
       data-testid="session-bootstrap-recovery-card"
-      role={model.isReadOnly ? "status" : "alert"}
+      id={sessionRecoveryOwnerId(automaticRecovery?.recoveryFailure)}
+      tabIndex={-1}
+      role={model.isReadOnly ? "status" : undefined}
     >
       <div
         className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md ${iconClassName}`}
@@ -440,8 +413,7 @@ export function SessionBootstrapRecoveryCard({
         profileExists={profileExists}
         busyAction={effectiveBusyAction}
         hasBranchRecovery={branchDetails !== null}
-        showDetails={showDetails}
-        onDetailsToggle={setShowDetails}
+        blocked={Boolean(guardDetails && !guardDetails.retryable)}
         onResume={handleResume}
         onRestore={() => void handleRestore()}
         onFreshStart={handleFreshStart}
@@ -457,4 +429,20 @@ export function SessionBootstrapRecoveryCard({
       />
     </div>
   );
+}
+
+export function SessionBootstrapRecoveryCard(props: SessionBootstrapRecoveryCardProps) {
+  const owner = useSessionComposerRecovery(props.sessionId);
+  const { t } = useTranslation();
+  if (owner)
+    return (
+      <div
+        className="min-w-0 py-2 text-xs text-muted-foreground"
+        data-testid="session-recovery-history"
+      >
+        <p>{t("task:sessionBootstrapRecoveryTitle")}</p>
+        <SessionErrorDetails>{props.error.details ?? ""}</SessionErrorDetails>
+      </div>
+    );
+  return <BootstrapRecoveryControls {...props} />;
 }
