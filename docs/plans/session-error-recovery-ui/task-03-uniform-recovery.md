@@ -284,3 +284,21 @@ deleted-profile cases in a focused rerun; the mobile provider-link case passed.
 The three CI retry-only failures (preview capture, environment reuse and file
 drag/drop) passed locally without retries. Exact-head CI remains externally
 pending after delivery of these test-only corrections.
+
+### Current-base integration
+
+Integrated the newly shipped npm release-age policy cause into the shared card,
+preserving its localized explanation and runtime-only retry semantics during
+bootstrap and history loading. The three new policy regressions failed before
+the integration; all 55 focused component tests passed afterward. Desktop and
+mobile npm recovery each passed two managed E2E cases. Type checking, full lint
+(with the duplicate-literal correction rechecked), localization, specification
+and catalog checks passed. Desktop/mobile light/dark controls match the shared
+outline style.
+
+The four Kubernetes CI failures used the retired transcript recovery selector.
+Updated their shared assertion to require one composer recovery card with
+controls and causal details. Local Kind verification was attempted twice but
+blocked before assertions by image-load timeouts; the second cleanup also hit
+a Docker container exit-event error. Remote container CI must verify this test
+correction. No runtime or Kubernetes fixture behavior was changed.

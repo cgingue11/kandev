@@ -16,6 +16,11 @@ import { sessionRecoveryAction } from "./messages/action-message-recovery";
 function recoveryCopy(model: ActiveSessionRecovery, t: ReturnType<typeof useTranslation>["t"]) {
   if (model.kind === "managed_runtime_npm_resolution")
     return { title: t("chat:managedRuntimeNpmTitle"), summary: t("chat:managedRuntimeNpmBody") };
+  if (model.kind === "managed_runtime_npm_policy")
+    return {
+      title: t("chat:managedRuntimeNpmPolicyTitle"),
+      summary: t("chat:managedRuntimeNpmPolicyBody"),
+    };
   if (model.kind === "provider_quota_limited") {
     const reset = model.metadata?.reset_at ? new Date(model.metadata.reset_at) : null;
     return {
@@ -58,7 +63,7 @@ export function useRecoveryChoices(
     .filter((kind) => kind !== null);
   let kinds = supplied ?? ["resume" as const, "fresh_start" as const];
   if (model.kind === "provider_quota_limited" && !supplied) kinds = ["resume"];
-  if (model.kind === "managed_runtime_npm_resolution") kinds = ["runtime_retry"];
+  if (isManagedRuntimeFailure(model.kind)) kinds = ["runtime_retry"];
   if (model.kind === "missing_pr_branch" && !supplied) kinds = [];
   const choices: RecoveryChoice[] = kinds.map((kind) => ({
     kind,
@@ -72,10 +77,7 @@ export function useRecoveryChoices(
       else void actions.handleRecover(kind);
     },
   }));
-  if (
-    model.kind !== "managed_runtime_npm_resolution" &&
-    (actions.recoveryError || isBootstrapRecovery(model))
-  )
+  if (!isManagedRuntimeFailure(model.kind) && (actions.recoveryError || isBootstrapRecovery(model)))
     choices.push({
       kind: "restore",
       label: t("task:restoreReadOnlyWorkspace"),
@@ -155,7 +157,8 @@ function recoveryFailureCopy(
 function isBootstrapRecovery(model: ActiveSessionRecovery) {
   return (
     model.error?.phase === "bootstrap" &&
-    !["managed_runtime_npm_resolution", "provider_quota_limited"].includes(model.kind)
+    !isManagedRuntimeFailure(model.kind) &&
+    model.kind !== "provider_quota_limited"
   );
 }
 
@@ -163,4 +166,8 @@ function matchingAutomaticRecovery(context: TaskLaunchErrorContextValue | null, 
   return context?.statusSummary?.active_error?.session_id === sessionId
     ? context.automaticRecovery
     : null;
+}
+
+function isManagedRuntimeFailure(kind: string) {
+  return kind === "managed_runtime_npm_resolution" || kind === "managed_runtime_npm_policy";
 }

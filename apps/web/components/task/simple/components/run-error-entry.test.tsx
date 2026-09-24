@@ -4,9 +4,8 @@ import type { RunError } from "@/app/office/tasks/[id]/types";
 import { WebSocketRequestError } from "@/lib/ws/client";
 import { RunErrorEntry } from "./run-error-entry";
 
-const RUN_RESUME_ID = "run-error-resume-button";
-
 const { requestMock } = vi.hoisted(() => ({ requestMock: vi.fn() }));
+const RUN_ERROR_RESUME_TEST_ID = "run-error-resume-button";
 
 vi.mock("@/components/state-provider", () => ({
   useAppStore: (selector: (state: unknown) => unknown) => selector({}),
@@ -35,6 +34,28 @@ function runError(failureCode: string): RunError {
 }
 
 describe("RunErrorEntry", () => {
+  it("renders managed npm policy failures on the runtime recovery surface", () => {
+    render(
+      <RunErrorEntry
+        taskId="task-1"
+        workspaceId="workspace-1"
+        error={{
+          ...runError("managed_runtime_npm_policy"),
+          failureDetails:
+            "npm error notarget No matching version found. Minimum release age policy applies.",
+        }}
+      />,
+    );
+
+    const recovery = screen.getByTestId("run-error-managed-runtime-npm-recovery");
+    expect(recovery.textContent).toContain("npm blocked this runtime version");
+    expect(recovery.textContent).toContain(
+      "Check npm's min-release-age or before setting. Wait until this version is eligible or select an older version, then retry.",
+    );
+    expect(screen.getByTestId("run-error-managed-runtime-retry-button")).toBeTruthy();
+    expect(screen.queryByTestId(RUN_ERROR_RESUME_TEST_ID)).toBeNull();
+  });
+
   it.each(["provider_auth_required", "model_capacity"])(
     "keeps ordinary failure code %s on the resumable error surface",
     (failureCode) => {
@@ -42,7 +63,7 @@ describe("RunErrorEntry", () => {
         <RunErrorEntry taskId="task-1" workspaceId="workspace-1" error={runError(failureCode)} />,
       );
 
-      expect(screen.getByTestId(RUN_RESUME_ID)).toBeTruthy();
+      expect(screen.getByTestId(RUN_ERROR_RESUME_TEST_ID)).toBeTruthy();
 
       expect(screen.getByTestId("run-error-fresh-button")).toBeTruthy();
       expect(
@@ -71,7 +92,7 @@ describe("RunErrorEntry", () => {
       />,
     );
 
-    screen.getByTestId(RUN_RESUME_ID).click();
+    screen.getByTestId(RUN_ERROR_RESUME_TEST_ID).click();
 
     expect((await screen.findByTestId("run-error-recovery-error")).textContent).toContain(
       "The saved branch is no longer available.",
@@ -90,7 +111,7 @@ describe("RunErrorEntry", () => {
       />,
     );
 
-    expect(screen.queryByTestId(RUN_RESUME_ID)).toBeNull();
+    expect(screen.queryByTestId(RUN_ERROR_RESUME_TEST_ID)).toBeNull();
     expect(screen.queryByTestId("run-error-fresh-button")).toBeNull();
   });
 });
@@ -103,10 +124,10 @@ it("explains a non-retryable recovery refusal without offering a bypass", async 
     }),
   );
   render(<RunErrorEntry taskId="task-1" error={runError("provider_auth_required")} />);
-  fireEvent.click(screen.getByTestId(RUN_RESUME_ID));
+  fireEvent.click(screen.getByTestId(RUN_ERROR_RESUME_TEST_ID));
   const error = await screen.findByTestId("run-error-recovery-error");
   expect(error.querySelector("p")?.textContent).toContain("Restart the backend");
-  expect(screen.queryByTestId(RUN_RESUME_ID)).toBeNull();
+  expect(screen.queryByTestId(RUN_ERROR_RESUME_TEST_ID)).toBeNull();
 });
 
 it("redacts credential-bearing branch failures in the status line", async () => {
@@ -125,7 +146,7 @@ it("redacts credential-bearing branch failures in the status line", async () => 
       error={runError("provider_auth_required")}
     />,
   );
-  fireEvent.click(screen.getByTestId(RUN_RESUME_ID));
+  fireEvent.click(screen.getByTestId(RUN_ERROR_RESUME_TEST_ID));
   await screen.findByTestId("run-error-recovery-error");
   expect(document.body.textContent).not.toContain("run-secret-fixture");
 });

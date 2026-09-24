@@ -4,6 +4,8 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { StateProvider, useAppStoreApi } from "@/components/state-provider";
 import type { StoreApi } from "zustand";
 import { ActionMessage } from "./action-message";
+
+const MANAGED_RUNTIME_RETRY_TEST_ID = "managed-runtime-npm-retry-button";
 import {
   sessionId as toSessionId,
   taskId as toTaskId,
@@ -16,8 +18,6 @@ import type { AppState } from "@/lib/state/store";
 vi.mock("@/components/toast-provider", () => ({
   useToast: () => ({ toast: vi.fn() }),
 }));
-
-const MANAGED_RETRY_ID = "managed-runtime-npm-retry-button";
 
 const requestMock = vi.fn().mockResolvedValue({});
 const getWebSocketClientMock = vi.fn<() => { request: typeof requestMock } | null>(() => ({
@@ -621,7 +621,7 @@ describe("ActionMessage — managed npm runtime recovery", () => {
             {
               type: "ws_request",
               label: "backend label is ignored",
-              test_id: MANAGED_RETRY_ID,
+              test_id: MANAGED_RUNTIME_RETRY_TEST_ID,
               params: {
                 method: SESSION_RECOVER_METHOD,
                 payload: {
@@ -645,17 +645,63 @@ describe("ActionMessage — managed npm runtime recovery", () => {
     expect(
       screen
         .getAllByRole("button")
-        .filter((button) => button.getAttribute("data-testid") === MANAGED_RETRY_ID),
+        .filter((button) => button.getAttribute("data-testid") === MANAGED_RUNTIME_RETRY_TEST_ID),
     ).toHaveLength(1);
-    expect(screen.getByTestId(MANAGED_RETRY_ID).textContent).toContain("Retry runtime");
+    expect(screen.getByTestId(MANAGED_RUNTIME_RETRY_TEST_ID).textContent).toContain(
+      "Retry runtime",
+    );
 
-    fireEvent.click(screen.getByTestId(MANAGED_RETRY_ID));
+    fireEvent.click(screen.getByTestId(MANAGED_RUNTIME_RETRY_TEST_ID));
     await waitFor(() =>
       expect(requestMock).toHaveBeenCalledWith(SESSION_RECOVER_METHOD, {
         task_id: TEST_TASK_ID,
         session_id: TEST_SESSION_ID,
         action: "runtime_retry",
       }),
+    );
+  });
+
+  it("explains when npm's release-age policy blocks the selected runtime", () => {
+    renderAction(
+      retryMessage({
+        content: "managed runtime is blocked by npm policy",
+        metadata: {
+          variant: "error",
+          recovery_actions: true,
+          failure_kind: "managed_runtime_npm_policy",
+          error_output:
+            "npm error notarget No matching version found for @example/agent@1.2.3. A minimum release age policy is in effect.\n  @example/agent@1.2.3 release date: <release-date>",
+          actions: [
+            {
+              type: "ws_request",
+              label: "backend label is ignored",
+              test_id: MANAGED_RUNTIME_RETRY_TEST_ID,
+              params: {
+                method: SESSION_RECOVER_METHOD,
+                payload: {
+                  task_id: TEST_TASK_ID,
+                  session_id: TEST_SESSION_ID,
+                  action: "runtime_retry",
+                },
+              },
+            },
+          ],
+        },
+      } as Partial<Message>),
+      "WAITING_FOR_INPUT",
+    );
+
+    const card = screen.getByTestId("managed-runtime-npm-recovery");
+    expect(card.textContent).toContain("npm blocked this runtime version");
+    expect(card.textContent).toContain(
+      "Check npm's min-release-age or before setting. Wait until this version is eligible or select an older version, then retry.",
+    );
+    expect(card.textContent).not.toContain("refreshed package data");
+    expect(card.textContent).not.toContain("2026-09-20T10:30:00Z");
+    expect(screen.getByText(TECHNICAL_DETAILS).closest("details")?.open).toBe(false);
+    expect(screen.getAllByTestId(MANAGED_RUNTIME_RETRY_TEST_ID)).toHaveLength(1);
+    expect(screen.getByTestId(MANAGED_RUNTIME_RETRY_TEST_ID).textContent).toContain(
+      "Retry runtime",
     );
   });
 });

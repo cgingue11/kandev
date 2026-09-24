@@ -11,6 +11,8 @@ import { ActionMessage } from "./messages/action-message";
 
 vi.mock("@/components/toast-provider", () => ({ useToast: () => ({ toast: vi.fn() }) }));
 afterEach(cleanup);
+const RECOVERY_CARD = "session-recovery-card";
+const NPM_POLICY = "managed_runtime_npm_policy";
 const resume = vi.fn();
 const actions = {
   busyAction: null,
@@ -85,16 +87,23 @@ describe("composer recovery ownership", () => {
     expect(resume).toHaveBeenCalledWith("resume");
     expect(document.body.textContent).not.toContain("hidden-fixture-value");
   });
-  it("uses runtime retry in the same card instead of resume", () => {
-    renderCase("managed_runtime_npm_resolution");
-    expect(screen.getByTestId("session-recovery-card")).toBeTruthy();
-    expect(screen.queryByTestId(RESUME_BUTTON)).toBeNull();
-    fireEvent.click(screen.getByTestId("managed-runtime-npm-retry-button"));
-    expect(resume).toHaveBeenCalledWith("runtime_retry");
-  });
+  it.each(["managed_runtime_npm_resolution", NPM_POLICY])(
+    "uses runtime retry for %s in the same card instead of resume",
+    (kind) => {
+      renderCase(kind);
+      if (kind === NPM_POLICY)
+        expect(screen.getByTestId(RECOVERY_CARD).textContent).toContain(
+          "npm blocked this runtime version",
+        );
+      expect(screen.getByTestId(RECOVERY_CARD)).toBeTruthy();
+      expect(screen.queryByTestId(RESUME_BUTTON)).toBeNull();
+      fireEvent.click(screen.getByTestId("managed-runtime-npm-retry-button"));
+      expect(resume).toHaveBeenCalledWith("runtime_retry");
+    },
+  );
   it("offers manual resume for quota without implying fresh sessions reset capacity", () => {
     renderCase("provider_quota_limited");
-    expect(screen.getByTestId("session-recovery-card")).toBeTruthy();
+    expect(screen.getByTestId(RECOVERY_CARD)).toBeTruthy();
     expect(screen.queryByTestId("provider-quota-recovery")).toBeNull();
     fireEvent.click(screen.getByTestId(RESUME_BUTTON));
     expect(resume).toHaveBeenCalledWith("resume");
@@ -197,7 +206,7 @@ it("shows disabled recovery choices while history loads, then enables them", () 
   expect(fresh).toHaveProperty("disabled", false);
 });
 
-it.each(["managed_runtime_npm_resolution", "provider_quota_limited"])(
+it.each(["managed_runtime_npm_resolution", NPM_POLICY, "provider_quota_limited"])(
   "preserves specialized %s actions while history loads",
   (kind) => {
     render(
@@ -213,7 +222,7 @@ it.each(["managed_runtime_npm_resolution", "provider_quota_limited"])(
       expect(screen.getByTestId(RESUME_BUTTON)).toHaveProperty("disabled", true);
     else expect(screen.queryByTestId(RESUME_BUTTON)).toBeNull();
     expect(screen.queryByTestId(FRESH_BUTTON)).toBeNull();
-    if (kind === "managed_runtime_npm_resolution")
+    if (kind !== "provider_quota_limited")
       expect(screen.getByTestId("managed-runtime-npm-retry-button")).toHaveProperty(
         "disabled",
         true,
@@ -221,24 +230,27 @@ it.each(["managed_runtime_npm_resolution", "provider_quota_limited"])(
   },
 );
 
-it("keeps runtime startup on its specialized retry operation", () => {
-  render(
-    <StateProvider>
-      <SessionRecoveryCard
-        model={{
-          sessionId: "session",
-          kind: "managed_runtime_npm_resolution",
-          error: { message: "npm failed", phase: "bootstrap" },
-        }}
-        actions={actions}
-        onNewSession={vi.fn()}
-      />
-    </StateProvider>,
-  );
-  expect(screen.getByTestId("managed-runtime-npm-retry-button")).toBeTruthy();
-  expect(screen.queryByTestId("recovery-restore-workspace-button")).toBeNull();
-  expect(screen.queryByTestId(RESUME_BUTTON)).toBeNull();
-});
+it.each(["managed_runtime_npm_resolution", NPM_POLICY])(
+  "keeps %s startup on its specialized retry operation",
+  (kind) => {
+    render(
+      <StateProvider>
+        <SessionRecoveryCard
+          model={{
+            sessionId: "session",
+            kind,
+            error: { message: "npm failed", phase: "bootstrap" },
+          }}
+          actions={actions}
+          onNewSession={vi.fn()}
+        />
+      </StateProvider>,
+    );
+    expect(screen.getByTestId("managed-runtime-npm-retry-button")).toBeTruthy();
+    expect(screen.queryByTestId("recovery-restore-workspace-button")).toBeNull();
+    expect(screen.queryByTestId(RESUME_BUTTON)).toBeNull();
+  },
+);
 
 it.each([false, true])("honors explicit quota action metadata (resume: %s)", (allowResume) => {
   render(
@@ -335,7 +347,7 @@ it("keeps remediation available when a healthy session has no recovery owner", (
       </SessionRecoveryProvider>
     </StateProvider>,
   );
-  expect(screen.queryByTestId("session-recovery-card")).toBeNull();
+  expect(screen.queryByTestId(RECOVERY_CARD)).toBeNull();
   expect(screen.getByTestId("remediation-link")).toBeTruthy();
 });
 

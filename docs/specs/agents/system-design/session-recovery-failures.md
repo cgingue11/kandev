@@ -443,7 +443,7 @@ not their own DOM hierarchy or alert roles.
 | --- | --- | --- |
 | Typed runtime credential unavailable | Existing eligible retry only | Explain credential must be restored; no promise retry provisions it |
 | Transport interruption | Resume session | Existing eligible fresh-start and workspace restore |
-| Managed npm resolution | Retry setup (`runtime_retry`) | Preserve runtime repair semantics; no generic resume substitution |
+| Managed npm resolution or policy block | Retry setup (`runtime_retry`) | Preserve runtime repair semantics; no generic resume substitution |
 | Provider quota | No new mutation invented | Existing provider/model/reset guidance; use supplied eligible operations; absent action metadata retains manual Resume with wait/prerequisite guidance; an explicitly empty action list retains guidance only |
 | Missing profile | Existing profile-selection/new-session flow | No resume with deleted profile |
 | Branch loss | Existing confirmed continue-on-new-branch flow | Preserve branch guard and confirmation |
