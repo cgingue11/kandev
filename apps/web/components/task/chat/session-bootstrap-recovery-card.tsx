@@ -5,6 +5,7 @@ import { useCallback, useState } from "react";
 import { IconAlertTriangle, IconInfoCircle } from "@tabler/icons-react";
 import { RecoveryActions, type RecoveryChoice } from "@/components/task/recovery-actions";
 import { useTranslation } from "react-i18next";
+import { sanitizeSessionErrorDetails } from "@/lib/session-error-details";
 import { SessionErrorDetails } from "@/components/task/session-error-details";
 import { NewSessionDialog } from "@/components/task/new-session-dialog";
 import {
@@ -83,17 +84,14 @@ function BootstrapRecoveryActions({
   const actions: RecoveryChoice[] = [
     {
       kind: "resume",
-      label: busyAction === "resume" ? t("task:resuming") : t("task:resume"),
+      label: t("task:resume"),
       onClick: onResume,
       disabled: !profileExists,
       testId: "recovery-resume-button",
     },
     {
       kind: "restore",
-      label:
-        busyAction === "restore"
-          ? t("task:workspaceRestorePending")
-          : t("task:restoreReadOnlyWorkspace"),
+      label: t("task:restoreReadOnlyWorkspace"),
       onClick: onRestore,
       testId: "recovery-restore-workspace-button",
     },
@@ -362,7 +360,8 @@ function BootstrapRecoveryControls({
     recoveryNotice,
     translate: t,
   });
-  if (guardDetails && recoveryError) model.summary = recoveryError.message;
+  if (guardDetails && recoveryError)
+    model.summary = sanitizeSessionErrorDetails(recoveryError.message, 240) || model.summary;
   if (branchDetails) model.summary = t("task:branchIsNoLongerAvailable");
   const copy = {
     launchNeedsAttention: t("task:launchNeedsAttention"),

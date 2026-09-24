@@ -47,7 +47,9 @@ export function SessionRecoveryProvider({
           ? {
               sessionId: session.id,
               model: presentedModel,
-              pending: pending ?? (retainPending ? (lastPending.current ?? "resume") : null),
+              pending:
+                pending ??
+                (session.state === "STARTING" && model ? (lastPending.current ?? "resume") : null),
             }
           : null
       }

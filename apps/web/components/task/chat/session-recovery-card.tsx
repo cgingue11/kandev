@@ -84,7 +84,7 @@ export function SessionRecoveryCard({
           actions={choices}
           busy={busy}
           busyAction={busyAction}
-          preferred={!profileExists ? "fresh_start" : undefined}
+          preferred={preferredRecoveryAction(model, profileExists)}
           blocked={Boolean(actions.guardDetails && !actions.guardDetails.retryable)}
         />
         <AdditionalActions model={model} taskId={context?.taskId} />
@@ -109,4 +109,9 @@ function AdditionalActions({ model, taskId }: { model: ActiveSessionRecovery; ta
         action.type !== "delete_task",
     ) ?? [];
   return <ActionButtons taskId={taskId} actions={actions} />;
+}
+
+function preferredRecoveryAction(model: ActiveSessionRecovery, profileExists: boolean) {
+  if (!profileExists) return "fresh_start";
+  return model.metadata?.actions?.map(sessionRecoveryAction).find((kind) => kind !== null);
 }

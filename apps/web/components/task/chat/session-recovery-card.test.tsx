@@ -75,7 +75,9 @@ describe("composer recovery ownership", () => {
     renderCase();
     expect(screen.getAllByTestId(RESUME_BUTTON)).toHaveLength(1);
     expect(
-      screen.getByTestId("session-recovery-history").querySelector("[data-testid=RESUME_BUTTON]"),
+      screen
+        .getByTestId("session-recovery-history")
+        .querySelector(`[data-testid="${RESUME_BUTTON}"]`),
     ).toBeNull();
     expect(screen.getByTestId(FRESH_BUTTON)).toBeTruthy();
     expect(screen.queryByRole("button", { name: "More options" })).toBeNull();
@@ -264,4 +266,94 @@ it.each([false, true])("honors explicit quota action metadata (resume: %s)", (al
   );
   expect(Boolean(screen.queryByTestId(RESUME_BUTTON))).toBe(allowResume);
   expect(screen.queryByTestId(FRESH_BUTTON)).toBeNull();
+});
+
+it("preserves the provider remediation link in the active card", () => {
+  render(
+    <StateProvider>
+      <SessionRecoveryCard
+        model={{
+          sessionId: "session",
+          kind: "provider_quota_limited",
+          metadata: { remediation_url: "https://opencode.ai/workspace/demo/go" },
+        }}
+        actions={actions}
+        onNewSession={vi.fn()}
+      />
+    </StateProvider>,
+  );
+  expect(screen.getByTestId("remediation-link").getAttribute("href")).toBe(
+    "https://opencode.ai/workspace/demo/go",
+  );
+});
+it("preserves the backend's fresh-first recommendation and resume warning", () => {
+  const metadata = {
+    actions: ["fresh_start", "resume"].map((action) => ({
+      type: "ws_request" as const,
+      label: action,
+      tooltip: action === "resume" ? "Saved state is corrupted" : undefined,
+      params: { method: "session.recover", payload: { action } },
+    })),
+  };
+  render(
+    <StateProvider
+      initialState={
+        {
+          agentProfiles: { items: [{ id: "profile" }] },
+          taskSessions: { items: { session } },
+        } as unknown as Partial<AppState>
+      }
+    >
+      <SessionRecoveryCard
+        model={{ sessionId: "session", kind: "generic", metadata }}
+        actions={actions}
+        onNewSession={vi.fn()}
+      />
+    </StateProvider>,
+  );
+  expect(screen.getByTestId(FRESH_BUTTON).getAttribute("data-recommended")).toBe("true");
+  expect(screen.getByTestId(RESUME_BUTTON).getAttribute("title")).toBe("Saved state is corrupted");
+});
+it("keeps remediation available when a healthy session has no recovery owner", () => {
+  const healthy = {
+    ...session,
+    state: "WAITING_FOR_INPUT" as const,
+    error_message: "",
+    metadata: {},
+  };
+  const row = message("provider_quota_limited");
+  row.metadata = { ...row.metadata, remediation_url: "https://opencode.ai/workspace/demo/go" };
+  render(
+    <StateProvider
+      initialState={
+        { taskSessions: { items: { session: healthy } } } as unknown as Partial<AppState>
+      }
+    >
+      <SessionRecoveryProvider session={healthy} messages={[row]} taskId="task" enabled>
+        <ActionMessage comment={row} />
+        <Owner />
+      </SessionRecoveryProvider>
+    </StateProvider>,
+  );
+  expect(screen.queryByTestId("session-recovery-card")).toBeNull();
+  expect(screen.getByTestId("remediation-link")).toBeTruthy();
+});
+
+it("redacts guard summaries after a failed restore", () => {
+  render(
+    <StateProvider>
+      <SessionRecoveryCard
+        model={{ sessionId: "session", kind: "generic" }}
+        actions={
+          {
+            ...actions,
+            guardDetails: { retryable: true },
+            recoveryError: new Error("Restore failed: token=summary-secret-fixture"),
+          } as SessionRecoveryActions
+        }
+        onNewSession={vi.fn()}
+      />
+    </StateProvider>,
+  );
+  expect(document.body.textContent).not.toContain("summary-secret-fixture");
 });

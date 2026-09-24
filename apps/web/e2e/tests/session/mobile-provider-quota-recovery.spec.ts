@@ -75,7 +75,7 @@ test("keeps OpenCode quota recovery touch-safe on mobile", async ({
   await expect(recovery.getByTestId("provider-quota-archive-button")).toHaveCount(0);
   await expect(recovery.getByTestId("provider-quota-delete-button")).toHaveCount(0);
 
-  await testPage.getByTestId("mobile-session-menu").tap();
+  await testPage.getByTestId("mobile-task-picker-trigger").tap();
   const menuScope = testPage.getByRole("dialog", { name: "Tasks" });
   const taskRow = menuScope
     .getByTestId("sidebar-task-item")

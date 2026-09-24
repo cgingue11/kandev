@@ -7,6 +7,7 @@ import { useSessionRecoveryActions } from "@/hooks/domains/session/use-session-r
 import type { SessionRecoveryAction } from "@/lib/services/session-recovery-service";
 import type { MessageAction } from "@/components/task/chat/types";
 import { RecoveryActions, type RecoveryChoice } from "@/components/task/recovery-actions";
+import { sanitizeSessionErrorDetails } from "@/lib/session-error-details";
 import { SessionErrorDetails } from "@/components/task/session-error-details";
 import { ActionButton } from "./action-message-actions";
 
@@ -76,6 +77,7 @@ export function SessionRecoveryActionButtons({
             kind,
             label: recoveryActionLabel(kind, t),
             testId: action.test_id,
+            tooltip: action.tooltip,
             onClick: () => void onRecoveryAction(kind),
           },
         ]
@@ -88,7 +90,7 @@ export function SessionRecoveryActionButtons({
       testId: "recovery-restore-workspace-button",
       onClick: () => void handleRestore(),
     });
-  if (branchDetails)
+  if (branchDetails && !choices.some((choice) => choice.kind === "resume_new_branch"))
     choices.push({
       kind: "resume_new_branch",
       label: t("task:continueOnNewBranch"),
@@ -103,7 +105,9 @@ export function SessionRecoveryActionButtons({
       {recoveryError && (
         <div data-testid="session-recovery-error" className="mt-2 min-w-0 text-xs">
           <p role="status">
-            {guardDetails ? recoveryError.message : t("task:failedToResumeSession")}
+            {guardDetails
+              ? sanitizeSessionErrorDetails(recoveryError.message, 240)
+              : t("task:failedToResumeSession")}
           </p>
           <SessionErrorDetails>{recoveryError.message}</SessionErrorDetails>
         </div>
@@ -111,6 +115,7 @@ export function SessionRecoveryActionButtons({
       {recoveryNotice && <SessionRecoveryNotice message={recoveryNotice} />}
       <RecoveryActions
         actions={choices}
+        preferred={actions.map(sessionRecoveryAction).find((kind) => kind !== null)}
         busy={busyAction !== null}
         busyAction={busyAction}
         blocked={Boolean(guardDetails && !guardDetails.retryable)}

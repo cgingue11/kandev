@@ -215,3 +215,15 @@ it("keeps a refusal prerequisite visible and exposes no recovery bypass", () => 
   expect(screen.getByText("Restart the backend before retrying.")).toBeTruthy();
   expect(screen.queryByTestId(RESUME_BUTTON_TEST_ID)).toBeNull();
 });
+
+it("redacts a restore failure retained alongside guard details", () => {
+  recoveryActionState.guardDetails = { retryable: true };
+  recoveryActionState.recoveryError = new Error("Restore failed: token=guard-secret-fixture");
+  render(<SessionBootstrapRecoveryCard taskId="task-1" sessionId="session-1" error={error} />);
+  expect(document.body.textContent).not.toContain("guard-secret-fixture");
+});
+it("keeps the resume accessible name while pending", () => {
+  recoveryActionState.busyAction = "resume";
+  render(<SessionBootstrapRecoveryCard taskId="task-1" sessionId="session-1" error={error} />);
+  expect(screen.getByTestId(RESUME_BUTTON_TEST_ID).getAttribute("aria-label")).toBe("task:resume");
+});

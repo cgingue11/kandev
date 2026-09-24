@@ -214,7 +214,7 @@ describe("SessionStoppedBanner recovery failures", () => {
     expect(await screen.findByText("The saved branch is no longer available.")).toBeTruthy();
     expect(screen.getByTestId("recovery-new-branch-button")).toBeTruthy();
 
-    expect(screen.getByTestId("recovery-restore-workspace-button")).toBeTruthy();
+    expect(screen.getByTestId(RESTORE_BUTTON_TEST_ID)).toBeTruthy();
 
     fireEvent.click(screen.getByTestId("recovery-new-branch-button"));
 
@@ -237,6 +237,32 @@ describe("SessionStoppedBanner recovery failures", () => {
     expect(await screen.findByText("Provider is unavailable")).toBeTruthy();
     expect(screen.queryByTestId("recovery-new-branch-button")).toBeNull();
 
-    expect(screen.getByTestId("recovery-restore-workspace-button")).toBeTruthy();
+    expect(screen.getByTestId(RESTORE_BUTTON_TEST_ID)).toBeTruthy();
   });
 });
+
+it("does not claim a deleted profile when there is no session", () => {
+  render(<BannerHarness mode="completed" sessionId={null} />);
+  expect(screen.queryByText("The agent profile no longer exists.")).toBeNull();
+});
+
+it("redacts a workspace failure after a retryable guard", async () => {
+  mocks.request
+    .mockRejectedValueOnce(
+      new WebSocketRequestError("busy", "CONFLICT", {
+        kind: "session_recovery_in_progress",
+        retryable: true,
+      }),
+    )
+    .mockRejectedValueOnce(new Error("Restore failed: token=stopped-secret-fixture"));
+  render(<BannerHarness mode="recoverable" />);
+  fireEvent.click(screen.getByTestId(RESUME_BUTTON_TEST_ID));
+  fireEvent.click(await screen.findByTestId(RESTORE_BUTTON_TEST_ID));
+  await waitFor(() => expect(mocks.request).toHaveBeenCalledTimes(2));
+  await waitFor(() =>
+    expect(screen.getByTestId(RESTORE_BUTTON_TEST_ID)).toHaveProperty("disabled", false),
+  );
+  expect(document.body.textContent).not.toContain("stopped-secret-fixture");
+});
+
+const RESTORE_BUTTON_TEST_ID = "recovery-restore-workspace-button";

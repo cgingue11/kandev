@@ -65,6 +65,8 @@ export function useRecoveryChoices(
     label: recoveryActionCopy(kind, t).label,
     testId: recoveryActionCopy(kind, t).testId,
     disabled: kind === "resume" && !profileExists,
+    tooltip: model.metadata?.actions?.find((action) => sessionRecoveryAction(action) === kind)
+      ?.tooltip,
     onClick: () => {
       if (kind === "fresh_start" && !profileExists) onNewSession();
       else void actions.handleRecover(kind);
@@ -145,7 +147,8 @@ function recoveryFailureCopy(
       ? t("task:failedToRestoreWorkspace")
       : t("task:failedToResumeSession");
   if (actions.branchDetails) failure = t("task:branchIsNoLongerAvailable");
-  if (actions.guardDetails && actions.recoveryError) failure = actions.recoveryError.message;
+  if (actions.guardDetails && actions.recoveryError)
+    failure = sanitizeSessionErrorDetails(actions.recoveryError.message, 240) || failure;
   return failure;
 }
 

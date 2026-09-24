@@ -240,3 +240,32 @@ metadata offers manual Resume only, retaining provider/reset guidance.
 
 The warning stays amber during recovery as well as checking/idle. Progress is
 communicated through the existing spinner/status and disabled controls only.
+
+
+## PR integration and review remediation
+
+Merged current main while preserving its launch warnings, late clarification
+answers and chat scroll handling. Moved the presentation amendments beneath
+requirement 006 so delivery-package coverage resolves every acceptance criterion;
+added the recovery strings to the newly introduced Japanese catalog.
+
+Current recovery now survives a fresh STARTING mount, including history loading,
+until a matching durable resolution. A context without an active card no longer
+suppresses transcript remediation. Explicit recovery navigation selects the failed
+session and opens its session-specific panel. Backend action ordering and sanitized
+warning text are retained; warnings are readable without hover on phones.
+The existing active-card provider remediation link is covered by regression tests.
+
+Verification: 142 focused tests across eight chat/recovery suites passed. The
+additional pre-history STARTING regression failed first, then passed with its
+28-test selector/card rerun. Type checking, full lint (with focused rerun after
+complexity extraction), localization, documentation coverage, specification and
+harness validation passed. The 13 desktop managed E2E cases passed, including
+provider-link reachability at 320px. All 15 mobile scenarios passed (14 in the suite and the corrected quota navigation
+case in its focused rerun). CodeRabbit summary-review corrections add sanitized
+guard/restore summaries, stable pending labels, hidden-owner fallback recovery,
+a deduplicated branch action and corrected Traditional Chinese copy. Their six
+focused suites passed 60 tests, including initially failing regressions. Final
+rendered reruns passed six desktop and seven mobile cases on the completed
+remediation build. Exact-head GitHub CI/reviews remain externally pending until
+the fixup completes.

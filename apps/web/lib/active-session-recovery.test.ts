@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { selectActiveSessionRecovery } from "./active-session-recovery";
+const RESOLVED_AT = "2026-09-20T11:00:00Z";
 const error = { message: "Connection lost", stamp: "current", details: "diagnostic" };
 const session = { id: "session", state: "FAILED", metadata: { last_agent_error: error } };
 const message = (stamp: string, kind?: string) => ({
@@ -70,7 +71,7 @@ it("keeps the composer usable after durable recovery or a successful later boot"
     selectActiveSessionRecovery(
       {
         ...waiting,
-        metadata: { ...session.metadata, recovery_resolved_at: "2026-09-20T11:00:00Z" },
+        metadata: { ...session.metadata, recovery_resolved_at: RESOLVED_AT },
       },
       [message("current")],
     ),
@@ -82,7 +83,7 @@ it("keeps the composer usable after durable recovery or a successful later boot"
         id: "boot",
         session_id: "session",
         type: "script_execution",
-        created_at: "2026-09-20T11:00:00Z",
+        created_at: RESOLVED_AT,
         metadata: { script_type: "agent_boot", status: "exited", exit_code: 0 },
       },
     ]),
@@ -103,4 +104,36 @@ it("uses a matching live task error before session metadata catches up", () => {
       },
     ),
   ).not.toBeNull();
+});
+
+it("reconstructs unresolved recovery on a fresh STARTING mount", () => {
+  const starting = { ...session, state: "STARTING" };
+  expect(selectActiveSessionRecovery(starting, [message("current")])?.stamp).toBe("current");
+  expect(
+    selectActiveSessionRecovery(
+      {
+        ...starting,
+        metadata: { ...session.metadata, recovery_resolved_at: RESOLVED_AT },
+      },
+      [message("current")],
+    ),
+  ).toBeNull();
+});
+
+it("retains a durable unresolved startup failure before history finishes loading", () => {
+  const starting = {
+    ...session,
+    state: "STARTING",
+    metadata: { last_agent_error: { ...error, occurred_at: "2026-09-20T10:00:00Z" } },
+  };
+  expect(selectActiveSessionRecovery(starting, [])?.stamp).toBe("current");
+  expect(
+    selectActiveSessionRecovery(
+      {
+        ...starting,
+        metadata: { ...starting.metadata, recovery_resolved_at: RESOLVED_AT },
+      },
+      [],
+    ),
+  ).toBeNull();
 });

@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { NewSessionDialog } from "@/components/task/new-session-dialog";
 import { useAppStore } from "@/components/state-provider";
 import { RecoveryActions, type RecoveryChoice } from "@/components/task/recovery-actions";
+import { sanitizeSessionErrorDetails } from "@/lib/session-error-details";
 import { SessionErrorDetails } from "@/components/task/session-error-details";
 import {
   useSessionRecoveryActions,
@@ -40,7 +41,6 @@ function useStoppedRecoveryChoices(
   const { t } = useTranslation();
 
   const {
-    busyAction,
     recoveryError,
     branchDetails,
     handleRecover,
@@ -54,10 +54,7 @@ function useStoppedRecoveryChoices(
   if (props.taskId && props.sessionId)
     choices.push({
       kind: "resume",
-      label:
-        busyAction === "resume"
-          ? (props.resumingLabel ?? t("task:resuming"))
-          : (props.resumeLabel ?? t("task:resume")),
+      label: props.resumeLabel ?? t("task:resume"),
       disabled: !profileExists,
       testId: "recovery-resume-button",
       onClick: () => {
@@ -101,7 +98,9 @@ function StoppedSessionContent(
   const completed = props.mode === "completed";
   const blocked = Boolean(guardDetails && !guardDetails.retryable);
   const choices = useStoppedRecoveryChoices(props, profileExists);
-  const failureMessage = guardDetails ? recoveryError?.message : t("task:failedToResumeSession");
+  const failureMessage = guardDetails
+    ? sanitizeSessionErrorDetails(recoveryError?.message, 240)
+    : t("task:failedToResumeSession");
   const cause = branchDetails ? t("task:branchIsNoLongerAvailable") : failureMessage;
   const Icon = completed ? IconCircleCheck : IconAlertTriangle;
   return (
@@ -119,7 +118,7 @@ function StoppedSessionContent(
                 ? t("task:sessionCompleted")
                 : (props.message ?? t("task:agentHasStopped"))}
             </p>
-            {!profileExists && (
+            {props.sessionId && !profileExists && (
               <p className="mt-1 text-xs text-muted-foreground">
                 {t("task:agentProfileNoLongerExists")}
               </p>

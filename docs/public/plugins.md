@@ -97,6 +97,13 @@ Kandev does not inspect or reorder children inside a contribution, and disabled
 plugins return to their saved position when re-enabled.
 Full-bleed routes that opt out of host topbar chrome own their Status trigger.
 
+## Use plugins on a phone
+
+Open the hamburger menu to find plugin controls together under **Plugins**.
+On a task, a plugin's task toolbar takes the place of its workspace toolbar,
+so shared status controls appear once. Workspace-only controls, sidebar actions,
+and plugin pages remain available. Desktop keeps its separate toolbar locations.
+
 ## Installing a plugin
 
 The easiest way to install is from the in-app catalog: **Settings > Plugins >
@@ -323,11 +330,12 @@ disk on its first restart after upgrading to this version.
   a failing bundle or `initialize` is caught and never breaks boot; slot
   components render behind error boundaries. Hard sandboxing (a worker or
   realm boundary) is explicit future work: see below.
-- **Isolated web apps use a separate browser boundary.** Kandev serves their
-  packaged files in a sandboxed iframe with an opaque origin. The app receives
-  only reviewed Kandev capabilities and exact HTTPS network origins. It cannot
-  use the host DOM, cookies, host authentication headers, or an injected
-  JavaScript API. See [Security and trust](security.md#isolated-web-applications).
+- **Isolated web apps use a sandboxed iframe boundary.** Kandev serves their
+  packaged files same-origin with the host and trusts the source with the
+  viewing user's ordinary browser authority, including cookies, storage, and
+  host DOM access. Kandev protocol routes still expose only the reviewed
+  capabilities and exact HTTPS network origins declared for the canvas. There
+  is no injected JavaScript API. See [Security and trust](security.md#isolated-web-applications).
 - **Package integrity is always checked; signing is optional.** See
   "Signed vs. unsigned packages" above.
 - **Curated marketplace, no auto-install.** The [Plugin

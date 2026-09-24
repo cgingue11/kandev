@@ -11,6 +11,8 @@ import {
   type ReactNode,
 } from "react";
 import { useAppStoreApi } from "@/components/state-provider";
+import { addSessionPanel } from "@/lib/state/dockview-panel-actions";
+import { markSessionTabUserActivationIntent } from "./session-tab-activation-intent";
 import { useDockviewStore } from "@/lib/state/dockview-store";
 import { useTranslation } from "react-i18next";
 import type { TaskRepository } from "@/lib/types/http";
@@ -39,16 +41,19 @@ export function TaskLaunchErrorProvider({
   children: ReactNode;
 }) {
   const store = useAppStoreApi();
+  const { t } = useTranslation();
   const focusCleanup = useRef<(() => void) | null>(null);
   useEffect(() => () => focusCleanup.current?.(), []);
   const revealSessionRecovery = useCallback(
     (sessionId: string) => {
       focusCleanup.current?.();
+      store.getState().setActiveSession(value.taskId, sessionId);
+      markSessionTabUserActivationIntent(sessionId);
       store.getState().setMobileSessionPanel(sessionId, "chat");
       const dock = useDockviewStore.getState();
       const panel = dock.api?.getPanel(`session:${sessionId}`);
       if (panel) panel.api.setActive();
-      else dock.addChatPanel();
+      else if (dock.api) addSessionPanel(dock.api, dock.centerGroupId, sessionId, t("task:chat"));
       const focus = () => {
         const owner = document.getElementById(`session-recovery-${sessionId}`);
         if (!owner || (owner.checkVisibility && !owner.checkVisibility())) return false;
@@ -66,7 +71,7 @@ export function TaskLaunchErrorProvider({
         clearTimeout(timeout);
       };
     },
-    [store],
+    [store, value.taskId, t],
   );
   const statusSummary = useTaskStatusSummary(value.taskId, value.statusSummary);
   const announcedTaskErrorRef = useRef<string | null>(null);

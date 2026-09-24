@@ -3,6 +3,7 @@
 import { useSessionComposerRecovery } from "@/components/task/chat/session-recovery-context";
 import { IconAlertTriangle } from "@tabler/icons-react";
 import { RecoveryActions, type RecoveryChoice } from "@/components/task/recovery-actions";
+import { sanitizeSessionErrorDetails } from "@/lib/session-error-details";
 import { SessionErrorDetails } from "@/components/task/session-error-details";
 import { useAppStore } from "@/components/state-provider";
 import { selectOfficeAgentProfiles } from "@/lib/state/slices/office/selectors";
@@ -128,7 +129,9 @@ function LegacyRunErrorEntry({
         {isActive && recoveryError && (
           <div data-testid="run-error-recovery-error">
             <p role="status">
-              {branchDetails || blocked ? recoveryError.message : t("task:failedToResumeSession")}
+              {branchDetails || blocked
+                ? sanitizeSessionErrorDetails(recoveryError.message, 240)
+                : t("task:failedToResumeSession")}
             </p>
             <SessionErrorDetails>{recoveryError.message}</SessionErrorDetails>
           </div>

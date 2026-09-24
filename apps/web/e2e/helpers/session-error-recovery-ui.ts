@@ -191,6 +191,10 @@ export function uniformRecoveryCases() {
           failure_kind: scenario.kind,
           provider_name: "OpenCode",
           model_id: "mock-model",
+          remediation_url:
+            scenario.kind === "provider_quota_limited"
+              ? "https://opencode.ai/workspace/demo/go"
+              : undefined,
           error_output: "Authorization: Bearer synthetic-private-value\nConnection refused",
         },
       });
@@ -212,6 +216,10 @@ export function uniformRecoveryCases() {
         await expect(testPage.getByTestId("recovery-resume-button")).toHaveCount(0);
       } else {
         await expect(card).toContainText("OpenCode");
+        await testPage.setViewportSize({ width: 320, height: 900 });
+        const providerLink = card.getByTestId("remediation-link");
+        await expect(providerLink).toHaveAttribute("href", "https://opencode.ai/workspace/demo/go");
+        await providerLink.click({ trial: true });
         await expect(card.getByTestId("recovery-resume-button")).toBeVisible();
         await expect(card.getByTestId("recovery-fresh-button")).toHaveCount(0);
         await expect(card.getByRole("button", { name: /Delete|Archive|Change model/ })).toHaveCount(

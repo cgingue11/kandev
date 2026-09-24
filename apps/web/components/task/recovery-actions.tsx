@@ -1,5 +1,6 @@
 "use client";
 
+import { useId } from "react";
 import { useTranslation } from "react-i18next";
 import {
   IconPlayerPlay,
@@ -9,6 +10,7 @@ import {
   IconGitBranch,
   IconLoader2,
 } from "@tabler/icons-react";
+import { sanitizeSessionErrorDetails } from "@/lib/session-error-details";
 import { cn } from "@kandev/ui/lib/utils";
 import { Button } from "@kandev/ui/button";
 import { controlSizingClassName } from "@kandev/ui/control-sizing";
@@ -23,6 +25,7 @@ export type RecoveryChoice = {
   onClick: () => void;
   testId?: string;
   disabled?: boolean;
+  tooltip?: string;
 };
 
 export function RecoveryActions({
@@ -39,6 +42,14 @@ export function RecoveryActions({
   busyAction?: RecoveryActionKind | null;
 }) {
   const { t } = useTranslation();
+  const warningId = useId();
+  const warnings = [
+    ...new Set(
+      actions.flatMap((action) =>
+        action.tooltip ? [sanitizeSessionErrorDetails(action.tooltip)] : [],
+      ),
+    ),
+  ].filter(Boolean);
   const primaryKind = selectPrimaryRecoveryAction(
     actions.filter((action) => !action.disabled).map((action) => action.kind),
     blocked,
@@ -60,6 +71,8 @@ export function RecoveryActions({
             type="button"
             variant="outline"
             aria-label={action.label}
+            aria-describedby={action.tooltip ? warningId : undefined}
+            title={action.tooltip ? sanitizeSessionErrorDetails(action.tooltip) : undefined}
             data-recommended={action === primary}
             disabled={busy || action.disabled}
             onClick={action.onClick}
@@ -74,6 +87,11 @@ export function RecoveryActions({
           </Button>
         ))}
       </div>
+      {warnings.length > 0 && (
+        <p id={warningId} className="mt-2 wrap-anywhere text-xs text-muted-foreground">
+          {warnings.join(" ")}
+        </p>
+      )}
       <div
         role="status"
         className={cn(

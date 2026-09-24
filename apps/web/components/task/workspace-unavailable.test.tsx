@@ -99,8 +99,12 @@ it("routes an explicitly correlated restore failure to its visible recovery owne
       <WorkspaceUnavailable restoration={restoration} onRetry={vi.fn()} />
     </>,
   );
-  expect(await screen.findByRole("link", { name: "View recovery" })).toBeTruthy();
+  expect(await screen.findByRole("link", { name: VIEW_RECOVERY })).toBeTruthy();
   expect(screen.queryByTestId(WORKSPACE_RETRY_ID)).toBeNull();
+  const owner = document.getElementById("session-recovery-owner-attempt-1")!;
+  Object.defineProperty(owner, "checkVisibility", { value: () => false });
+  fireEvent.click(screen.getByRole("link", { name: VIEW_RECOVERY }));
+  expect(screen.getByTestId(WORKSPACE_RETRY_ID)).toBeTruthy();
   rerender(
     <WorkspaceUnavailable
       restoration={{ ...restoration, attemptId: "independent-attempt" }}
@@ -123,13 +127,15 @@ it("navigates a dependent failed-session pane to Chat while preserving independe
   const { rerender } = render(
     <WorkspaceUnavailable failedSessionId="session-1" error="dependent failure" />,
   );
-  fireEvent.click(screen.getByRole("link", { name: "View recovery" }));
+  fireEvent.click(screen.getByRole("link", { name: VIEW_RECOVERY }));
   expect(revealSessionRecovery).toHaveBeenCalledWith("session-1");
   expect(screen.queryByText(DETAILS_LABEL)).toBeNull();
   rerender(<WorkspaceUnavailable failedSessionId="session-2" error="independent failure" />);
-  expect(screen.queryByRole("link", { name: "View recovery" })).toBeNull();
+  expect(screen.queryByRole("link", { name: VIEW_RECOVERY })).toBeNull();
   expect(screen.getByText(DETAILS_LABEL)).toBeTruthy();
   ownerContext.current = null;
 });
 
 const DETAILS_LABEL = "Technical details";
+
+const VIEW_RECOVERY = "View recovery";

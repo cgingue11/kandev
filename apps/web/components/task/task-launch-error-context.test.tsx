@@ -3,7 +3,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TaskStatusSummary } from "@/lib/types/task-status-summary";
 import { TaskLaunchErrorProvider, useTaskLaunchErrorContext } from "./task-launch-error-context";
 
-const navigation = vi.hoisted(() => ({ mobile: vi.fn(), activate: vi.fn(), add: vi.fn() }));
+const navigation = vi.hoisted(() => ({
+  mobile: vi.fn(),
+  activate: vi.fn(),
+  add: vi.fn(),
+  select: vi.fn(),
+  getPanel: vi.fn(() => ({ api: { setActive: vi.fn() } })),
+}));
 const { toastMock } = vi.hoisted(() => ({
   toastMock: vi.fn(),
 }));
@@ -16,12 +22,18 @@ vi.mock("@/components/toast-provider", () => ({
 }));
 vi.mock("@/lib/i18n", () => ({ t: (key: string) => key }));
 vi.mock("@/components/state-provider", () => ({
-  useAppStoreApi: () => ({ getState: () => ({ setMobileSessionPanel: navigation.mobile }) }),
+  useAppStoreApi: () => ({
+    getState: () => ({
+      setMobileSessionPanel: navigation.mobile,
+      setActiveSession: navigation.select,
+    }),
+  }),
 }));
 vi.mock("@/lib/state/dockview-store", () => ({
   useDockviewStore: {
     getState: () => ({
-      api: { getPanel: () => ({ api: { setActive: navigation.activate } }) },
+      api: { getPanel: navigation.getPanel },
+      centerGroupId: "center",
       addChatPanel: navigation.add,
     }),
   },
@@ -61,6 +73,7 @@ afterEach(() => {
 });
 
 beforeEach(() => {
+  navigation.getPanel.mockImplementation(() => ({ api: { setActive: navigation.activate } }));
   toastMock.mockReset();
   statusSummaryMock.mockReset();
   statusSummaryMock.mockImplementation(
@@ -184,4 +197,23 @@ it("opens the session Chat panel and focuses its recovery owner", () => {
   expect(document.activeElement).toBe(owner);
 });
 
+vi.mock("@/lib/state/dockview-panel-actions", () => ({
+  addSessionPanel: (...args: unknown[]) => navigation.add(...args),
+}));
+it("opens the requested failed session when its panel is closed", () => {
+  navigation.getPanel.mockReturnValueOnce(undefined as never);
+  render(
+    <TaskLaunchErrorProvider value={{ taskId: "task-1", workspaceId: WORKSPACE_ID }}>
+      <RevealRecovery />
+    </TaskLaunchErrorProvider>,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Reveal recovery" }));
+  expect(navigation.select).toHaveBeenCalledWith("task-1", "session-1");
+  expect(navigation.add).toHaveBeenCalledWith(
+    expect.anything(),
+    "center",
+    "session-1",
+    expect.any(String),
+  );
+});
 const WORKSPACE_ID = "workspace-1";

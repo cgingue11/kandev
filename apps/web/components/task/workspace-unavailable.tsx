@@ -54,7 +54,10 @@ function useWorkspaceRecoveryOwner(restoration: WorkspaceRestorationAttempt | nu
     const owner = ownerId ? document.getElementById(ownerId) : null;
     setVisibleOwner(owner && (!owner.checkVisibility || owner.checkVisibility()) ? ownerId : null);
   }, [ownerId, context]);
-  return ownerId && visibleOwner === ownerId ? ownerId : null;
+  return {
+    ownerId: ownerId && visibleOwner === ownerId ? ownerId : null,
+    invalidateOwner: () => setVisibleOwner(null),
+  };
 }
 
 export function WorkspaceUnavailable({
@@ -66,7 +69,10 @@ export function WorkspaceUnavailable({
   compact = false,
 }: WorkspaceUnavailableProps) {
   const { t } = useTranslation();
-  const { context, sessionOwner, ownerId } = useUnavailableOwner(failedSessionId, restoration);
+  const { context, sessionOwner, ownerId, invalidateOwner } = useUnavailableOwner(
+    failedSessionId,
+    restoration,
+  );
   const hasOwner = Boolean(ownerId);
 
   const isRestoring = restoration?.status === "pending";
@@ -114,7 +120,7 @@ export function WorkspaceUnavailable({
                 event.preventDefault();
                 if (sessionOwner && context?.revealSessionRecovery)
                   context.revealSessionRecovery(sessionOwner);
-                else if (ownerId) document.getElementById(ownerId)?.focus();
+                else if (ownerId) focusRecoveryOwner(ownerId, invalidateOwner);
               }}
             >
               {t("task:viewRecovery")}
@@ -143,9 +149,9 @@ function useUnavailableOwner(
     candidate.stamp
       ? candidateSession
       : null;
-  const restoreOwnerId = useWorkspaceRecoveryOwner(restoration);
+  const { ownerId: restoreOwnerId, invalidateOwner } = useWorkspaceRecoveryOwner(restoration);
   const ownerId = sessionOwner ? `session-recovery-${sessionOwner}` : restoreOwnerId;
-  return { context, sessionOwner, ownerId };
+  return { context, sessionOwner, ownerId, invalidateOwner };
 }
 
 function correlatedRestorationSession(
@@ -161,4 +167,10 @@ function correlatedRestorationSession(
       ? restoration.sessionId
       : null;
   return correlatedRestore;
+}
+
+function focusRecoveryOwner(ownerId: string, invalidateOwner: () => void) {
+  const owner = document.getElementById(ownerId);
+  if (owner && (!owner.checkVisibility || owner.checkVisibility())) owner.focus();
+  else invalidateOwner();
 }

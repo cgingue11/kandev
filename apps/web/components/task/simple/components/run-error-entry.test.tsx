@@ -108,3 +108,24 @@ it("explains a non-retryable recovery refusal without offering a bypass", async 
   expect(error.querySelector("p")?.textContent).toContain("Restart the backend");
   expect(screen.queryByTestId(RUN_RESUME_ID)).toBeNull();
 });
+
+it("redacts credential-bearing branch failures in the status line", async () => {
+  requestMock.mockRejectedValueOnce(
+    new WebSocketRequestError("Branch failed: token=run-secret-fixture", "CONFLICT", {
+      kind: "branch_unrecoverable",
+      recovery_action: "resume_new_branch",
+      original_branch: "feature/lost",
+      base_branch: "main",
+    }),
+  );
+  render(
+    <RunErrorEntry
+      taskId="task-1"
+      workspaceId="workspace-1"
+      error={runError("provider_auth_required")}
+    />,
+  );
+  fireEvent.click(screen.getByTestId(RUN_RESUME_ID));
+  await screen.findByTestId("run-error-recovery-error");
+  expect(document.body.textContent).not.toContain("run-secret-fixture");
+});

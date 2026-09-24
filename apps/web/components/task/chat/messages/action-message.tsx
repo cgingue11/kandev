@@ -75,7 +75,7 @@ function shouldShowRecoveryActions({
 export const ActionMessage = memo(function ActionMessage({ comment }: { comment: Message }) {
   const owner = useSessionComposerRecovery(comment.session_id);
   const metadata = comment.metadata as ActionMeta | undefined;
-  if (metadata?.recovery_actions && owner)
+  if (metadata?.recovery_actions && owner?.model)
     return <RecoveryHistory message={comment.content} metadata={metadata} />;
   return <ActionMessageControls comment={comment} />;
 });

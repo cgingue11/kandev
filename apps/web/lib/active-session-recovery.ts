@@ -38,7 +38,7 @@ export function selectActiveSessionRecovery(
   messages: readonly RecoveryMessage[],
   currentError?: TaskStatusSummaryActiveError | null,
 ): ActiveSessionRecovery | null {
-  if (!session || !["FAILED", "WAITING_FOR_INPUT"].includes(session.state)) return null;
+  if (!session || !["FAILED", "WAITING_FOR_INPUT", "STARTING"].includes(session.state)) return null;
   const error = currentSessionError(session, currentError);
   if (error?.scope === "task") return null;
   const stamp = error ? lastAgentErrorStamp(error) : undefined;
@@ -48,6 +48,8 @@ export function selectActiveSessionRecovery(
   const message = candidates
     .toSorted((a, b) => (a.created_at ?? "").localeCompare(b.created_at ?? ""))
     .at(-1);
+  if (session.state === "STARTING" && !hasUnresolvedFailure(session, error, message, messages))
+    return null;
   if (
     session.state === "WAITING_FOR_INPUT" &&
     !session.error_message &&
@@ -95,9 +97,11 @@ function hasUnresolvedFailure(
   message: RecoveryMessage | undefined,
   messages: readonly RecoveryMessage[],
 ) {
-  if (!error || !message) return false;
-  if (hasSessionRecoveryResolutionAfter(session.metadata, message.created_at)) return false;
-  const failedAt = Date.parse(message.created_at ?? "");
+  if (!error || (!message && session.state !== "STARTING")) return false;
+  const occurredAt = message?.created_at ?? error.occurredAt;
+  if (!occurredAt || hasSessionRecoveryResolutionAfter(session.metadata, occurredAt)) return false;
+  const failedAt = Date.parse(occurredAt);
+  if (Number.isNaN(failedAt)) return false;
   return !messages.some((candidate) => successfulBootAfter(candidate, session.id, failedAt));
 }
 
