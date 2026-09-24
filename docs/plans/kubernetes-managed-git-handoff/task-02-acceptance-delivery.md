@@ -114,7 +114,8 @@ Any blocker must identify the missing prerequisite without exposing a secret.
 
 ## Results
 
-Live acceptance completed with real Codex on Ocean in disposable namespace
+Live acceptance completed with real Codex in a disposable Kubernetes cluster,
+using namespace
 `git-handoff-o7u9z451`, using the pinned worker digest specified above.
 
 - Built backend and agentctl from base `d60274528129dc17d413357c104c9c427c4e7af9`.
