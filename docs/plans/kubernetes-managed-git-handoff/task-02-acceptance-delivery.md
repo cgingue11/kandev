@@ -1,7 +1,7 @@
 ---
 id: "02-acceptance-delivery"
 title: "Validate private Git and deliver reviewed PR"
-status: in_progress
+status: done
 wave: 2
 depends_on:
   - "01-configure-handoff"
@@ -154,8 +154,9 @@ The five initial review threads identified generated path-setting cleanup,
 legacy helper ownership, key casing and direct-test coverage; the follow-up
 fixes and regression results are recorded in task 01. CodeRabbit's docstring
 coverage warning is informational: it reports no correctness finding and is
-not a repository-required coverage gate. Current-head CI/review disposition
-remains pending; the PR is not merged or deployed.
+not a repository-required coverage gate. All five threads were replied to with
+commit-specific evidence and verified resolved after the fixup push. The PR
+remains open and is not merged or deployed.
 
 Review-fixup validation: the full five-package race command passed, as did the
 focused Configure-mode regression after adding the generated path setting.
@@ -164,3 +165,26 @@ Full backend changed-code lint passed with zero issues using
 A preceding attempt encountered missing shared Go cache export data, and the
 first retry timed out; the final warm-cache run exited successfully.
 Specification catalog validation, specification lint and whitespace checks passed.
+
+### Delivery completion
+
+- Initial head `653520d6ad8af040b1c88dd087be7e1d6fc7bb64`: 57 successful or
+  skipped checks, no failed or pending checks.
+- Review-fixup head `bfd990f9604d471e39d2f979d371f0c642ff2e99`: 59 successful
+  or skipped checks, no failed or pending checks, zero unresolved review threads,
+  and GitHub reported `MERGEABLE` / `CLEAN`. The all-terminal waiter exited 1
+  solely for base drift, not a failed check or unresolved finding.
+- Both implementation commits passed normal commit hooks without bypasses.
+  Post-commit race regressions passed after the fixup.
+- Synthetic merge `c59af61cb9c633dece6a337e808eeb7f600d6f00` combined the
+  fixup with base `5cb908e4adf53fc6bca9727dc4f3a7d534ee38fd`; focused race
+  checks across lifecycle, process, executor, agents and githubauth passed.
+  Later base/head changes require renewed merge-result validation; the PR's
+  final delivery receipt records that exact pair.
+- CodeRabbit skipped incremental review by repository configuration. Historical
+  aggregate findings were audited, and no additional actionable finding remained.
+
+These are immutable validation snapshots. The documentation-completion commit
+and any later PR head must pass their own required checks before handoff. Final
+head, base, synthetic-merge and check receipts are recorded in the PR delivery
+summary and the Kandev task plan, avoiding a self-referential commit identifier.
