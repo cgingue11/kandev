@@ -408,6 +408,7 @@ export function registerTasksHandlers(store: StoreApi<AppState>): WsHandlers {
       handleTaskUpdated(store, message);
     },
     "task.deleted": (message) => {
+      publishAgentProjectTaskEvent(message.payload);
       const deletedId = message.payload.task_id;
       const currentState = store.getState();
       currentState.cancelWorkflowSessionFocus?.({ taskId: deletedId });

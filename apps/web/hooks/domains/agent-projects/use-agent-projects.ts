@@ -199,9 +199,16 @@ export function useAgentProjectMutations() {
       await refresh(workspaceId);
       return project;
     },
-    async remove(workspaceId: string, projectId: string, deleteContext: boolean) {
-      await deleteAgentProject(workspaceId, projectId, deleteContext);
-      await refresh(workspaceId);
+    async remove(
+      workspaceId: string,
+      projectId: string,
+      deleteContext: boolean,
+      discardWorktreeChanges: boolean,
+    ) {
+      await deleteAgentProject(workspaceId, projectId, deleteContext, discardWorktreeChanges);
+      store.getState().removeAgentProject(workspaceId, projectId);
+      store.getState().removeAgentProject(workspaceId, projectId, true);
+      void refresh(workspaceId);
     },
   };
 }

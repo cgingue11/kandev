@@ -2007,11 +2007,11 @@ func TestGetWorkspaceInfoForAgentProjectUsesPrimaryRepoAndContextRoots(t *testin
 		t.Fatalf("CreateTaskSession: %v", err)
 	}
 	if err := repo.CreateTaskEnvironment(ctx, &models.TaskEnvironment{
-		ID: "env-project", TaskID: "task-123", ExecutorType: "worktree", WorkspacePath: "/tasks/project/api",
+		ID: "env-project", TaskID: "task-123", ExecutorType: "worktree", WorkspacePath: "/tasks/project/web",
 		TaskDirName: "project-task_abc", Status: models.TaskEnvironmentStatusReady,
 		Repos: []*models.TaskEnvironmentRepo{
-			{ID: "env-repo-api", TaskEnvironmentID: "env-project", RepositoryID: "repo-api", WorktreeID: "worktree-api", WorktreePath: "/tasks/project/api", Position: 0, CreatedAt: now},
-			{ID: "env-repo-web", TaskEnvironmentID: "env-project", RepositoryID: "repo-web", WorktreeID: "worktree-web", WorktreePath: "/tasks/project/web", Position: 1, CreatedAt: now},
+			{ID: "env-repo-web", TaskEnvironmentID: "env-project", RepositoryID: "repo-web", WorktreeID: "worktree-web", WorktreePath: "/tasks/project/web", Position: 0, CreatedAt: now},
+			{ID: "env-repo-api", TaskEnvironmentID: "env-project", RepositoryID: "repo-api", WorktreeID: "worktree-api", WorktreePath: "/tasks/project/api", Position: 1, CreatedAt: now},
 		},
 	}); err != nil {
 		t.Fatalf("CreateTaskEnvironment: %v", err)
@@ -2021,6 +2021,12 @@ func TestGetWorkspaceInfoForAgentProjectUsesPrimaryRepoAndContextRoots(t *testin
 			t.Fatalf("context resolver project ID = %q", projectID)
 		}
 		return "/kandev/agent-projects/project-1/context", nil
+	})
+	svc.SetAgentProjectPrimaryRepositoryIDResolver(func(_ context.Context, workspaceID, projectID string) (string, error) {
+		if workspaceID != "ws-1" || projectID != "project-1" {
+			t.Fatalf("primary repository resolver identity = (%q, %q)", workspaceID, projectID)
+		}
+		return "repo-api", nil
 	})
 
 	info, err := svc.GetWorkspaceInfoForSession(ctx, "task-123", "session-project")
@@ -2033,7 +2039,10 @@ func TestGetWorkspaceInfoForAgentProjectUsesPrimaryRepoAndContextRoots(t *testin
 	if info.ProjectWorkspace == nil || info.ProjectWorkspace.ContextPath != "/kandev/agent-projects/project-1/context" {
 		t.Fatalf("ProjectWorkspace = %#v, want canonical context root", info.ProjectWorkspace)
 	}
-	wantRoots := []string{"/tasks/project/api", "/tasks/project/web"}
+	if info.ProjectWorkspace.PrimaryRepositoryID != "repo-api" {
+		t.Fatalf("primary repository ID = %q, want repo-api", info.ProjectWorkspace.PrimaryRepositoryID)
+	}
+	wantRoots := []string{"/tasks/project/web", "/tasks/project/api"}
 	if !slices.Equal(info.ProjectWorkspace.RepositoryWorktreePaths, wantRoots) {
 		t.Fatalf("repository worktree roots = %v, want %v", info.ProjectWorkspace.RepositoryWorktreePaths, wantRoots)
 	}

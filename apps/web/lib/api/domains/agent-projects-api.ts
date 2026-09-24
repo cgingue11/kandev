@@ -123,10 +123,14 @@ export async function deleteAgentProject(
   workspaceId: string,
   projectId: string,
   deleteContext: boolean,
+  discardWorktreeChanges = false,
   options?: ApiRequestOptions,
 ): Promise<void> {
-  const query = deleteContext ? "?delete_context=true" : "";
-  return fetchJson<void>(`${projectPath(workspaceId, projectId)}${query}`, {
+  const query = new URLSearchParams();
+  if (deleteContext) query.set("delete_context", "true");
+  if (discardWorktreeChanges) query.set("discard_worktree_changes", "true");
+  const suffix = query.size ? `?${query.toString()}` : "";
+  return fetchJson<void>(`${projectPath(workspaceId, projectId)}${suffix}`, {
     ...options,
     init: { method: "DELETE", ...(options?.init ?? {}) },
   });

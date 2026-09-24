@@ -63,6 +63,50 @@ func TestContextStoreRejectsTraversalAndSymlinkComponents(t *testing.T) {
 	}
 }
 
+func TestContextStoreReadAndWriteStayWithinRootAfterDirectorySymlinkSwap(t *testing.T) {
+	storageRoot := t.TempDir()
+	store := NewContextStore(storageRoot)
+	projectID := uuid.NewString()
+	contextRoot, err := store.Provision(context.Background(), projectID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	docs := filepath.Join(contextRoot, "docs")
+	if err := os.Mkdir(docs, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(docs, "notes.md"), []byte("inside"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	external := t.TempDir()
+	if err := os.WriteFile(filepath.Join(external, "notes.md"), []byte("outside secret"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	resolved, _, err := store.resolvePath(projectID, "docs/notes.md", false)
+	if err != nil {
+		t.Fatalf("resolve before swap: %v", err)
+	}
+	if err := os.RemoveAll(docs); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(external, docs); err != nil {
+		t.Fatal(err)
+	}
+
+	if data, err := store.readResolvedFile(resolved); err == nil {
+		t.Fatalf("read after directory swap returned %q, want rejection", data)
+	} else if !errors.Is(err, ErrInvalidContextPath) {
+		t.Fatalf("read after directory swap error = %v, want ErrInvalidContextPath", err)
+	}
+	if _, err := store.writeResolvedFile(resolved, "", []byte("overwrite")); !errors.Is(err, ErrInvalidContextPath) {
+		t.Fatalf("write after directory swap error = %v, want ErrInvalidContextPath", err)
+	}
+	if got, err := os.ReadFile(filepath.Join(external, "notes.md")); err != nil || string(got) != "outside secret" {
+		t.Fatalf("external file after swap = %q, err %v", got, err)
+	}
+}
+
 func TestContextStoreListsWithoutFollowingSymlinks(t *testing.T) {
 	store := NewContextStore(filepath.Join(t.TempDir(), "agent-projects"))
 	projectID := uuid.NewString()

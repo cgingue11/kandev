@@ -105,6 +105,14 @@ func (s *Service) ContextPath(projectID string) (string, error) {
 	return s.context.ContextPath(projectID)
 }
 
+func (s *Service) PrimaryRepositoryID(ctx context.Context, workspaceID, projectID string) (string, error) {
+	project, err := s.store.Get(ctx, workspaceID, projectID)
+	if err != nil {
+		return "", err
+	}
+	return project.PrimaryRepositoryID, nil
+}
+
 func (s *Service) Create(ctx context.Context, req CreateRequest) (*ProjectView, error) {
 	if err := s.requireEnabled(); err != nil {
 		return nil, err
@@ -424,88 +432,6 @@ func (s *Service) applyWorkspaceDefaultExecutor(ctx context.Context, workspaceID
 	}
 	project.ExecutorProfileID = executorProfileID
 	return nil
-}
-
-func (s *Service) Archive(ctx context.Context, workspaceID, projectID string) (*ProjectView, error) {
-	return s.setProjectArchived(ctx, workspaceID, projectID, true)
-}
-
-func (s *Service) Restore(ctx context.Context, workspaceID, projectID string) (*ProjectView, error) {
-	return s.setProjectArchived(ctx, workspaceID, projectID, false)
-}
-
-func (s *Service) setProjectArchived(ctx context.Context, workspaceID, projectID string, archived bool) (*ProjectView, error) {
-	if err := s.requireEnabled(); err != nil {
-		return nil, err
-	}
-	if err := s.tasks.AuthorizeWorkspaceScope(ctx, workspaceID, authz.ScopeTaskWrite); err != nil {
-		return nil, err
-	}
-	if s.lifecycle == nil {
-		return nil, errors.New("project task lifecycle is unavailable")
-	}
-	project, err := s.store.Get(ctx, workspaceID, projectID)
-	if err != nil {
-		return nil, err
-	}
-	if project.MainTaskID == "" {
-		return nil, ErrCoordinatorConflict
-	}
-	if archived {
-		_, err = s.lifecycle.ArchiveAgentProjectTree(ctx, projectID, project.MainTaskID)
-	} else {
-		_, err = s.lifecycle.UnarchiveAgentProjectTree(ctx, projectID, project.MainTaskID)
-	}
-	if err != nil {
-		return nil, err
-	}
-	if err := s.store.SetArchived(ctx, workspaceID, projectID, archived); err != nil {
-		return nil, err
-	}
-	return s.Get(ctx, workspaceID, projectID)
-}
-
-func (s *Service) Delete(ctx context.Context, workspaceID, projectID string, discardWorktreeChanges, deleteContext bool) error {
-	if err := s.requireEnabled(); err != nil {
-		return err
-	}
-	if err := s.tasks.AuthorizeWorkspaceScope(ctx, workspaceID, authz.ScopeTaskWrite); err != nil {
-		return err
-	}
-	if s.lifecycle == nil {
-		return errors.New("project task lifecycle is unavailable")
-	}
-	project, err := s.store.Get(ctx, workspaceID, projectID)
-	if err != nil {
-		return err
-	}
-	if project.MainTaskID == "" {
-		return ErrCoordinatorConflict
-	}
-	running, err := s.store.HasRunningTaskSessions(ctx, projectID)
-	if err != nil {
-		return err
-	}
-	if running {
-		return ErrProjectRunning
-	}
-	if _, err := s.lifecycle.DeleteAgentProjectTree(ctx, projectID, project.MainTaskID, taskservice.DeleteTaskOptions{
-		DiscardWorktreeChanges: discardWorktreeChanges,
-	}); err != nil {
-		return err
-	}
-	if err := s.store.SetArchived(ctx, workspaceID, projectID, true); err != nil {
-		return err
-	}
-	if deleteContext {
-		if s.context == nil {
-			return ErrContextUnavailable
-		}
-		if err := s.context.RemoveProject(projectID); err != nil {
-			return fmt.Errorf("remove project context: %w", err)
-		}
-	}
-	return s.store.Delete(ctx, workspaceID, projectID)
 }
 
 func (s *Service) AuthorizeTaskCreation(ctx context.Context, req *taskservice.CreateTaskRequest) error {

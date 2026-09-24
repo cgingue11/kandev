@@ -2,7 +2,6 @@ package projects
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"os"
 	"path/filepath"
@@ -15,6 +14,7 @@ import (
 	settingsmodels "github.com/kandev/kandev/internal/agent/settings/models"
 	"github.com/kandev/kandev/internal/authz"
 	"github.com/kandev/kandev/internal/task/models"
+	taskrepo "github.com/kandev/kandev/internal/task/repository"
 	taskservice "github.com/kandev/kandev/internal/task/service"
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -23,6 +23,7 @@ type projectTaskStub struct {
 	db                *sqlx.DB
 	created           map[string]*models.Task
 	defaultExecutorID string
+	createErr         error
 }
 
 type projectWorkerChangeRequestReaderStub struct {
@@ -70,6 +71,9 @@ func (s *projectTaskStub) GetExecutor(_ context.Context, id string) (*models.Exe
 }
 
 func (s *projectTaskStub) CreateAgentProjectTask(ctx context.Context, req *taskservice.CreateTaskRequest) (taskservice.CreateTaskResult, error) {
+	if s.createErr != nil {
+		return taskservice.CreateTaskResult{}, s.createErr
+	}
 	task := &models.Task{
 		ID: uuid.NewString(), WorkspaceID: req.WorkspaceID, Title: req.Title,
 		AgentProjectID: req.AgentProjectID, AgentProjectTier: req.AgentProjectTier,
@@ -93,7 +97,7 @@ func (s *projectTaskStub) GetTask(_ context.Context, id string) (*models.Task, e
 	if task := s.created[id]; task != nil {
 		return task, nil
 	}
-	return nil, sql.ErrNoRows
+	return nil, taskrepo.ErrTaskNotFound
 }
 
 type projectProfileStub struct{ workspaceID string }
@@ -222,12 +226,21 @@ func validCreateRequest() CreateRequest {
 }
 
 type projectLifecycleStub struct {
-	archiveErr error
-	deleteErr  error
-	outcome    *taskservice.CascadeOutcome
+	archiveErr     error
+	deleteErr      error
+	outcome        *taskservice.CascadeOutcome
+	archiveStarted chan struct{}
+	archiveProceed <-chan struct{}
+	delete         func(context.Context, string, string, taskservice.DeleteTaskOptions) (*taskservice.CascadeOutcome, error)
 }
 
 func (s projectLifecycleStub) ArchiveAgentProjectTree(context.Context, string, string) (*taskservice.CascadeOutcome, error) {
+	if s.archiveStarted != nil {
+		close(s.archiveStarted)
+	}
+	if s.archiveProceed != nil {
+		<-s.archiveProceed
+	}
 	return s.outcome, s.archiveErr
 }
 
@@ -235,11 +248,20 @@ func (projectLifecycleStub) UnarchiveAgentProjectTree(context.Context, string, s
 	return &taskservice.CascadeOutcome{}, nil
 }
 
-func (s projectLifecycleStub) DeleteAgentProjectTree(context.Context, string, string, taskservice.DeleteTaskOptions) (*taskservice.CascadeOutcome, error) {
+func (s projectLifecycleStub) DeleteAgentProjectTree(ctx context.Context, projectID, rootID string, options taskservice.DeleteTaskOptions) (*taskservice.CascadeOutcome, error) {
+	if s.delete != nil {
+		return s.delete(ctx, projectID, rootID, options)
+	}
 	return s.outcome, s.deleteErr
 }
 
 func (projectLifecycleStub) SetAgentProjectActionAuthorizer(func(context.Context, string, string) error) {
+}
+
+type projectWorkerStarterStub struct{}
+
+func (projectWorkerStarterStub) StartAgentProjectWorker(context.Context, string, string, string, string) error {
+	return nil
 }
 
 func TestDeleteProjectRetainsOrRemovesContextByRequest(t *testing.T) {
@@ -342,6 +364,106 @@ func TestProjectCascadeFailureLeavesProjectVisibleAndRetryable(t *testing.T) {
 		}
 		assertProjectRemainsActive(t, svc, project)
 	})
+}
+
+func TestCreateProjectHidesIncompleteCoordinatorAndRecoversOnRetry(t *testing.T) {
+	svc, _ := projectFixture(t, true)
+	tasks := svc.tasks.(*projectTaskStub)
+	tasks.createErr = errors.New("coordinator task creation failed")
+	request := validCreateRequest()
+	if _, err := svc.Create(context.Background(), request); err == nil {
+		t.Fatal("Create succeeded despite coordinator task creation failure")
+	}
+	projects, err := svc.List(context.Background(), request.WorkspaceID, false)
+	if err != nil {
+		t.Fatalf("List after incomplete create: %v", err)
+	}
+	if len(projects) != 0 {
+		t.Fatalf("incomplete projects = %#v, want hidden from lists", projects)
+	}
+
+	tasks.createErr = nil
+	project, err := svc.Create(context.Background(), request)
+	if err != nil {
+		t.Fatalf("retry Create: %v", err)
+	}
+	if project.MainTaskID == "" {
+		t.Fatal("retry returned project without a coordinator")
+	}
+	projects, err = svc.List(context.Background(), request.WorkspaceID, false)
+	if err != nil || len(projects) != 1 || projects[0].ID != project.ID {
+		t.Fatalf("List after recovery = %#v, %v; want recovered project", projects, err)
+	}
+}
+
+func TestProjectDeletionCanRetryAfterCascadeAndContextFailure(t *testing.T) {
+	svc, db := projectFixture(t, true)
+	project, err := svc.Create(context.Background(), validCreateRequest())
+	if err != nil {
+		t.Fatal(err)
+	}
+	tasks := svc.tasks.(*projectTaskStub)
+	deleteCalls := 0
+	svc.SetTaskLifecycleCoordinator(projectLifecycleStub{delete: func(ctx context.Context, _, rootID string, _ taskservice.DeleteTaskOptions) (*taskservice.CascadeOutcome, error) {
+		deleteCalls++
+		delete(tasks.created, rootID)
+		if _, err := db.ExecContext(ctx, "DELETE FROM tasks WHERE id = ?", rootID); err != nil {
+			return nil, err
+		}
+		return &taskservice.CascadeOutcome{ArchivedTaskIDs: []string{rootID}}, nil
+	}})
+	contextStore := svc.context
+	svc.SetContextStore(nil)
+	if err := svc.Delete(context.Background(), project.WorkspaceID, project.ID, false, true); !errors.Is(err, ErrContextUnavailable) {
+		t.Fatalf("first Delete error = %v, want context unavailable", err)
+	}
+	svc.SetContextStore(contextStore)
+	if err := svc.Delete(context.Background(), project.WorkspaceID, project.ID, false, true); err != nil {
+		t.Fatalf("retry Delete: %v", err)
+	}
+	if deleteCalls != 1 {
+		t.Fatalf("task cascade calls = %d, want one after successful task deletion", deleteCalls)
+	}
+	if _, err := svc.store.Get(context.Background(), project.WorkspaceID, project.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("project after retry = %v, want deleted", err)
+	}
+}
+
+func TestProjectArchiveSerializesWorkerAdmission(t *testing.T) {
+	svc, _ := projectFixture(t, true)
+	project, err := svc.Create(context.Background(), validCreateRequest())
+	if err != nil {
+		t.Fatal(err)
+	}
+	started := make(chan struct{})
+	proceed := make(chan struct{})
+	svc.SetTaskLifecycleCoordinator(projectLifecycleStub{archiveStarted: started, archiveProceed: proceed})
+	svc.SetWorkerStarter(projectWorkerStarterStub{})
+	archiveDone := make(chan error, 1)
+	go func() {
+		_, err := svc.Archive(context.Background(), project.WorkspaceID, project.ID)
+		archiveDone <- err
+	}()
+	<-started
+	workerDone := make(chan error, 1)
+	go func() {
+		_, err := svc.CreateWorker(context.Background(), project.MainTaskID, CreateWorkerRequest{
+			Tier: "economy", Title: "Worker", Prompt: "Do the work", Repositories: []WorkerRepositoryInput{{RepositoryID: "repo-api"}},
+		})
+		workerDone <- err
+	}()
+	select {
+	case err := <-workerDone:
+		t.Fatalf("worker admission completed during archive: %v", err)
+	case <-time.After(25 * time.Millisecond):
+	}
+	close(proceed)
+	if err := <-archiveDone; err != nil {
+		t.Fatalf("Archive: %v", err)
+	}
+	if err := <-workerDone; !errors.Is(err, ErrInvalidProject) {
+		t.Fatalf("worker creation after archive = %v, want invalid project", err)
+	}
 }
 
 func assertProjectRemainsActive(t *testing.T, svc *Service, project *ProjectView) {

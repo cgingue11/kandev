@@ -247,6 +247,27 @@ describe("TaskTopBar actions menu trigger", () => {
     expect(screen.queryByTestId(TRIGGER_TEST_ID)).toBeNull();
   });
 
+  it("keeps archive and delete actions for project workers without workflow actions", () => {
+    renderTopBar(
+      <TaskTopBar
+        taskId="project-worker"
+        taskTitle={TASK_TITLE}
+        isAgentProjectTask
+        isAgentProjectWorker
+        workflowId="workflow-1"
+        workflowSteps={[{ id: "step-1", label: "In progress" } as never]}
+        actionsMenuBoardRow={NORMAL_BOARD_ROW}
+      />,
+    );
+
+    expect(screen.queryByTestId("workflow-stepper")).toBeNull();
+    openMenu();
+    expect(screen.getByRole("menuitem", { name: "Archive" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Delete" })).toBeTruthy();
+    expect(screen.queryByRole("menuitem", { name: "Move to" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "Edit" })).toBeNull();
+  });
+
   it("renders no trigger when the top bar has no subject task", () => {
     renderTopBar(<TaskTopBar taskId={null} actionsMenuBoardRow={null} />);
 

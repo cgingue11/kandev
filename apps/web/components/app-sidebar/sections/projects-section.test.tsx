@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   push: vi.fn(),
   mode: "kanban" as "kanban" | "office" | "unknown",
+  isMobile: false,
   projectsEnabled: true,
   activeProjects: [] as Array<Record<string, unknown>>,
   archivedProjects: [] as Array<Record<string, unknown>>,
@@ -21,7 +22,7 @@ const state = {
 vi.mock("@/lib/routing/client-router", () => ({ useRouter: () => mocks }));
 vi.mock("@/hooks/use-in-office", () => ({ useOfficeModeState: () => mocks.mode }));
 vi.mock("@/hooks/use-responsive-breakpoint", () => ({
-  useResponsiveBreakpoint: () => ({ isMobile: false }),
+  useResponsiveBreakpoint: () => ({ isMobile: mocks.isMobile }),
 }));
 vi.mock("@/hooks/domains/features/use-feature", () => ({
   useFeature: () => mocks.projectsEnabled,
@@ -91,6 +92,7 @@ describe("ProjectsSection", () => {
     cleanup();
     vi.clearAllMocks();
     mocks.mode = "kanban";
+    mocks.isMobile = false;
     mocks.projectsEnabled = true;
     mocks.activeProjects = [];
     mocks.archivedProjects = [];
@@ -152,5 +154,14 @@ describe("ProjectsSection", () => {
     mocks.projectsEnabled = false;
     render(<ProjectsSection collapsed={false} />);
     expect(screen.queryByText("Projects")).toBeNull();
+  });
+
+  it("keeps the mobile project create target at least 44px square", () => {
+    mocks.isMobile = true;
+    render(<ProjectsSection collapsed={false} />);
+
+    const button = screen.getByTestId("agent-project-create-open");
+    expect(button.className).toContain("h-11");
+    expect(button.className).toContain("w-11");
   });
 });

@@ -1,17 +1,18 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { createElement } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { StateProvider } from "@/components/state-provider";
+import { StateProvider, useAppStoreApi } from "@/components/state-provider";
+import { selectAgentProjects } from "@/lib/state/slices/agent-projects/selectors";
 import type { AgentProject } from "@/lib/types/http-agent-projects";
 import { publishAgentProjectTaskEvent } from "@/lib/ws/handlers/agent-project-events";
-import { useAgentProjects } from "./use-agent-projects";
+import { useAgentProjectMutations, useAgentProjects } from "./use-agent-projects";
 
-const mocks = vi.hoisted(() => ({ list: vi.fn() }));
+const mocks = vi.hoisted(() => ({ list: vi.fn(), remove: vi.fn() }));
 
 vi.mock("@/lib/api/domains/agent-projects-api", () => ({
   archiveAgentProject: vi.fn(),
   createAgentProject: vi.fn(),
-  deleteAgentProject: vi.fn(),
+  deleteAgentProject: mocks.remove,
   listAgentProjects: mocks.list,
   restoreAgentProject: vi.fn(),
   updateAgentProject: vi.fn(),
@@ -99,5 +100,29 @@ describe("useAgentProjects live worker updates", () => {
     );
     await waitFor(() => expect(result.current.projects[0]?.tasks[0]?.state).toBe("DONE"));
     expect(mocks.list).toHaveBeenCalledTimes(3);
+  });
+
+  it("removes a deleted project immediately while list refresh is pending", async () => {
+    const workspaceId = project.workspace_id;
+    mocks.remove.mockResolvedValue(undefined);
+    mocks.list.mockImplementation(() => new Promise(() => {}));
+
+    const { result } = renderHook(
+      () => ({ mutations: useAgentProjectMutations(), store: useAppStoreApi() }),
+      { wrapper: ({ children }) => createElement(StateProvider, null, children) },
+    );
+    act(() => {
+      result.current.store.getState().setAgentProjects(workspaceId, [project]);
+      result.current.store.getState().setAgentProjects(workspaceId, [project], true);
+    });
+
+    await act(async () => {
+      await result.current.mutations.remove(workspaceId, project.id, false, false);
+    });
+
+    expect(mocks.remove).toHaveBeenCalledWith(workspaceId, project.id, false, false);
+    expect(selectAgentProjects(result.current.store.getState(), workspaceId)).toEqual([]);
+    expect(selectAgentProjects(result.current.store.getState(), workspaceId, true)).toEqual([]);
+    expect(mocks.list).toHaveBeenCalledTimes(2);
   });
 });

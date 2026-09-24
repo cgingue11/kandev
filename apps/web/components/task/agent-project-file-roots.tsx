@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useFeature } from "@/hooks/domains/features/use-feature";
 import { useResponsiveBreakpoint } from "@/hooks/use-responsive-breakpoint";
@@ -16,6 +16,9 @@ export function AgentProjectFileRoots({ children }: { children: React.ReactNode 
   const [selectedRoot, setSelectedRoot] = useState<"context" | "workspace">(
     projectTask?.tier === "coordinator" ? "context" : "workspace",
   );
+  useEffect(() => {
+    setSelectedRoot(projectTask?.tier === "coordinator" ? "context" : "workspace");
+  }, [projectTask?.taskId, projectTask?.tier]);
 
   if (!enabled || !projectTask) return children;
 

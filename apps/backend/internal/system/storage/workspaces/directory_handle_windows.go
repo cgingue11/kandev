@@ -4,6 +4,8 @@ package workspaces
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -11,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"unsafe"
 
 	"golang.org/x/sys/windows"
 )
@@ -207,6 +210,10 @@ func windowsDependencyHandlesSameFile(a, b windows.Handle) (bool, error) {
 }
 
 func (h *windowsDirectoryHandle) ReadFile(name string) ([]byte, error) {
+	return h.ReadFileLimit(name, 0)
+}
+
+func (h *windowsDirectoryHandle) ReadFileLimit(name string, maxBytes int64) ([]byte, error) {
 	if h == nil || h.targetHandle == 0 {
 		return nil, errors.New("directory handle is closed")
 	}
@@ -238,9 +245,48 @@ func (h *windowsDirectoryHandle) ReadFile(name string) ([]byte, error) {
 		_ = file.Close()
 		return nil, fmt.Errorf("directory entry is not a regular file: %s", name)
 	}
-	content, readErr := io.ReadAll(file)
+	reader := io.Reader(file)
+	if maxBytes > 0 {
+		reader = io.LimitReader(file, maxBytes+1)
+	}
+	content, readErr := io.ReadAll(reader)
 	_ = file.Close()
+	if readErr == nil && maxBytes > 0 && int64(len(content)) > maxBytes {
+		return nil, fmt.Errorf("directory entry exceeds %d bytes: %s", maxBytes, name)
+	}
 	return content, readErr
+}
+
+func (h *windowsDirectoryHandle) ReadDir() ([]DirectoryEntry, error) {
+	if h == nil || h.targetHandle == 0 {
+		return nil, errors.New("directory handle is closed")
+	}
+	handle, err := duplicateWindowsDependencyHandle(h.targetHandle)
+	if err != nil {
+		return nil, fmt.Errorf("duplicate directory handle: %w", err)
+	}
+	file := os.NewFile(uintptr(handle), "worktree-directory")
+	if file == nil {
+		_ = windows.CloseHandle(handle)
+		return nil, errors.New("create directory file from handle")
+	}
+	entries, readErr := file.ReadDir(-1)
+	closeErr := file.Close()
+	if readErr != nil {
+		return nil, readErr
+	}
+	if closeErr != nil {
+		return nil, closeErr
+	}
+	result := make([]DirectoryEntry, 0, len(entries))
+	for _, entry := range entries {
+		info, infoErr := entry.Info()
+		if infoErr != nil {
+			continue
+		}
+		result = append(result, DirectoryEntry{Name: entry.Name(), Mode: info.Mode(), Size: info.Size()})
+	}
+	return result, nil
 }
 
 func (h *windowsDirectoryHandle) WriteFile(name string, data []byte, _ os.FileMode) error {
@@ -266,6 +312,111 @@ func (h *windowsDirectoryHandle) WriteFile(name string, data []byte, _ os.FileMo
 		return err
 	}
 	return file.Close()
+}
+
+func (h *windowsDirectoryHandle) CreateFile(name string, data []byte, _ os.FileMode) error {
+	if h == nil || h.targetHandle == 0 {
+		return errors.New("directory handle is closed")
+	}
+	if err := validateDirectoryEntryName(name); err != nil {
+		return err
+	}
+	handle, err := openWindowsDependencyHandleWithDisposition(
+		h.targetHandle, name, windowsDependencyWriteAccess, windows.FILE_CREATE, windows.FILE_NON_DIRECTORY_FILE,
+	)
+	if err != nil {
+		return err
+	}
+	file := os.NewFile(uintptr(handle), filepath.Join("worktree-directory", name))
+	if file == nil {
+		_ = windows.CloseHandle(handle)
+		return errors.New("create file from directory handle")
+	}
+	if _, err := file.Write(data); err != nil {
+		_ = file.Close()
+		return err
+	}
+	if err := file.Sync(); err != nil {
+		_ = file.Close()
+		return err
+	}
+	return file.Close()
+}
+
+func (h *windowsDirectoryHandle) WriteFileAtomic(name string, data []byte, _ os.FileMode) error {
+	if h == nil || h.targetHandle == 0 {
+		return errors.New("directory handle is closed")
+	}
+	if err := validateDirectoryEntryName(name); err != nil {
+		return err
+	}
+	var nonce [16]byte
+	if _, err := rand.Read(nonce[:]); err != nil {
+		return fmt.Errorf("generate temporary file name: %w", err)
+	}
+	tempName := ".context-write-" + hex.EncodeToString(nonce[:])
+	handle, err := openWindowsDependencyHandleWithDisposition(
+		h.targetHandle,
+		tempName,
+		windowsDependencyWriteAccess|windows.DELETE,
+		windows.FILE_CREATE,
+		windows.FILE_NON_DIRECTORY_FILE,
+	)
+	if err != nil {
+		return err
+	}
+	file := os.NewFile(uintptr(handle), tempName)
+	if file == nil {
+		_ = windows.CloseHandle(handle)
+		return errors.New("create temporary file from directory handle")
+	}
+	renamed := false
+	defer func() {
+		if !renamed {
+			_ = markWindowsDependencyForDelete(handle)
+		}
+		_ = file.Close()
+	}()
+	if _, err := file.Write(data); err != nil {
+		return err
+	}
+	if err := file.Sync(); err != nil {
+		return err
+	}
+	if err := renameWindowsDirectoryEntry(handle, h.targetHandle, name); err != nil {
+		return err
+	}
+	renamed = true
+	return nil
+}
+
+func renameWindowsDirectoryEntry(file, parent windows.Handle, name string) error {
+	encoded, err := windows.UTF16FromString(name)
+	if err != nil {
+		return err
+	}
+	encoded = encoded[:len(encoded)-1]
+	var info windowsFileRenameInformation
+	bufferSize := int(unsafe.Offsetof(info.FileName)) + len(encoded)*2
+	buffer := make([]byte, bufferSize)
+	infoPtr := (*windowsFileRenameInformation)(unsafe.Pointer(&buffer[0]))
+	infoPtr.ReplaceIfExists = 1
+	infoPtr.RootDirectory = parent
+	infoPtr.FileNameLength = uint32(len(encoded) * 2)
+	copy(unsafe.Slice(&infoPtr.FileName[0], len(encoded)), encoded)
+	return windows.SetFileInformationByHandle(
+		file,
+		windows.FileRenameInfo,
+		(*byte)(unsafe.Pointer(&buffer[0])),
+		uint32(len(buffer)),
+	)
+}
+
+type windowsFileRenameInformation struct {
+	ReplaceIfExists uint32
+	RootDirectory   windows.Handle
+	FileNameLength  uint32
+	FileName        [1]uint16
 }
 
 func openOrCreateWindowsDependencyDirectoryPath(path string) (windows.Handle, error) {

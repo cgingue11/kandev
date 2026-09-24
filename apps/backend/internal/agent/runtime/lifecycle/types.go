@@ -1159,6 +1159,7 @@ type WorkspaceFolderSpec struct {
 type ProjectWorkspaceAccess struct {
 	ContextPath             string
 	Tier                    string
+	PrimaryRepositoryID     string
 	RepositoryWorktreePaths []string
 }
 

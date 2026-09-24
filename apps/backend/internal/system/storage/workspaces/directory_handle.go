@@ -19,8 +19,18 @@ type DirectoryHandle interface {
 	VerifyPath(path string) error
 	IsValidWorktree() bool
 	RemoveDirectory(ctx context.Context) error
+	ReadDir() ([]DirectoryEntry, error)
 	ReadFile(name string) ([]byte, error)
+	ReadFileLimit(name string, maxBytes int64) ([]byte, error)
+	CreateFile(name string, data []byte, mode os.FileMode) error
 	WriteFile(name string, data []byte, mode os.FileMode) error
+	WriteFileAtomic(name string, data []byte, mode os.FileMode) error
+}
+
+type DirectoryEntry struct {
+	Name string
+	Mode os.FileMode
+	Size int64
 }
 
 // WriteOwnershipMarkerNoFollow writes an ownership marker through an already

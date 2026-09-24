@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -14,6 +13,7 @@ import (
 	"sync"
 
 	"github.com/google/uuid"
+	storageworkspaces "github.com/kandev/kandev/internal/system/storage/workspaces"
 	"github.com/kandev/kandev/internal/worktree"
 )
 
@@ -59,34 +59,24 @@ func (s *ContextStore) Provision(_ context.Context, projectID string) (string, e
 	if err != nil {
 		return "", err
 	}
-	if err := mkdirNoFollow(root); err != nil {
-		return "", fmt.Errorf("create project context: %w", err)
+	storageRoot, err := filepath.Abs(s.root)
+	if err != nil {
+		return "", fmt.Errorf("resolve project context storage root: %w", err)
 	}
-	notes := filepath.Join(root, "notes.md")
-	info, err := os.Lstat(notes)
+	contextDir, err := storageworkspaces.CreateDirectoryNoFollow(filepath.Dir(storageRoot), root, 0o700)
+	if err != nil {
+		return "", fmt.Errorf("open project context: %w", err)
+	}
+	defer func() { _ = contextDir.Close() }()
+	_, err = contextDir.ReadFile("notes.md")
 	if err == nil {
-		if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
-			return "", fmt.Errorf("%w: notes.md is not a regular file", ErrInvalidContextPath)
-		}
 		return root, nil
 	}
 	if !errors.Is(err, os.ErrNotExist) {
 		return "", fmt.Errorf("inspect initial project notes: %w", err)
 	}
-	file, err := os.OpenFile(notes, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
-	if err != nil {
-		if errors.Is(err, os.ErrExist) {
-			return root, nil
-		}
+	if err := contextDir.CreateFile("notes.md", []byte("# Project notes\n"), 0o600); err != nil && !errors.Is(err, os.ErrExist) {
 		return "", fmt.Errorf("create initial project notes: %w", err)
-	}
-	if _, err := file.WriteString("# Project notes\n"); err != nil {
-		_ = file.Close()
-		_ = os.Remove(notes)
-		return "", fmt.Errorf("write initial project notes: %w", err)
-	}
-	if err := file.Close(); err != nil {
-		return "", fmt.Errorf("close initial project notes: %w", err)
 	}
 	return root, nil
 }
@@ -96,8 +86,12 @@ func (s *ContextStore) EnsureTaskLink(taskRoot, projectID, taskID, taskDirName s
 	if err != nil {
 		return err
 	}
-	if _, err := os.Stat(target); err != nil {
+	contextDir, err := s.openContextDirectory(target, false)
+	if err != nil {
 		return fmt.Errorf("project context is unavailable: %w", err)
+	}
+	if err := contextDir.Close(); err != nil {
+		return fmt.Errorf("close project context directory: %w", err)
 	}
 	_, err = worktree.EnsureOwnedDirectoryLink(taskRoot, "context", target,
 		worktree.OwnedDirectoryLinkOwner{TaskID: taskID, TaskDirName: taskDirName})
@@ -113,20 +107,15 @@ func (s *ContextStore) RemoveProject(projectID string) error {
 	if err != nil {
 		return err
 	}
-	if err := rejectSymlinkAncestors(filepath.Dir(path)); err != nil {
-		return err
-	}
-	info, err := os.Lstat(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil
-	}
+	root, err := filepath.Abs(s.root)
 	if err != nil {
-		return fmt.Errorf("inspect project context for removal: %w", err)
+		return fmt.Errorf("resolve project context storage root: %w", err)
 	}
-	if !info.IsDir() || worktree.IsDirectoryLink(path) {
-		return fmt.Errorf("%w: project context root is not a real directory", ErrInvalidContextPath)
+	target, err := filepath.Rel(root, path)
+	if err != nil || target == "." || filepath.IsAbs(target) || strings.HasPrefix(target, ".."+string(filepath.Separator)) {
+		return ErrInvalidContextPath
 	}
-	if err := os.RemoveAll(path); err != nil {
+	if err := storageworkspaces.RemoveDirectoryNoFollow(context.Background(), root, path); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("remove project context: %w", err)
 	}
 	return nil
@@ -137,7 +126,15 @@ func (s *ContextStore) List(projectID, relative string) ([]ContextEntry, error) 
 	if err != nil {
 		return nil, err
 	}
-	entries, err := os.ReadDir(directory)
+	contextDir, err := s.openContextDirectory(directory, false)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, ErrContextNotFound
+		}
+		return nil, fmt.Errorf("open project context directory: %w", err)
+	}
+	defer func() { _ = contextDir.Close() }()
+	entries, err := contextDir.ReadDir()
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, ErrContextNotFound
 	}
@@ -146,19 +143,18 @@ func (s *ContextStore) List(projectID, relative string) ([]ContextEntry, error) 
 	}
 	result := make([]ContextEntry, 0, len(entries))
 	for _, entry := range entries {
-		info, err := entry.Info()
-		if err != nil || info.Mode()&os.ModeSymlink != 0 || (!info.IsDir() && !info.Mode().IsRegular()) {
+		if entry.Mode&os.ModeSymlink != 0 || (!entry.Mode.IsDir() && !entry.Mode.IsRegular()) {
 			continue
 		}
-		entryPath := entry.Name()
+		entryPath := entry.Name
 		if clean != "" {
 			entryPath = filepath.ToSlash(filepath.Join(clean, entryPath))
 		}
 		kind := "file"
-		if info.IsDir() {
+		if entry.Mode.IsDir() {
 			kind = "directory"
 		}
-		result = append(result, ContextEntry{Name: entry.Name(), Path: entryPath, Kind: kind, Size: info.Size()})
+		result = append(result, ContextEntry{Name: entry.Name, Path: entryPath, Kind: kind, Size: entry.Size})
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i].Name < result[j].Name })
 	return result, nil
@@ -169,7 +165,7 @@ func (s *ContextStore) ReadFile(projectID, relative string) (string, string, err
 	if err != nil {
 		return "", "", err
 	}
-	data, err := readRegularFile(path)
+	data, err := s.readResolvedFile(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return "", "", ErrContextNotFound
 	}
@@ -189,15 +185,27 @@ func (s *ContextStore) WriteFile(projectID, relative, expectedHash string, conte
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
-	if err := checkContextWriteVersion(path, expectedHash); err != nil {
-		return "", err
-	}
-	return writeContextFileAtomically(path, content)
+	return s.writeResolvedFile(path, expectedHash, content)
 }
 
-func checkContextWriteVersion(path, expectedHash string) error {
-	current, readErr := readRegularFile(path)
+func (s *ContextStore) writeResolvedFile(path, expectedHash string, content []byte) (string, error) {
+	contextDir, err := s.openContextParent(path, true)
+	if err != nil {
+		return "", fmt.Errorf("open project context directory: %w", err)
+	}
+	defer func() { _ = contextDir.Close() }()
+	name := filepath.Base(path)
+	if err := checkContextWriteVersion(contextDir, name, expectedHash); err != nil {
+		return "", err
+	}
+	if err := contextDir.WriteFileAtomic(name, content, 0o600); err != nil {
+		return "", fmt.Errorf("commit project context write: %w", err)
+	}
+	return contentHash(content), nil
+}
+
+func checkContextWriteVersion(directory storageworkspaces.DirectoryHandle, name, expectedHash string) error {
+	current, readErr := readContextFile(directory, name)
 	switch {
 	case errors.Is(readErr, os.ErrNotExist):
 		if expectedHash != "" {
@@ -209,46 +217,6 @@ func checkContextWriteVersion(path, expectedHash string) error {
 		return ErrContextConflict
 	}
 	return nil
-}
-
-func writeContextFileAtomically(path string, content []byte) (string, error) {
-	if err := rejectSymlinkAncestors(filepath.Dir(path)); err != nil {
-		return "", err
-	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return "", fmt.Errorf("create project context directory: %w", err)
-	}
-	if err := rejectSymlinkAncestors(filepath.Dir(path)); err != nil {
-		return "", err
-	}
-	file, err := os.CreateTemp(filepath.Dir(path), ".context-write-*")
-	if err != nil {
-		return "", fmt.Errorf("create project context temporary file: %w", err)
-	}
-	temp := file.Name()
-	defer func() { _ = os.Remove(temp) }()
-	if err := file.Chmod(0o600); err != nil {
-		_ = file.Close()
-		return "", err
-	}
-	if _, err := file.Write(content); err != nil {
-		_ = file.Close()
-		return "", fmt.Errorf("write project context: %w", err)
-	}
-	if err := file.Sync(); err != nil {
-		_ = file.Close()
-		return "", fmt.Errorf("sync project context: %w", err)
-	}
-	if err := file.Close(); err != nil {
-		return "", fmt.Errorf("close project context: %w", err)
-	}
-	if err := recheckRegularOrMissing(path); err != nil {
-		return "", err
-	}
-	if err := os.Rename(temp, path); err != nil {
-		return "", fmt.Errorf("commit project context write: %w", err)
-	}
-	return contentHash(content), nil
 }
 
 func (s *ContextStore) resolvePath(projectID, relative string, directory bool) (string, string, error) {
@@ -268,6 +236,58 @@ func (s *ContextStore) resolvePath(projectID, relative string, directory bool) (
 		return "", "", err
 	}
 	return path, clean, nil
+}
+
+func (s *ContextStore) readResolvedFile(path string) ([]byte, error) {
+	directory, err := s.openContextParent(path, false)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = directory.Close() }()
+	return readContextFile(directory, filepath.Base(path))
+}
+
+func readContextFile(directory storageworkspaces.DirectoryHandle, name string) ([]byte, error) {
+	data, err := directory.ReadFileLimit(name, maxContextFileBytes)
+	if err == nil || errors.Is(err, os.ErrNotExist) {
+		return data, err
+	}
+	if errors.Is(err, ErrInvalidContextPath) {
+		return nil, err
+	}
+	return nil, fmt.Errorf("%w: %v", ErrInvalidContextPath, err)
+}
+
+func (s *ContextStore) openContextDirectory(path string, create bool) (storageworkspaces.DirectoryHandle, error) {
+	root, err := filepath.Abs(s.root)
+	if err != nil {
+		return nil, fmt.Errorf("resolve project context storage root: %w", err)
+	}
+	target, err := filepath.Abs(path)
+	if err != nil {
+		return nil, fmt.Errorf("resolve project context directory: %w", err)
+	}
+	relative, err := filepath.Rel(root, target)
+	if err != nil || relative == "." || filepath.IsAbs(relative) || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+		return nil, ErrInvalidContextPath
+	}
+	var handle storageworkspaces.DirectoryHandle
+	if create {
+		handle, err = storageworkspaces.CreateDirectoryNoFollow(root, target, 0o700)
+	} else {
+		handle, err = storageworkspaces.OpenDirectoryNoFollow(root, target)
+	}
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, err
+		}
+		return nil, fmt.Errorf("%w: %v", ErrInvalidContextPath, err)
+	}
+	return handle, nil
+}
+
+func (s *ContextStore) openContextParent(path string, create bool) (storageworkspaces.DirectoryHandle, error) {
+	return s.openContextDirectory(filepath.Dir(path), create)
 }
 
 func cleanContextRelativePath(relative string, allowRoot bool) (string, error) {
@@ -357,76 +377,6 @@ func rejectSymlinkAncestors(path string) error {
 		if info.Mode()&os.ModeSymlink != 0 || worktree.IsDirectoryLink(current) {
 			return ErrInvalidContextPath
 		}
-	}
-	return nil
-}
-
-func mkdirNoFollow(path string) error {
-	absolute, err := filepath.Abs(path)
-	if err != nil {
-		return err
-	}
-	volume := filepath.VolumeName(absolute)
-	current := volume + string(filepath.Separator)
-	rel := strings.TrimPrefix(absolute, current)
-	for _, part := range strings.Split(rel, string(filepath.Separator)) {
-		if part == "" {
-			continue
-		}
-		current = filepath.Join(current, part)
-		info, err := os.Lstat(current)
-		if errors.Is(err, os.ErrNotExist) {
-			if err := os.Mkdir(current, 0o700); err != nil && !errors.Is(err, os.ErrExist) {
-				return err
-			}
-			info, err = os.Lstat(current)
-		}
-		if err != nil {
-			return err
-		}
-		if !info.IsDir() || worktree.IsDirectoryLink(current) {
-			return ErrInvalidContextPath
-		}
-	}
-	return nil
-}
-
-func readRegularFile(path string) ([]byte, error) {
-	info, err := os.Lstat(path)
-	if err != nil {
-		return nil, err
-	}
-	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
-		return nil, ErrInvalidContextPath
-	}
-	file, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	data, readErr := io.ReadAll(io.LimitReader(file, maxContextFileBytes+1))
-	closeErr := file.Close()
-	if readErr != nil {
-		return nil, readErr
-	}
-	if closeErr != nil {
-		return nil, closeErr
-	}
-	if len(data) > maxContextFileBytes {
-		return nil, fmt.Errorf("%w: file exceeds %d bytes", ErrInvalidContextPath, maxContextFileBytes)
-	}
-	return data, nil
-}
-
-func recheckRegularOrMissing(path string) error {
-	info, err := os.Lstat(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
-		return ErrInvalidContextPath
 	}
 	return nil
 }

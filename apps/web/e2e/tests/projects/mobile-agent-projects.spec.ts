@@ -138,7 +138,7 @@ test("phone navigation manages Agent Projects and opens shared context in coordi
       });
     }
     await prCapture.screenshot("agent-project-mobile-worker-row", {
-      caption: "Phone project navigation with a completed worker",
+      caption: "Phone project navigation with a coordinator-created worker",
     });
     await testPage.reload();
     await coordinator.waitForLoad();
@@ -221,10 +221,21 @@ test("phone navigation manages Agent Projects and opens shared context in coordi
     await testPage.getByRole("menuitem", { name: "Delete project" }).tap();
     const confirmation = testPage.getByTestId("agent-project-delete-confirmation");
     await expect(confirmation).toBeVisible();
-    await confirmation.getByRole("checkbox").check();
+    await confirmation.getByRole("checkbox", { name: "Also delete shared context" }).check();
+    await confirmation
+      .getByRole("checkbox", { name: /Permanently discard tracked and untracked changes/ })
+      .check();
+    const deleteResponsePromise = testPage.waitForResponse(
+      (response) =>
+        response.url().includes(`/agent-projects/${projectId}?`) &&
+        response.request().method() === "DELETE",
+      { timeout: 120_000 },
+    );
     await confirmation.getByTestId("agent-project-delete-confirm").tap();
+    const deleteResponse = await deleteResponsePromise;
+    expect(deleteResponse.status()).toBe(204);
     await expect(testPage.getByTestId("agent-project-delete-confirmation")).toBeHidden({
-      timeout: 30_000,
+      timeout: 120_000,
     });
     await expect
       .poll(async () => (await listProjects(apiClient, seedData.workspaceId)).projects.length, {

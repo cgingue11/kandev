@@ -59,7 +59,15 @@ type AgentProjectRowProps = {
 
 type Navigate = (path: string) => void;
 
-function ProjectsHeaderAction({ onAdd, testId }: { onAdd: () => void; testId?: string }) {
+function ProjectsHeaderAction({
+  onAdd,
+  testId,
+  mobile = false,
+}: {
+  onAdd: () => void;
+  testId?: string;
+  mobile?: boolean;
+}) {
   const { t } = useTranslation();
   return (
     <Tooltip>
@@ -67,7 +75,7 @@ function ProjectsHeaderAction({ onAdd, testId }: { onAdd: () => void; testId?: s
         <Button
           variant="ghost"
           size="icon"
-          className="h-5 w-5 cursor-pointer"
+          className={cn("h-5 w-5 cursor-pointer", mobile && "h-11 w-11")}
           aria-label={t("sidebar:addProject")}
           onClick={onAdd}
           data-testid={testId}
@@ -258,6 +266,7 @@ function AgentProjectRow({
 function OfficeProjectsSection({ collapsed, onNavigate }: ProjectsSectionProps) {
   const { t } = useTranslation();
   const router = useRouter();
+  const { isMobile } = useResponsiveBreakpoint();
   const projects = useAppStore(selectOfficeProjects).filter(
     (project) => project.status !== "archived",
   );
@@ -265,7 +274,9 @@ function OfficeProjectsSection({ collapsed, onNavigate }: ProjectsSectionProps) 
     router.push(path);
     onNavigate?.();
   };
-  const headerAction = <ProjectsHeaderAction onAdd={() => navigate("/office/projects")} />;
+  const headerAction = (
+    <ProjectsHeaderAction onAdd={() => navigate("/office/projects")} mobile={isMobile} />
+  );
   return (
     <AppSidebarSection
       id={APP_SIDEBAR_SECTION_IDS.projects}
@@ -506,7 +517,11 @@ function AgentProjectsSection({ collapsed, onNavigate }: ProjectsSectionProps) {
   const setProjectAction = (project: AgentProject, action: "archive" | "delete") =>
     setActionTarget({ project, action });
   const headerAction = (
-    <ProjectsHeaderAction onAdd={() => setCreateOpen(true)} testId="agent-project-create-open" />
+    <ProjectsHeaderAction
+      onAdd={() => setCreateOpen(true)}
+      testId="agent-project-create-open"
+      mobile={isMobile}
+    />
   );
   const openTask = (taskId: string) => navigate(linkToTask(taskId));
 

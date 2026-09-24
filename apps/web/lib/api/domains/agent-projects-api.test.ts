@@ -100,10 +100,10 @@ describe("agent projects API", () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await deleteAgentProject("ws-1", "project-1", true, { baseUrl: API_BASE_URL });
+    await deleteAgentProject("ws-1", "project-1", true, true, { baseUrl: API_BASE_URL });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      `${API_BASE_URL}/api/v1/workspaces/ws-1/agent-projects/project-1?delete_context=true`,
+      `${API_BASE_URL}/api/v1/workspaces/ws-1/agent-projects/project-1?delete_context=true&discard_worktree_changes=true`,
       expect.objectContaining({ method: "DELETE" }),
     );
   });

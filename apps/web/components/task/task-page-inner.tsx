@@ -141,6 +141,9 @@ function buildTaskTopBarProps(params: {
     workflowId: taskProps.workflowId,
     taskState: params.task?.state ?? null,
     isAgentProjectTask: Boolean(params.task?.agent_project_id),
+    isAgentProjectWorker: Boolean(
+      params.task?.agent_project_id && params.task.agent_project_tier !== "coordinator",
+    ),
     workspaceId: taskProps.workspaceId,
     projectId: taskProps.projectId,
     issueUrl: taskProps.issueUrl,
@@ -446,6 +449,7 @@ export function TaskPageInner(props: TaskPageInnerProps) {
                   value={
                     task.agent_project_id && task.agent_project_tier
                       ? {
+                          taskId: task.id,
                           projectId: task.agent_project_id,
                           workspaceId: task.workspace_id,
                           tier: task.agent_project_tier,

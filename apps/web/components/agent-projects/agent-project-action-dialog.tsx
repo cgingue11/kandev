@@ -90,24 +90,42 @@ function AgentProjectActionBody({
   action,
   deleteContext,
   setDeleteContext,
+  discardWorktreeChanges,
+  setDiscardWorktreeChanges,
   error,
 }: {
   action: ProjectAction;
   deleteContext: boolean;
   setDeleteContext: (value: boolean) => void;
+  discardWorktreeChanges: boolean;
+  setDiscardWorktreeChanges: (value: boolean) => void;
   error: string | null;
 }) {
   const { t } = useTranslation();
   return (
     <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-3">
       {action === "delete" && (
-        <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm">
-          <Checkbox
-            checked={deleteContext}
-            onCheckedChange={(checked) => setDeleteContext(checked === true)}
-          />
-          {t("projects:deleteContext")}
-        </label>
+        <>
+          <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm">
+            <Checkbox
+              checked={deleteContext}
+              onCheckedChange={(checked) => setDeleteContext(checked === true)}
+            />
+            {t("projects:deleteContext")}
+          </label>
+          <label className="flex min-h-11 cursor-pointer items-start gap-2 text-sm">
+            <Checkbox
+              checked={discardWorktreeChanges}
+              onCheckedChange={(checked) => setDiscardWorktreeChanges(checked === true)}
+            />
+            <span>
+              <span className="block font-medium">{t("task:discardWorktreeChanges")}</span>
+              <span className="block text-xs text-muted-foreground">
+                {t("task:discardWorktreeChangesDescription")}
+              </span>
+            </span>
+          </label>
+        </>
       )}
       {error && (
         <p role="alert" className="text-sm text-destructive">
@@ -177,11 +195,13 @@ export function AgentProjectActionDialog({
   const { isMobile } = useResponsiveBreakpoint();
   const mutations = useAgentProjectMutations();
   const [deleteContext, setDeleteContext] = useState(false);
+  const [discardWorktreeChanges, setDiscardWorktreeChanges] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
     if (open) {
       setDeleteContext(false);
+      setDiscardWorktreeChanges(false);
       setError(null);
     }
   }, [open, project?.id, action]);
@@ -192,7 +212,7 @@ export function AgentProjectActionDialog({
     setError(null);
     try {
       if (action === "archive") await mutations.archive(workspaceId, project.id);
-      else await mutations.remove(workspaceId, project.id, deleteContext);
+      else await mutations.remove(workspaceId, project.id, deleteContext, discardWorktreeChanges);
       onOpenChange(false);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
@@ -220,6 +240,8 @@ export function AgentProjectActionDialog({
         action={action}
         deleteContext={deleteContext}
         setDeleteContext={setDeleteContext}
+        discardWorktreeChanges={discardWorktreeChanges}
+        setDiscardWorktreeChanges={setDiscardWorktreeChanges}
         error={error}
       />
       {isMobile ? (

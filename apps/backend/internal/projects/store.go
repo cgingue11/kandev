@@ -87,7 +87,7 @@ func (s *Store) List(ctx context.Context, workspaceID string, archived bool) ([]
 	if archived {
 		archiveFilter = `archived_at IS NOT NULL`
 	}
-	rows, err := s.db.QueryxContext(ctx, s.db.Rebind(projectSelect+` WHERE workspace_id = ? AND `+archiveFilter+` ORDER BY updated_at DESC, id`), workspaceID)
+	rows, err := s.db.QueryxContext(ctx, s.db.Rebind(projectSelect+` WHERE workspace_id = ? AND `+archiveFilter+` AND main_task_id <> '' ORDER BY updated_at DESC, id`), workspaceID)
 	if err != nil {
 		return nil, fmt.Errorf("list agent projects: %w", err)
 	}

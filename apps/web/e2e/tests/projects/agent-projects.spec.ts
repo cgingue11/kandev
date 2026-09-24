@@ -147,7 +147,7 @@ test("desktop users create a project, start a coordinator worker, share context,
     await expect(workerRow).toBeVisible();
     await expect(workerRow.getByText(completedWorker!.state, { exact: true })).toBeVisible();
     await prCapture.screenshot("agent-project-desktop-worker-row", {
-      caption: "Project sidebar with a completed worker",
+      caption: "Project sidebar with a coordinator-created worker",
     });
     await workerRow.click();
     await expect(testPage).toHaveURL(new RegExp(`/t/${worker!.id}$`));
@@ -200,10 +200,21 @@ test("desktop users create a project, start a coordinator worker, share context,
     await activeRow.getByRole("button", { name: `Actions for ${projectName}` }).click();
     await testPage.getByRole("menuitem", { name: "Delete project" }).click();
     const confirmation = testPage.getByTestId("agent-project-delete-confirmation");
-    await confirmation.getByRole("checkbox").check();
+    await confirmation.getByRole("checkbox", { name: "Also delete shared context" }).check();
+    await confirmation
+      .getByRole("checkbox", { name: /Permanently discard tracked and untracked changes/ })
+      .check();
+    const deleteResponsePromise = testPage.waitForResponse(
+      (response) =>
+        response.url().includes(`/agent-projects/${projectId}?`) &&
+        response.request().method() === "DELETE",
+      { timeout: 120_000 },
+    );
     await confirmation.getByTestId("agent-project-delete-confirm").click();
+    const deleteResponse = await deleteResponsePromise;
+    expect(deleteResponse.status()).toBe(204);
     await expect(testPage.getByTestId("agent-project-delete-confirmation")).toBeHidden({
-      timeout: 30_000,
+      timeout: 120_000,
     });
     await expect
       .poll(async () => (await listProjects(apiClient, seedData.workspaceId)).projects.length, {

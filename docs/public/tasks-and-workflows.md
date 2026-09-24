@@ -150,7 +150,7 @@ Expand the project row to open its worker tasks. Each worker has its own reposit
 
 The coordinator's **Files** panel starts at **Context**. Select **Workspace** to browse repository files. A worker's Files panel starts at its workspace and also gives access to project context. Context files are shared by project tasks and do not appear in **Changes**.
 
-Use the project menu to archive or delete a project. Archive keeps project context and lets you restore the project. Delete removes its coordinator and worker tasks. The delete confirmation lets you keep or remove shared context files.
+The project menu lets you archive or delete a project. Archive keeps shared context and lets you restore the project. Delete removes its coordinator and worker tasks. You can keep or remove shared context files. If a task worktree has local changes, select **Permanently discard tracked and untracked changes** to continue.
 
 Project context lives on the Kandev host under `<home>/agent-projects/`. Database backups do not include these files. Copy this directory separately when you back up Kandev.
 

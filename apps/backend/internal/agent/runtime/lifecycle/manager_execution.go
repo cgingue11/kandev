@@ -1227,6 +1227,7 @@ func (m *Manager) reconcileWorkspaceWorktrees(ctx context.Context, taskID string
 	}
 	if info.ProjectWorkspace != nil {
 		info.ProjectWorkspace.RepositoryWorktreePaths = nil
+		info.WorkspacePath = ""
 	}
 	for index := range info.WorkspaceRepositories {
 		repository := &info.WorkspaceRepositories[index]
@@ -1251,13 +1252,24 @@ func (m *Manager) reconcileWorkspaceWorktrees(ctx context.Context, taskID string
 		}
 		repository.WorktreePath = created.Path
 		if info.ProjectWorkspace != nil {
-			info.ProjectWorkspace.RepositoryWorktreePaths = append(info.ProjectWorkspace.RepositoryWorktreePaths, created.Path)
-			if index == 0 {
-				info.WorkspacePath = created.Path
-			}
+			recordRecoveredProjectWorkspaceRepository(info, repository.RepositoryID, created.Path, index)
 		}
 	}
+	if info.ProjectWorkspace != nil && info.ProjectWorkspace.PrimaryRepositoryID != "" && info.WorkspacePath == "" {
+		return fmt.Errorf("primary project repository %q has no recovered worktree", info.ProjectWorkspace.PrimaryRepositoryID)
+	}
 	return nil
+}
+
+func recordRecoveredProjectWorkspaceRepository(info *WorkspaceInfo, repositoryID, path string, index int) {
+	if info == nil || info.ProjectWorkspace == nil || path == "" {
+		return
+	}
+	info.ProjectWorkspace.RepositoryWorktreePaths = append(info.ProjectWorkspace.RepositoryWorktreePaths, path)
+	if info.ProjectWorkspace.PrimaryRepositoryID == repositoryID ||
+		info.ProjectWorkspace.PrimaryRepositoryID == "" && index == 0 {
+		info.WorkspacePath = path
+	}
 }
 
 // admitWorkspaceRecovery gates lifecycle workspace reconciliation with the

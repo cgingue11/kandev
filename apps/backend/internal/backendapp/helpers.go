@@ -1317,6 +1317,7 @@ func registerTaskRoutes(p routeParams, planService *taskservice.PlanService, han
 	projectService.SetContextStore(agentprojects.NewContextStore(filepath.Join(p.homeDir, "agent-projects")))
 	projectService.SetTaskLifecycleCoordinator(handoffSvc)
 	p.taskSvc.SetAgentProjectContextPathResolver(projectService.ContextPath)
+	p.taskSvc.SetAgentProjectPrimaryRepositoryIDResolver(projectService.PrimaryRepositoryID)
 	if p.orchestratorSvc != nil {
 		p.orchestratorSvc.SetAgentProjectsEnabled(p.features.AgentProjects)
 		p.orchestratorSvc.SetAgentProjectLaunchResolver(projectService.ResolveTaskLaunch)

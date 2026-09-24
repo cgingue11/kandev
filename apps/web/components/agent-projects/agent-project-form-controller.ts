@@ -1,5 +1,5 @@
 import type { FormEvent } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useAgentProjectMutations } from "@/hooks/domains/agent-projects/use-agent-projects";
 import { generateUUID } from "@/lib/utils";
 import type { AgentProject } from "@/lib/types/http-agent-projects";
@@ -30,13 +30,21 @@ function isProjectFormReady(
   );
 }
 
-async function persistProjectDraft(
-  mutations: ReturnType<typeof useAgentProjectMutations>,
-  workspaceId: string,
-  project: AgentProject | undefined,
-  draft: ProjectDraft,
-  applyDefaultExecutor: boolean,
-) {
+async function persistProjectDraft({
+  mutations,
+  workspaceId,
+  project,
+  draft,
+  applyDefaultExecutor,
+  requestKey,
+}: {
+  mutations: ReturnType<typeof useAgentProjectMutations>;
+  workspaceId: string;
+  project: AgentProject | undefined;
+  draft: ProjectDraft;
+  applyDefaultExecutor: boolean;
+  requestKey: string;
+}) {
   const payload = {
     name: draft.name.trim(),
     repositoryIds: draft.repositoryIds,
@@ -53,7 +61,7 @@ async function persistProjectDraft(
     });
     return;
   }
-  await mutations.create(workspaceId, { ...payload, requestKey: generateUUID() });
+  await mutations.create(workspaceId, { ...payload, requestKey });
 }
 
 export function useAgentProjectFormController(
@@ -68,9 +76,14 @@ export function useAgentProjectFormController(
   const [applyDefaultExecutor, setApplyDefaultExecutor] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const createRequestKey = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      createRequestKey.current = null;
+      return;
+    }
+    createRequestKey.current = project ? null : (createRequestKey.current ?? generateUUID());
     setDraft(draftFor(project));
     setApplyDefaultExecutor(false);
     setError(null);
@@ -97,7 +110,15 @@ export function useAgentProjectFormController(
     setSaving(true);
     setError(null);
     try {
-      await persistProjectDraft(mutations, workspaceId, project, draft, applyDefaultExecutor);
+      const requestKey = (createRequestKey.current ??= generateUUID());
+      await persistProjectDraft({
+        mutations,
+        workspaceId,
+        project,
+        draft,
+        applyDefaultExecutor,
+        requestKey,
+      });
       onOpenChange(false);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));

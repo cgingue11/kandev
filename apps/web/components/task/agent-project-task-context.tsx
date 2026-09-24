@@ -3,6 +3,7 @@
 import { createContext, useContext } from "react";
 
 export type AgentProjectTaskContextValue = {
+  taskId: string;
   workspaceId: string;
   projectId: string;
   tier: "coordinator" | "economy" | "frontier";

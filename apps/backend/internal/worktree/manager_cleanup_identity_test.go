@@ -9,6 +9,7 @@ import (
 	"sync"
 	"testing"
 
+	storageworkspaces "github.com/kandev/kandev/internal/system/storage/workspaces"
 	"github.com/kandev/kandev/internal/task/models"
 )
 
@@ -69,7 +70,23 @@ func (h *postRemovalSwapDirectoryHandle) ReadFile(string) ([]byte, error) {
 	return nil, os.ErrNotExist
 }
 
+func (h *postRemovalSwapDirectoryHandle) ReadFileLimit(string, int64) ([]byte, error) {
+	return nil, os.ErrNotExist
+}
+
+func (h *postRemovalSwapDirectoryHandle) CreateFile(string, []byte, os.FileMode) error {
+	return errors.New("fake directory handle does not support writes")
+}
+
+func (h *postRemovalSwapDirectoryHandle) ReadDir() ([]storageworkspaces.DirectoryEntry, error) {
+	return nil, nil
+}
+
 func (h *postRemovalSwapDirectoryHandle) WriteFile(string, []byte, os.FileMode) error {
+	return errors.New("fake directory handle does not support writes")
+}
+
+func (h *postRemovalSwapDirectoryHandle) WriteFileAtomic(string, []byte, os.FileMode) error {
 	return errors.New("fake directory handle does not support writes")
 }
 
