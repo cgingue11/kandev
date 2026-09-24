@@ -37,8 +37,8 @@ test.describe("Setup script progress UX", () => {
   }) => {
     test.setTimeout(180_000);
 
-    // Gate the preceding fetch until the browser subscribes, then hold the
-    // setup script so its preparing state and streamed output stay observable.
+    // Gate repository checkout or sync until the browser subscribes, then hold
+    // the setup script so its preparing state and streamed output stay observable.
     const gateID = Date.now();
     const gitGateFile = path.join(backend.tmpDir, "git-delay-ms");
     const gitStartedFile = path.join(backend.tmpDir, `git-started-${gateID}`);
