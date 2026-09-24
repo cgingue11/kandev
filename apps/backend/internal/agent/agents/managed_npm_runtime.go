@@ -104,7 +104,9 @@ func (s ManagedNPMRuntimeSpec) runtimeCommandWithNpmPreference(version string, p
 	if preferOnline {
 		preference = "--prefer-online"
 	}
-	args := []string{"npx", "--yes", preference, s.PackageSpec(version)}
+	args := []string{"npx", "--yes", preference}
+	args = append(args, managedruntime.NPMProjectPrefixArgs()...)
+	args = append(args, s.PackageSpec(version))
 	args = append(args, s.runtimeArgs()...)
 	return NewCommand(args...)
 }
@@ -123,6 +125,8 @@ func (s ManagedNPMRuntimeSpec) CacheUpdateCommand(versions ...string) Command {
 	packageSpec := s.PackageSpec(firstVersion(versions))
 	return NewCommand(
 		"npm",
+		"--prefix",
+		managedruntime.NPMProjectPrefix,
 		"exec",
 		"--yes",
 		"--prefer-online",

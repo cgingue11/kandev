@@ -1236,14 +1236,15 @@ func (c *Controller) toAgentDTO(agent *models.Agent, profiles []*models.AgentPro
 	}
 	if agent.TUIConfig != nil {
 		result.TUIConfig = &dto.TUIConfigDTO{
-			Command:         agent.TUIConfig.Command,
-			DisplayName:     agent.TUIConfig.DisplayName,
-			Model:           agent.TUIConfig.Model,
-			Description:     agent.TUIConfig.Description,
-			CommandArgs:     agent.TUIConfig.CommandArgs,
-			WaitForTerminal: agent.TUIConfig.WaitForTerminal,
-			MCPStrategy:     agent.TUIConfig.MCPStrategy,
-			Protocol:        agent.TUIConfig.Protocol,
+			Command:               agent.TUIConfig.Command,
+			DisplayName:           agent.TUIConfig.DisplayName,
+			Model:                 agent.TUIConfig.Model,
+			Description:           agent.TUIConfig.Description,
+			CommandArgs:           agent.TUIConfig.CommandArgs,
+			WaitForTerminal:       agent.TUIConfig.WaitForTerminal,
+			MCPStrategy:           agent.TUIConfig.MCPStrategy,
+			Protocol:              agent.TUIConfig.Protocol,
+			DisableBracketedPaste: agent.TUIConfig.DisableBracketedPaste,
 		}
 	}
 	if c.agentRegistry != nil {
