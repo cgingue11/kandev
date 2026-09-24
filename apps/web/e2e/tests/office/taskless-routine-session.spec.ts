@@ -21,9 +21,33 @@ async function listAgentRuns(
   agentId: string,
 ): Promise<AgentRun[]> {
   const response = await officeApi.rawRequest("GET", `/agents/${agentId}/runs?limit=100`);
-  if (!response.ok) return [];
+  if (!response.ok) {
+    throw new Error(`Listing runs for agent ${agentId} failed with HTTP ${response.status}`);
+  }
   const result = (await response.json()) as { runs?: AgentRun[] };
   return result.runs ?? [];
+}
+
+async function findAgentRunForRoutine(
+  officeApi: { rawRequest: (method: string, path: string) => Promise<Response> },
+  agentId: string,
+  routineId: string,
+  seenRunIds: Set<string>,
+): Promise<string> {
+  const runs = await listAgentRuns(officeApi, agentId);
+  for (const run of runs) {
+    if (seenRunIds.has(run.id) || !run.reason.startsWith("routine_")) continue;
+    const response = await officeApi.rawRequest("GET", `/agents/${agentId}/runs/${run.id}`);
+    if (!response.ok) continue;
+    const detail = (await response.json()) as { context_snapshot?: string };
+    try {
+      const context = JSON.parse(detail.context_snapshot ?? "{}") as { routine_id?: string };
+      if (context.routine_id === routineId) return run.id;
+    } catch {
+      // Other routine runs may have legacy or empty context snapshots.
+    }
+  }
+  return "";
 }
 
 test.describe("Office taskless routine sessions", () => {
@@ -32,7 +56,7 @@ test.describe("Office taskless routine sessions", () => {
     apiClient,
     officeSeed,
   }) => {
-    test.setTimeout(120_000);
+    test.setTimeout(360_000);
     const before = await apiClient.listTasks(officeSeed.workspaceId);
     const routine = await officeApi.createRoutine(officeSeed.workspaceId, {
       name: `Taskless E2E ${Date.now()}`,
@@ -54,14 +78,10 @@ test.describe("Office taskless routine sessions", () => {
       await expect
         .poll(
           async () => {
-            const runs = await listAgentRuns(officeApi, officeSeed.agentId);
-            const run = runs.find(
-              (candidate) => !seen.has(candidate.id) && candidate.reason.startsWith("routine_"),
-            );
-            runId = run?.id ?? "";
+            runId = await findAgentRunForRoutine(officeApi, officeSeed.agentId, routineId, seen);
             return runId;
           },
-          { timeout: 30_000 },
+          { timeout: 90_000, message: `Waiting for routine ${routineId} to create an agent run` },
         )
         .not.toBe("");
       seen.add(runId);

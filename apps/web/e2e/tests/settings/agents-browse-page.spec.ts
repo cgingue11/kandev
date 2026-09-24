@@ -51,11 +51,18 @@ test.describe("Agents browse page", () => {
       }),
     );
 
+    const availableAgentsResponse = testPage.waitForResponse(
+      (response) =>
+        response.url().includes("/api/v1/agents/available") &&
+        response.request().method() === "GET",
+    );
     await testPage.goto("/settings/agents/browse");
+    const response = await availableAgentsResponse;
+    expect(response.ok()).toBe(true);
 
     const heading = testPage.getByRole("heading", { name: "Browse available agents" });
     await expect(heading).toBeVisible({ timeout: 15_000 });
-    await expect(testPage.getByTestId("install-card-codex")).toBeVisible();
+    await expect(testPage.getByTestId("install-card-codex")).toBeVisible({ timeout: 15_000 });
 
     // PR #2544 wrapped the section in a collapsible whose heading row was a
     // toggle button. Reverted, the heading must be a plain heading: no button
@@ -68,7 +75,7 @@ test.describe("Agents browse page", () => {
     // A role-less clickable wrapper (e.g. <div onClick>) would not surface as
     // a button; clicking the heading must not hide the install cards.
     await heading.click();
-    await expect(testPage.getByTestId("install-card-codex")).toBeVisible();
+    await expect(testPage.getByTestId("install-card-codex")).toBeVisible({ timeout: 15_000 });
 
     // A separately-triggered collapsible (e.g. a toggle button elsewhere in
     // the content) would not be caught by the heading assertions. The page

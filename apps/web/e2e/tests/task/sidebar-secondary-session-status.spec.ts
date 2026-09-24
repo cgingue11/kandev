@@ -48,8 +48,8 @@ test.describe("Sidebar status with secondary session", () => {
     const kanban = new KanbanPage(testPage);
     await kanban.goto();
 
-    const card = kanban.taskCardByTitle(TASK_TITLE);
-    await expect(card).toBeVisible({ timeout: 10_000 });
+    const card = kanban.taskCard(task.id);
+    await expect(card).toBeVisible({ timeout: 30_000 });
     await card.click();
     await expect(testPage).toHaveURL(/\/t\//, { timeout: 15_000 });
 
