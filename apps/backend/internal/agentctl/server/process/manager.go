@@ -1836,10 +1836,11 @@ func composeConfiguredAgentEnvironment(current []string, overlay map[string]stri
 	base := environmentMapFromSlice(current)
 	removeObsoleteManagedCredentialEnvironment(base)
 	filtered, err := gitconfigenv.Filter(base, func(index int, entries []gitconfigenv.Entry) bool {
-		return !githubauth.IsHostGitHubCredentialHelperEntry(entries[index].Key, entries[index].Value)
+		return !githubauth.IsHostGitHubCredentialHelperEntry(entries[index].Key, entries[index].Value) &&
+			!githubauth.IsManagedGitCredentialConfigEntry(index, entries)
 	})
 	if err != nil {
-		return nil, fmt.Errorf("remove generated host GitHub helper: %w", err)
+		return nil, fmt.Errorf("remove generated Git credential helpers: %w", err)
 	}
 	if replaceIndexed {
 		// A complete environment owns the entire indexed block, including an

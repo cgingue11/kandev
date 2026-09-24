@@ -1,6 +1,10 @@
 package githubauth
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/kandev/kandev/internal/gitconfigenv"
+)
 
 const (
 	CredentialBrokerURLEnv         = "KANDEV_GITHUB_CREDENTIAL_BROKER_URL"
@@ -68,4 +72,24 @@ func IsHostGitHubCredentialHelperEntry(key, value string) bool {
 	return strings.HasPrefix(key, "credential.https://") &&
 		strings.HasSuffix(key, ".helper") &&
 		IsHostGitHubCredentialHelper(value)
+}
+
+// IsManagedGitCredentialConfigEntry identifies a generated managed helper or
+// the immediately preceding reset belonging to that helper. User helpers and
+// standalone reset entries remain untouched.
+func IsManagedGitCredentialConfigEntry(index int, entries []gitconfigenv.Entry) bool {
+	entry := entries[index]
+	key := strings.ToLower(entry.Key)
+	if !strings.HasPrefix(key, "credential.https://") || !strings.HasSuffix(key, ".helper") {
+		return false
+	}
+	if isManagedGitCredentialHelper(entry.Value) {
+		return true
+	}
+	return entry.Value == "" && index+1 < len(entries) && entries[index+1].Key == entry.Key &&
+		isManagedGitCredentialHelper(entries[index+1].Value)
+}
+
+func isManagedGitCredentialHelper(value string) bool {
+	return value == ManagedGitCredentialHelper || value == LegacyShimGitCredentialHelper || value == LegacyGitCredentialHelper
 }

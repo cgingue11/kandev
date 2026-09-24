@@ -78,16 +78,17 @@ func mergeEnvFillMissing(dst, src map[string]string) {
 }
 
 // composeExecutionRuntimeEnvironment updates an existing execution snapshot
-// with a per-run overlay. Host GitHub helpers are Kandev-owned generated
-// entries and are removed before composition so a later request can replace
+// with an explicit per-run replacement. Generated Git credential helpers
+// are removed before composition so a later request can replace
 // or remove them without hiding inherited user configuration.
 func composeExecutionRuntimeEnvironment(base, overlay map[string]string) (map[string]string, error) {
 	removeObsoleteManagedCredentialEnvironment(base)
 	filtered, err := gitconfigenv.Filter(base, func(index int, entries []gitconfigenv.Entry) bool {
-		return !githubauth.IsHostGitHubCredentialHelperEntry(entries[index].Key, entries[index].Value)
+		return !githubauth.IsHostGitHubCredentialHelperEntry(entries[index].Key, entries[index].Value) &&
+			!githubauth.IsManagedGitCredentialConfigEntry(index, entries)
 	})
 	if err != nil {
-		return nil, fmt.Errorf("remove generated host GitHub helper: %w", err)
+		return nil, fmt.Errorf("remove generated Git credential helpers: %w", err)
 	}
 	return gitconfigenv.Merge(filtered, overlay)
 }
