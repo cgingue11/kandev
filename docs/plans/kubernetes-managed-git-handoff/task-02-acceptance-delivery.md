@@ -189,3 +189,30 @@ These are immutable validation snapshots. The documentation-completion commit
 and any later PR head must pass their own required checks before handoff. Final
 head, base, synthetic-merge and check receipts are recorded in the PR delivery
 summary and the Kandev task plan, avoiding a self-referential commit identifier.
+
+### CI follow-up: LSP release ordering
+
+The documentation-only head `66cbe702645a58b13cbd9dac61d74ca9068cb294`
+exposed a backend CI failure in run `36025037375`, job `107720501859`:
+`TestLSPContinuityReconnectsToSameTaskHostStream` received close 4009 instead
+of the release acknowledgment. Twenty focused race repetitions reproduced the
+release race and an early fence assertion; the release implementation was
+identical on the previously green head and current main.
+
+A deterministic regression blocked browser writes, completed LSP shutdown/exit
+and closed the fake upstream. Both Stop and editor-idle cases failed because
+the upstream reader attempted browser termination before acknowledgment. The
+release operation now owns expected upstream EOF and always finishes teardown,
+including on acknowledgment failure. The original test checks fence release
+after the first serviced browser request instead of racing admission's ready
+notification. This remediation enforces the existing
+[Stop contract](../../specs/platform/requirements/lsp-file-intelligence.md) and
+[release design](../../specs/platform/system-design/lsp-file-intelligence-01.md);
+it does not alter managed Git behavior or add a new user-facing feature.
+
+Validation after remediation:
+
+- `go test -race ./internal/gateway/websocket -run 'TestLSP(GracefulRelease.*|ContinuityReconnectsToSameTaskHostStream)$' -count=20`: passed.
+- `go test -race ./internal/gateway/websocket -count=3`: passed.
+- Full backend `golangci-lint run ./... --new-from-rev=9fae7ab50045990e1bec2d363be3c553f268946c --timeout=5m`: passed, zero issues.
+- Catalog/spec lint and whitespace checks: passed.

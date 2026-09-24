@@ -660,15 +660,15 @@ func TestLSPContinuityReconnectsToSameTaskHostStream(t *testing.T) {
 	if leaseID == "" || ready["resumed"] != false {
 		t.Fatalf("first ready status = %v, want an initial lease ID and resumed=false", ready)
 	}
-	if fenceHeld.Load() {
-		t.Fatal("session lifecycle fence remained held after lease admission")
-	}
 	if err := first.WriteMessage(gorillaws.TextMessage, []byte(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}`)); err != nil {
 		t.Fatal(err)
 	}
 	initialize := readLSPJSONRPCMessage(t, first)
 	if string(initialize["id"]) != "1" {
 		t.Fatalf("initialize response id = %s, want 1", initialize["id"])
+	}
+	if fenceHeld.Load() {
+		t.Fatal("session lifecycle fence remained held while serving browser requests")
 	}
 	_ = first.Close()
 	joinWithin(t, firstServed, "first continuity browser attachment")
