@@ -20,7 +20,10 @@ const (
 	defaultQueueSize     = 128
 )
 
-var ErrClosed = errors.New("codex app-server client closed")
+var (
+	ErrClosed           = errors.New("codex app-server client closed")
+	ErrForkPrecondition = errors.New("codex app-server fork was refused before provider RPC")
+)
 
 // Options bounds individual frames and queued server events. Zero values use
 // the protocol client's defaults.
@@ -72,9 +75,11 @@ type pendingCall struct {
 }
 
 type outboundFrame struct {
-	ctx  context.Context
-	data []byte
-	done chan error
+	ctx     context.Context
+	data    []byte
+	done    chan error
+	started chan struct{}
+	written chan struct{}
 }
 
 type inboundMessage struct {
@@ -266,6 +271,10 @@ func (c *Client) UnknownResponseCount() uint64 { return c.unknownResponse.Load()
 // kill a process that owns those streams.
 func (c *Client) Close() error {
 	c.terminate(ErrClosed)
+	return c.closeStreams()
+}
+
+func (c *Client) closeStreams() error {
 	c.streamCloseOnce.Do(func() {
 		if closer, ok := c.stdout.(io.Closer); ok {
 			c.streamCloseErr = errors.Join(c.streamCloseErr, closer.Close())
@@ -294,7 +303,10 @@ func (c *Client) send(ctx context.Context, frame any) error {
 	if len(data) > c.maxFrameBytes {
 		return fmt.Errorf("JSON-RPC frame exceeds %d bytes", c.maxFrameBytes)
 	}
-	write := outboundFrame{ctx: ctx, data: append(data, '\n'), done: make(chan error, 1)}
+	write := outboundFrame{
+		ctx: ctx, data: append(data, '\n'), done: make(chan error, 1),
+		started: make(chan struct{}), written: make(chan struct{}),
+	}
 	select {
 	case c.outbound <- write:
 	case <-ctx.Done():
@@ -306,9 +318,39 @@ func (c *Client) send(ctx context.Context, frame any) error {
 	case err := <-write.done:
 		return err
 	case <-ctx.Done():
+		if err := c.interruptWrite(write, ctx.Err()); err != nil {
+			return err
+		}
 		return ctx.Err()
 	case <-c.done:
 		return c.terminalError()
+	}
+}
+
+func (c *Client) interruptWrite(write outboundFrame, cause error) error {
+	select {
+	case err := <-write.done:
+		return err
+	default:
+	}
+	select {
+	case <-write.written:
+		return nil
+	default:
+	}
+	select {
+	case <-write.started:
+		select {
+		case err := <-write.done:
+			return err
+		case <-write.written:
+			return nil
+		default:
+			c.terminate(fmt.Errorf("write app-server frame: %w", cause))
+			return nil
+		}
+	default:
+		return nil
 	}
 }
 
@@ -322,26 +364,15 @@ func (c *Client) writeLoop() {
 				write.done <- err
 				continue
 			}
-			var err error
-			remaining := write.data
-			for len(remaining) > 0 {
-				var count int
-				count, err = c.stdin.Write(remaining)
-				if err != nil {
-					break
-				}
-				if count == 0 {
-					err = io.ErrShortWrite
-					break
-				}
-				remaining = remaining[count:]
-			}
+			close(write.started)
+			err := writeFrame(c.stdin, write.data)
 			if err != nil {
 				err = fmt.Errorf("write app-server frame: %w", err)
 				write.done <- err
 				c.terminate(err)
 				return
 			}
+			close(write.written)
 			if err := c.observeFrame(FrameSent, bytes.TrimSuffix(write.data, []byte{'\n'})); err != nil {
 				write.done <- err
 				c.terminate(err)
@@ -350,6 +381,21 @@ func (c *Client) writeLoop() {
 			write.done <- nil
 		}
 	}
+}
+
+func writeFrame(writer io.Writer, data []byte) error {
+	remaining := data
+	for len(remaining) > 0 {
+		count, err := writer.Write(remaining)
+		if err != nil {
+			return err
+		}
+		if count == 0 {
+			return io.ErrShortWrite
+		}
+		remaining = remaining[count:]
+	}
+	return nil
 }
 
 func (c *Client) readLoop() {
@@ -536,6 +582,7 @@ func (c *Client) terminate(err error) {
 		for _, call := range pending {
 			call.response <- response{err: err}
 		}
+		_ = c.closeStreams()
 	})
 }
 

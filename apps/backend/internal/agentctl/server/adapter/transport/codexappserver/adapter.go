@@ -57,6 +57,7 @@ type Adapter struct {
 	info                     *AgentInfo
 	threadID                 string
 	turnID                   string
+	promptPending            bool
 	modelID                  string
 	activeGeneration         uint64
 	turnSequence             uint64
@@ -191,6 +192,7 @@ func (a *Adapter) NewSession(ctx context.Context, servers []agenttypes.McpServer
 	a.mu.Lock()
 	a.threadID = response.Thread.ID
 	a.turnID = ""
+	a.promptPending = false
 	a.children = make(map[string]childBinding)
 	a.childStatuses = make(map[string]string)
 	a.earlyChildActivities = make(map[string]string)
@@ -235,6 +237,7 @@ func (a *Adapter) LoadSession(ctx context.Context, threadID string, servers []ag
 	a.mu.Lock()
 	a.threadID = threadID
 	a.turnID = ""
+	a.promptPending = false
 	if response.Model != "" {
 		a.modelID = response.Model
 	}
@@ -255,17 +258,17 @@ func (a *Adapter) ForkSession(ctx context.Context, sourceSessionID, completedTur
 	activeBackground := len(a.backgrounds) != 0
 	a.mu.RUnlock()
 	if sourceSessionID == "" || sourceSessionID != threadID {
-		return "", errors.New("codex fork source does not match the active thread")
+		return "", fmt.Errorf("%w: source does not match the active thread", protocol.ErrForkPrecondition)
 	}
 	if completedTurnID == "" {
-		return "", errors.New("codex fork requires a completed turn ID")
+		return "", fmt.Errorf("%w: a completed turn ID is required", protocol.ErrForkPrecondition)
 	}
 	if activeTurn != "" || activeChild || activeBackground {
-		return "", errors.New("codex fork requires an idle thread without active background work")
+		return "", fmt.Errorf("%w: thread must be idle without active background work", protocol.ErrForkPrecondition)
 	}
 	client := a.getClient()
 	if client == nil {
-		return "", errors.New("codex app-server adapter is not connected")
+		return "", fmt.Errorf("%w: app-server adapter is not connected", protocol.ErrForkPrecondition)
 	}
 	thread, err := client.ForkThread(ctx, protocol.ThreadForkParams{ThreadID: threadID, LastTurnID: &completedTurnID})
 	if err != nil {
@@ -278,6 +281,10 @@ func (a *Adapter) Prompt(ctx context.Context, message string, attachments []v1.M
 	if len(attachments) != 0 {
 		return errors.New("codex app-server image and file attachments are not supported yet")
 	}
+	client := a.getClient()
+	if client == nil {
+		return errors.New("codex app-server adapter is not connected")
+	}
 	a.mu.Lock()
 	threadID := a.threadID
 	modelID := a.modelID
@@ -285,7 +292,7 @@ func (a *Adapter) Prompt(ctx context.Context, message string, attachments []v1.M
 		a.mu.Unlock()
 		return errNoActiveThread
 	}
-	if a.turnID != "" {
+	if a.turnID != "" || a.promptPending {
 		a.mu.Unlock()
 		return errors.New("codex app-server thread already has an active turn")
 	}
@@ -294,11 +301,8 @@ func (a *Adapter) Prompt(ctx context.Context, message string, attachments []v1.M
 		generation = a.turnSequence
 	}
 	a.activeGeneration = generation
+	a.promptPending = true
 	a.mu.Unlock()
-	client := a.getClient()
-	if client == nil {
-		return errors.New("codex app-server adapter is not connected")
-	}
 	input := []protocol.UserInput{{Type: "text", Text: message}}
 	params := protocol.TurnStartParams{ThreadID: threadID, Input: input}
 	if modelID != "" {
@@ -455,6 +459,7 @@ func (a *Adapter) handleNotification(_ context.Context, method string, raw json.
 	if turnID != "" && !isChild {
 		a.mu.Lock()
 		a.turnID = turnID
+		a.promptPending = false
 		a.mu.Unlock()
 	}
 	switch method {
@@ -656,6 +661,7 @@ func (a *Adapter) emitTerminal(threadID, turnID string, generation uint64, messa
 	}
 	if a.activeGeneration == generation {
 		a.activeGeneration = 0
+		a.promptPending = false
 	}
 	a.mu.Unlock()
 	if message != "" {

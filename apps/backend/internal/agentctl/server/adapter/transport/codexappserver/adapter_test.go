@@ -119,6 +119,122 @@ func TestConversationLifecycleAndMCPOverlay(t *testing.T) {
 	}
 }
 
+func TestPromptRejectsConcurrentStartBeforeTurnStarted(t *testing.T) {
+	turnStartReceived := make(chan struct{}, 1)
+	turnStartHandled := make(chan struct{}, 2)
+	releaseTurnStart := make(chan struct{})
+	var releaseOnce sync.Once
+	var turnStartCount int
+	server := newProtocolServer(t, func(req map[string]json.RawMessage, write func(any) error) error {
+		id := req["id"]
+		switch readString(req, "method") {
+		case "thread/start":
+			return write(resultFrame(id, map[string]any{"thread": map[string]any{"id": "thread-1"}}))
+		case "turn/start":
+			turnStartCount++
+			if turnStartCount == 1 {
+				turnStartReceived <- struct{}{}
+				<-releaseTurnStart
+			}
+			turnStartHandled <- struct{}{}
+			return nil
+		default:
+			return write(errorFrame(id, -32601, "unsupported"))
+		}
+	})
+
+	adapter := NewAdapter(&shared.Config{}, logger.Default())
+	secondAccepted := false
+	defer func() {
+		releaseOnce.Do(func() { close(releaseTurnStart) })
+		_ = adapter.Close()
+		server.close()
+	}()
+	if err := adapter.Connect(server.clientWriter, server.clientReader); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	if _, err := adapter.NewSession(ctx, nil); err != nil {
+		t.Fatalf("NewSession: %v", err)
+	}
+	if err := adapter.Prompt(ctx, "first", nil, 1); err != nil {
+		t.Fatalf("first Prompt: %v", err)
+	}
+	select {
+	case <-turnStartReceived:
+	case <-ctx.Done():
+		t.Fatal("first turn/start did not reach the server")
+	}
+	secondErr := adapter.Prompt(ctx, "second", nil, 2)
+	secondAccepted = secondErr == nil
+	adapter.mu.RLock()
+	generation := adapter.activeGeneration
+	adapter.mu.RUnlock()
+	releaseOnce.Do(func() { close(releaseTurnStart) })
+	expectedStarts := 1
+	if secondAccepted {
+		expectedStarts++
+	}
+	for range expectedStarts {
+		select {
+		case <-turnStartHandled:
+		case <-time.After(time.Second):
+			t.Fatal("timed out waiting for queued turn/start to drain")
+		}
+	}
+	if secondErr == nil {
+		t.Fatal("second Prompt was accepted before turn/started identified the active turn")
+	}
+	if generation != 1 {
+		t.Fatalf("active generation = %d, want the first prompt's generation 1", generation)
+	}
+}
+
+func TestBindingReplaysBufferedChildActivityAndClearsIt(t *testing.T) {
+	adapter := NewAdapter(&shared.Config{}, logger.Default())
+	defer func() { _ = adapter.Close() }()
+
+	adapter.emitSubagentActivity(map[string]any{"agentThreadId": "child-1", "kind": "started"})
+	adapter.emitCollabToolCall(map[string]any{
+		"id": "spawn-1", "tool": "spawnAgent", "prompt": "inspect", "status": "inProgress",
+		"receiverThreadIds": []any{"child-1"},
+	}, "root", "turn-root", false)
+	first := <-adapter.Updates()
+	if first.Type != streams.EventTypeToolCall {
+		t.Fatalf("first event type = %q, want tool call", first.Type)
+	}
+	var replay streams.AgentEvent
+	select {
+	case replay = <-adapter.Updates():
+	default:
+		t.Fatal("buffered child activity was not replayed when its binding arrived")
+	}
+	if replay.Type != streams.EventTypeToolUpdate || replay.ToolCallID != "spawn-1" || replay.ToolStatus != childStatusRunning {
+		t.Fatalf("replayed child activity = %#v", replay)
+	}
+
+	adapter.emitChildStatus("child-1", childStatusCompleted)
+	completed := <-adapter.Updates()
+	if completed.ToolStatus != childStatusCompleted {
+		t.Fatalf("child completion status = %q, want completed", completed.ToolStatus)
+	}
+	adapter.emitCollabToolCall(map[string]any{
+		"id": "spawn-1", "tool": "spawnAgent", "prompt": "inspect", "status": "completed",
+		"receiverThreadIds": []any{"child-1"},
+	}, "root", "turn-root", true)
+	parentComplete := <-adapter.Updates()
+	if parentComplete.ToolStatus != childStatusCompleted {
+		t.Fatalf("parent completion status = %q, want completed", parentComplete.ToolStatus)
+	}
+	adapter.mu.RLock()
+	active := hasActiveChild(adapter.childStatuses, adapter.earlyChildActivities)
+	adapter.mu.RUnlock()
+	if active {
+		t.Fatal("terminal child remained active after buffered activity was drained")
+	}
+}
+
 func TestApprovalResolutionMapsToNativeDecision(t *testing.T) {
 	server := newProtocolServer(t, func(req map[string]json.RawMessage, write func(any) error) error {
 		method := readString(req, "method")
@@ -342,6 +458,29 @@ func TestResumeRestoresNativeChildBindingFromThreadHistory(t *testing.T) {
 		case <-ctx.Done():
 			t.Fatal("timed out waiting for resumed child output")
 		}
+	}
+}
+
+func TestCompletedCommandExecutionPreservesOutputAndExitCode(t *testing.T) {
+	adapter := NewAdapter(&shared.Config{}, logger.Default())
+	defer func() { _ = adapter.Close() }()
+
+	adapter.emitItem(map[string]any{
+		"item": map[string]any{
+			"id": "command-1", "type": "commandExecution", "command": "go test ./...",
+			"cwd": "/workspace", "status": "failed", "aggregatedOutput": "FAIL package\n", "exitCode": float64(7),
+		},
+	}, "root", "root", "", "turn-1", true)
+	event := <-adapter.Updates()
+	if event.Type != streams.EventTypeToolUpdate || event.ToolStatus != "failed" {
+		t.Fatalf("completed command event = %#v", event)
+	}
+	if event.NormalizedPayload == nil || event.NormalizedPayload.ShellExec() == nil || event.NormalizedPayload.ShellExec().Output == nil {
+		t.Fatalf("completed command output missing: %#v", event.NormalizedPayload)
+	}
+	output := event.NormalizedPayload.ShellExec().Output
+	if output.Stdout != "FAIL package\n" || output.ExitCode == nil || *output.ExitCode != 7 {
+		t.Fatalf("command output = %#v, want aggregate output and exit code 7", output)
 	}
 }
 

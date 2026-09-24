@@ -12,7 +12,9 @@ test("shows turn and session usage in the desktop popover", async ({
 
   const trigger = testPage.getByTestId("conversation-usage-trigger");
   await expect(trigger).toBeVisible({ timeout: 15_000 });
-  await trigger.click();
+  await expect(trigger).toHaveAttribute("aria-expanded", "false");
+  await trigger.press("Enter");
+  await expect(trigger).toHaveAttribute("aria-expanded", "true");
 
   const popover = testPage.getByTestId("conversation-usage-popover");
   await expect(popover).toBeVisible();
@@ -23,6 +25,11 @@ test("shows turn and session usage in the desktop popover", async ({
   await expect(popover.getByTestId("usage-last-response")).toContainText("80");
   await expect(popover).toContainText("Session recorded total");
   await expect(popover).toContainText("Estimated cost");
+  await expect(popover).toBeVisible();
+  await testPage.keyboard.press("Escape");
+  await expect(popover).toBeHidden();
+  await expect(trigger).toHaveAttribute("aria-expanded", "false");
+  await trigger.click();
   await expect(popover).toBeVisible();
   await prCapture.screenshot("conversation-usage-desktop", {
     caption: "Desktop conversation footer with the usage entry point",

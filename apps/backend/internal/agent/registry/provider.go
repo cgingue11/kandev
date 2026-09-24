@@ -46,7 +46,7 @@ func Provide(log *logger.Logger, codexAppServerEnabled ...bool) (*Registry, func
 		// settings and historical profile retention. They cannot dispatch work.
 		_ = reg.Register(agents.NewDynamicAgent())
 		_ = reg.Register(agents.NewMockAgent())
-		_ = reg.Register(agents.NewCodexAppServer(nativeEnabled))
+		_ = reg.Register(agents.NewCodexAppServer(false))
 		configureMockAgent(reg, "mock-agent", log)
 		registerExtraMockProviders(reg, log, mockProviders)
 		validateMockProviders(reg, mockProviders, log)

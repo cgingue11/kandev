@@ -126,6 +126,24 @@ func TestProvide_MockAgentModes(t *testing.T) {
 	}
 }
 
+func TestProvide_MockOnlyKeepsNativeCodexDisabled(t *testing.T) {
+	t.Setenv("KANDEV_MOCK_AGENT", "only")
+
+	reg, cleanup, err := Provide(newTestLogger(), true)
+	if err != nil {
+		t.Fatalf("Provide() error: %v", err)
+	}
+	defer cleanup() //nolint:errcheck
+
+	native, exists := reg.Get("codex-app-server")
+	if !exists {
+		t.Fatal("native Codex descriptor should remain registered")
+	}
+	if native.Enabled() {
+		t.Fatal("native Codex must stay disabled while mock-only mode isolates inference")
+	}
+}
+
 func TestResolveProviderCommandUsesActiveManagedRuntimeVersion(t *testing.T) {
 	log := newTestLogger()
 	reg := NewRegistry(log)

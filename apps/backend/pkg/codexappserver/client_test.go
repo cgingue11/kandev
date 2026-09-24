@@ -285,6 +285,18 @@ func TestClientCancellationAndEOFReleasePendingCalls(t *testing.T) {
 		_ = serverOutput.Close()
 		_ = serverInput.Close()
 	})
+	frameWritten := make(chan struct{})
+	releaseObserver := make(chan struct{})
+	var firstFrame sync.Once
+	client.SetFrameObserver(func(direction FrameDirection, _ json.RawMessage) error {
+		if direction == FrameSent {
+			firstFrame.Do(func() {
+				close(frameWritten)
+				<-releaseObserver
+			})
+		}
+		return nil
+	})
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancelled := make(chan error, 1)
@@ -292,6 +304,12 @@ func TestClientCancellationAndEOFReleasePendingCalls(t *testing.T) {
 	if _, err := bufio.NewReader(serverInput).ReadBytes('\n'); err != nil {
 		t.Fatalf("read first request: %v", err)
 	}
+	select {
+	case <-frameWritten:
+	case <-time.After(time.Second):
+		t.Fatal("first request write did not reach the frame observer")
+	}
+	close(releaseObserver)
 	cancel()
 	select {
 	case err := <-cancelled:
@@ -315,6 +333,69 @@ func TestClientCancellationAndEOFReleasePendingCalls(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Fatal("EOF did not release pending call")
+	}
+}
+
+type blockingWriteCloser struct {
+	started chan struct{}
+	closed  chan struct{}
+	once    sync.Once
+}
+
+func (w *blockingWriteCloser) Write([]byte) (int, error) {
+	w.once.Do(func() { close(w.started) })
+	<-w.closed
+	return 0, io.ErrClosedPipe
+}
+
+func (w *blockingWriteCloser) Close() error {
+	select {
+	case <-w.closed:
+	default:
+		close(w.closed)
+	}
+	return nil
+}
+
+func TestClientCancelsStalledWriteAndClosesTransport(t *testing.T) {
+	writer := &blockingWriteCloser{started: make(chan struct{}), closed: make(chan struct{})}
+	stdout, serverOutput := io.Pipe()
+	client := NewClient(writer, stdout, Options{})
+	t.Cleanup(func() {
+		_ = client.Close()
+		_ = stdout.Close()
+		_ = serverOutput.Close()
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	result := make(chan error, 1)
+	go func() { result <- client.Notify(ctx, "test/stalled-write", nil) }()
+	select {
+	case <-writer.started:
+	case <-time.After(time.Second):
+		t.Fatal("writer did not begin the test frame")
+	}
+	cancel()
+	select {
+	case err := <-result:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("Notify error = %v, want context.Canceled", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("canceled Notify remained blocked")
+	}
+	select {
+	case <-client.Done():
+	case <-time.After(time.Second):
+		t.Fatal("stalled write did not terminate the client")
+	}
+	select {
+	case <-writer.closed:
+	default:
+		t.Fatal("canceled stalled write did not close the transport writer")
+	}
+	if err := client.Notify(context.Background(), "test/after-stall", nil); !errors.Is(err, context.Canceled) {
+		t.Fatalf("post-stall Notify error = %v, want the terminal write cancellation", err)
 	}
 }
 

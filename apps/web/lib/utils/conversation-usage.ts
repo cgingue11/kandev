@@ -27,3 +27,12 @@ export function formatUsageCost(subcents?: string): string | null {
 export function latestUsageTurn(turns: UsageTurn[]): UsageTurn | undefined {
   return turns[0];
 }
+
+export function usageDetailForTurn<T extends { turnId: string; turn: UsageTurn | null }>(
+  latestTurn: UsageTurn | null,
+  detail: T | null,
+): T | null {
+  if (!latestTurn || !detail || detail.turnId !== latestTurn.turn_id) return null;
+  if (detail.turn && detail.turn.turn_id !== latestTurn.turn_id) return null;
+  return detail;
+}

@@ -12,6 +12,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/kandev/kandev/internal/task/models"
+	protocol "github.com/kandev/kandev/pkg/codexappserver"
 )
 
 var (
@@ -116,6 +117,9 @@ func (s *Service) newCodexForkOperation(ctx context.Context, req ForkConversatio
 	if err := s.authorizeTaskSessionPair(ctx, req.TaskID, req.SourceSessionID); err != nil {
 		return nil, err
 	}
+	if err := s.authorizeSessionPrompt(ctx, req.SourceSessionID); err != nil {
+		return nil, err
+	}
 	source, err := s.repo.GetTaskSession(ctx, req.SourceSessionID)
 	if err != nil {
 		return nil, err
@@ -216,15 +220,35 @@ func (s *Service) ensureCodexForkProviderThread(ctx context.Context, state *code
 	providerThreadID, err := state.forker.ForkSessionBySessionID(forkCtx, state.source.ID, state.providerTurnID)
 	cancel()
 	if err != nil || strings.TrimSpace(providerThreadID) == "" {
+		if errors.Is(err, protocol.ErrForkPrecondition) {
+			return s.releaseRefusedCodexForkOperation(ctx, state, err)
+		}
 		return s.markCodexForkUncertain(ctx, state, err)
 	}
 	state.providerThreadID = providerThreadID
 	state.operation[codexForkProviderThreadKey] = providerThreadID
 	state.operation[codexForkStatusKey] = codexForkStatusProviderReady
 	if err := s.repo.SetSessionMetadataKey(ctx, state.source.ID, state.operationKey, state.operation); err != nil {
-		return fmt.Errorf("persist provider fork identity: %w", err)
+		return s.markCodexForkUncertain(ctx, state, fmt.Errorf("persist provider fork identity: %w", err))
 	}
 	return nil
+}
+
+func (s *Service) releaseRefusedCodexForkOperation(ctx context.Context, state *codexForkOperation, forkErr error) error {
+	remover, ok := s.repo.(interface {
+		RemoveSessionMetadataKeyIfJSONValue(context.Context, string, string, interface{}) (bool, error)
+	})
+	if !ok {
+		return fmt.Errorf("fork was refused before provider RPC but its request marker cannot be released: %w", ErrCodexForkInProgress)
+	}
+	released, err := remover.RemoveSessionMetadataKeyIfJSONValue(ctx, state.source.ID, state.operationKey, state.operation)
+	if err != nil {
+		return fmt.Errorf("fork was refused before provider RPC but its request marker could not be released: %w", err)
+	}
+	if !released {
+		return ErrCodexForkInProgress
+	}
+	return forkErr
 }
 
 func (s *Service) markCodexForkUncertain(ctx context.Context, state *codexForkOperation, forkErr error) error {

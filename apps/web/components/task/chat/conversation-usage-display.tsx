@@ -4,13 +4,17 @@ import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { IconChartBar, IconX } from "@tabler/icons-react";
 import { Button } from "@kandev/ui/button";
-import { Popover, PopoverContent } from "@kandev/ui/popover";
+import { Popover, PopoverContent, PopoverTrigger } from "@kandev/ui/popover";
 import { DrawerClose } from "@kandev/ui/drawer";
 import { MobilePickerSheet } from "@/components/task/mobile/mobile-picker-sheet";
 import { useTouchDrawer } from "@/hooks/use-compact-task-chrome";
 import { useConversationUsage } from "@/hooks/domains/session/use-conversation-usage";
 import type { UsageResponse, UsageTokenBreakdown, UsageTurn } from "@/lib/types/conversation-usage";
-import { formatUsageCost, formatUsageTokens } from "@/lib/utils/conversation-usage";
+import {
+  formatUsageCost,
+  formatUsageTokens,
+  usageDetailForTurn,
+} from "@/lib/utils/conversation-usage";
 
 type ConversationUsageDisplayProps = {
   taskId?: string | null;
@@ -319,20 +323,22 @@ function UsageDisclosureActions({
 }
 
 function UsageDisclosure({ usage, close }: { usage: ConversationUsage; close: () => void }) {
-  const turn = usage.detail?.turn ?? usage.latestTurn;
+  const detail = usageDetailForTurn(usage.latestTurn, usage.detail);
+  const currentUsage = detail ? usage : { ...usage, detail: null };
+  const turn = detail?.turn ?? usage.latestTurn;
   return (
     <div className="space-y-4" data-testid="conversation-usage-content">
-      <UsageLoadStatus usage={usage} />
+      <UsageLoadStatus usage={currentUsage} />
       {turn ? (
         <>
           <UsageTurnSummary turn={turn} />
-          <UsageTurnDetails usage={usage} turn={turn} />
+          <UsageTurnDetails usage={currentUsage} turn={turn} />
         </>
       ) : (
         <UsageTurnSummary turn={null} />
       )}
-      <UsageSessionSummary usage={usage} />
-      <UsageDisclosureActions usage={usage} turn={turn} close={close} />
+      <UsageSessionSummary usage={currentUsage} />
+      <UsageDisclosureActions usage={currentUsage} turn={turn} close={close} />
     </div>
   );
 }
@@ -400,7 +406,7 @@ export function ConversationUsageDisplay({ taskId, sessionId }: ConversationUsag
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      {trigger}
+      <PopoverTrigger asChild>{trigger}</PopoverTrigger>
       <PopoverContent
         align="end"
         side="top"

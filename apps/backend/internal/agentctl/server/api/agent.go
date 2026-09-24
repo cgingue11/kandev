@@ -19,6 +19,7 @@ import (
 	"github.com/kandev/kandev/internal/agentctl/types/streams"
 	"github.com/kandev/kandev/internal/common/constants"
 	v1 "github.com/kandev/kandev/pkg/api/v1"
+	protocol "github.com/kandev/kandev/pkg/codexappserver"
 	ws "github.com/kandev/kandev/pkg/websocket"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
@@ -383,7 +384,11 @@ func (s *Server) handleWSForkSession(ctx context.Context, msg *ws.Message) *ws.M
 	sessionID, err := forkable.ForkSession(forkCtx, req.SessionID, req.CompletedTurnID)
 	if err != nil {
 		s.logger.Error(msg.Action+" failed", zap.Error(err))
-		resp, _ := ws.NewError(msg.ID, msg.Action, ws.ErrorCodeInternalError, err.Error(), nil)
+		code := ws.ErrorCodeInternalError
+		if errors.Is(err, protocol.ErrForkPrecondition) {
+			code = ws.ErrorCodeConflict
+		}
+		resp, _ := ws.NewError(msg.ID, msg.Action, code, err.Error(), nil)
 		return resp
 	}
 	resp, _ := ws.NewResponse(msg.ID, msg.Action, ForkSessionResponse{Success: true, SessionID: sessionID})

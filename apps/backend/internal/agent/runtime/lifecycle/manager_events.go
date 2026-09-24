@@ -987,7 +987,11 @@ func (m *Manager) handleAgentEventState(execution *AgentExecution, event agentct
 	switch event.Type {
 	case streams.EventTypeUsageObservation:
 		if event.TurnID == "" {
-			event.TurnID = execution.promptTurnIDSnapshot()
+			if event.PromptGeneration != 0 {
+				event.TurnID = execution.promptTurnIDForGeneration(event.PromptGeneration)
+			} else {
+				event.TurnID = execution.promptTurnIDSnapshot()
+			}
 		}
 	case "tool_call":
 		// ACP tool_call events do not carry the lifecycle prompt generation

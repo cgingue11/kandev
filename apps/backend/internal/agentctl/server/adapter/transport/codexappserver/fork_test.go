@@ -3,11 +3,13 @@ package codexappserver
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
 	"github.com/kandev/kandev/internal/agentctl/server/adapter/transport/shared"
 	"github.com/kandev/kandev/internal/common/logger"
+	protocol "github.com/kandev/kandev/pkg/codexappserver"
 )
 
 type nativeForkCapability interface {
@@ -15,10 +17,12 @@ type nativeForkCapability interface {
 }
 
 func TestForkSessionPreservesSourceAndRejectsActiveWork(t *testing.T) {
+	forkCalls := 0
 	server := newProtocolServer(t, func(req map[string]json.RawMessage, write func(any) error) error {
 		if method := readString(req, "method"); method != "thread/fork" {
 			return write(errorFrame(req["id"], -32601, "unexpected method"))
 		}
+		forkCalls++
 		var params struct {
 			ThreadID   string `json:"threadId"`
 			LastTurnID string `json:"lastTurnId"`
@@ -55,7 +59,10 @@ func TestForkSessionPreservesSourceAndRejectsActiveWork(t *testing.T) {
 	}
 
 	adapter.turnID = "active-turn"
-	if _, err := capability.ForkSession(ctx, "source-thread", "completed-turn"); err == nil {
-		t.Fatal("ForkSession succeeded while the source turn was active")
+	if _, err := capability.ForkSession(ctx, "source-thread", "completed-turn"); !errors.Is(err, protocol.ErrForkPrecondition) {
+		t.Fatalf("ForkSession with active turn error = %v, want typed pre-provider refusal", err)
+	}
+	if forkCalls != 1 {
+		t.Fatalf("provider fork calls = %d, want no RPC for the refused request", forkCalls)
 	}
 }

@@ -12,12 +12,21 @@ import (
 
 const (
 	childStatusCompleted   = "completed"
+	childStatusComplete    = "complete"
+	childStatusErrored     = "errored"
 	childStatusRunning     = "running"
 	childStatusCancelled   = "cancelled"
 	childStatusError       = "error"
 	childStatusFailed      = "failed"
 	childStatusInterrupted = "interrupted"
+	childStatusCanceled    = "canceled"
 )
+
+type bufferedChildActivity struct {
+	threadID string
+	binding  childBinding
+	activity string
+}
 
 func hasActiveChild(statuses, early map[string]string) bool {
 	for _, status := range statuses {
@@ -35,7 +44,7 @@ func hasActiveChild(statuses, early map[string]string) bool {
 
 func isTerminalChildStatus(status string) bool {
 	switch strings.ToLower(strings.TrimSpace(status)) {
-	case childStatusCompleted, "complete", childStatusFailed, childStatusError, "errored", childStatusInterrupted, childStatusCancelled, "canceled":
+	case childStatusCompleted, childStatusComplete, childStatusFailed, childStatusError, childStatusErrored, childStatusInterrupted, childStatusCancelled, childStatusCanceled:
 		return true
 	default:
 		return false
@@ -62,7 +71,8 @@ func (a *Adapter) emitCollabToolCall(item map[string]any, rootThreadID, turnID s
 	receivers := stringSliceField(item, "receiverThreadIds")
 	generation := a.currentGeneration()
 
-	if !a.recordCollabToolCall(callID, status, receivers, rootThreadID, description, tool, model, generation) {
+	recorded, buffered := a.recordCollabToolCall(callID, status, receivers, rootThreadID, description, tool, model, generation)
+	if !recorded {
 		return
 	}
 
@@ -102,6 +112,9 @@ func (a *Adapter) emitCollabToolCall(item map[string]any, rootThreadID, turnID s
 		ToolStatus:        toolStatus,
 		NormalizedPayload: payload,
 	})
+	for _, activity := range buffered {
+		a.emitSubagentToolUpdate(activity.binding, subagentActivityToolStatus(activity.activity), activity.threadID)
+	}
 }
 
 func (a *Adapter) recordCollabToolCall(
@@ -109,13 +122,14 @@ func (a *Adapter) recordCollabToolCall(
 	receivers []string,
 	rootThreadID, description, tool, model string,
 	generation uint64,
-) bool {
+) (bool, []bufferedChildActivity) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if previous, ok := a.childStatuses[callID]; ok && previous == status {
-		return false
+		return false, nil
 	}
 	a.childStatuses[callID] = status
+	var buffered []bufferedChildActivity
 	for _, receiver := range receivers {
 		if receiver == "" {
 			continue
@@ -128,8 +142,15 @@ func (a *Adapter) recordCollabToolCall(
 			subagentType:   tool,
 			model:          model,
 		}
+		if activity, ok := a.earlyChildActivities[receiver]; ok {
+			delete(a.earlyChildActivities, receiver)
+			a.childStatuses[receiver] = activity
+			buffered = append(buffered, bufferedChildActivity{
+				threadID: receiver, binding: a.children[receiver], activity: activity,
+			})
+		}
 	}
-	return true
+	return true, buffered
 }
 
 func (a *Adapter) emitSubagentActivity(item map[string]any) {
@@ -153,11 +174,20 @@ func (a *Adapter) emitSubagentActivity(item map[string]any) {
 	a.childStatuses[childThreadID] = activity
 	a.mu.Unlock()
 
-	status := childStatusRunning
-	if activity == childStatusInterrupted {
-		status = childStatusInterrupted
+	a.emitSubagentToolUpdate(binding, subagentActivityToolStatus(activity), childThreadID)
+}
+
+func subagentActivityToolStatus(activity string) string {
+	switch strings.ToLower(strings.TrimSpace(activity)) {
+	case childStatusCompleted, "complete":
+		return childStatusCompleted
+	case childStatusFailed, childStatusError, "errored":
+		return childStatusError
+	case childStatusInterrupted, childStatusCancelled, "canceled":
+		return childStatusInterrupted
+	default:
+		return childStatusRunning
 	}
-	a.emitSubagentToolUpdate(binding, status, childThreadID)
 }
 
 func (a *Adapter) emitChildStatus(childThreadID, status string) {
@@ -221,6 +251,16 @@ func (a *Adapter) emitCommandExecution(item map[string]any, rootThreadID, parent
 	_, background := a.backgrounds[itemID]
 	a.mu.RUnlock()
 	payload := streams.NewShellExec(command, workDir, "", 0, background)
+	if completed {
+		output := &streams.ShellExecOutput{Stdout: stringField(item, "aggregatedOutput")}
+		if rawExitCode, ok := item["exitCode"].(float64); ok {
+			exitCode := int(rawExitCode)
+			output.ExitCode = &exitCode
+		}
+		if output.Stdout != "" || output.ExitCode != nil {
+			payload.ShellExec().Output = output
+		}
+	}
 	if background {
 		payload.SetBackgroundWorkIdentity(streams.BackgroundWorkKindShell, itemID, !completed, completed)
 	}

@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"reflect"
 	"strings"
 	"sync"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/kandev/kandev/internal/agentctl/types"
 	"github.com/kandev/kandev/internal/agentctl/types/streams"
+	protocol "github.com/kandev/kandev/pkg/codexappserver"
 	ws "github.com/kandev/kandev/pkg/websocket"
 )
 
@@ -44,6 +46,18 @@ func TestForkSessionUsesNativeControlAction(t *testing.T) {
 	}
 	if payload["session_id"] != "source-thread" || payload["completed_turn_id"] != "completed-turn" {
 		t.Fatalf("fork request payload = %#v", payload)
+	}
+}
+
+func TestForkSessionPreservesKnownPreProviderRefusal(t *testing.T) {
+	c, _ := captureStreamRequest(t, func(msg ws.Message) *ws.Message {
+		resp, _ := ws.NewError(msg.ID, msg.Action, ws.ErrorCodeConflict, "thread still has active work", nil)
+		return resp
+	})
+
+	_, err := c.ForkSession(context.Background(), "source-thread", "completed-turn")
+	if !errors.Is(err, protocol.ErrForkPrecondition) {
+		t.Fatalf("ForkSession error = %v, want typed pre-provider refusal", err)
 	}
 }
 

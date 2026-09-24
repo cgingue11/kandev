@@ -13,6 +13,7 @@ import (
 	"github.com/kandev/kandev/internal/task/models"
 	sqliterepo "github.com/kandev/kandev/internal/task/repository/sqlite"
 	v1 "github.com/kandev/kandev/pkg/api/v1"
+	protocol "github.com/kandev/kandev/pkg/codexappserver"
 	"github.com/stretchr/testify/require"
 )
 
@@ -35,6 +36,20 @@ type forkTestAgentManager struct {
 	forkCalls int
 	forkID    string
 	forkErr   error
+}
+
+type failProviderForkMetadataWrite struct {
+	sessionExecutorStore
+	failed bool
+}
+
+func (r *failProviderForkMetadataWrite) SetSessionMetadataKey(ctx context.Context, sessionID, key string, value interface{}) error {
+	operation, ok := value.(map[string]interface{})
+	if !r.failed && ok && operation[codexForkStatusKey] == codexForkStatusProviderReady {
+		r.failed = true
+		return errors.New("provider identity persistence failed")
+	}
+	return r.sessionExecutorStore.SetSessionMetadataKey(ctx, sessionID, key, value)
 }
 
 func (m *forkTestAgentManager) ForkSessionBySessionID(context.Context, string, string) (string, error) {
@@ -133,6 +148,50 @@ func TestForkOwnershipAndIdempotency(t *testing.T) {
 		require.Equal(t, codexForkStatusUncertain, record[codexForkStatusKey])
 	})
 
+	t.Run("provider success with failed local persistence is uncertain", func(t *testing.T) {
+		manager := &forkTestAgentManager{mockAgentManager: &mockAgentManager{}, forkID: "fork-thread"}
+		svc, repo, _ := newForkTestService(t, manager, nil)
+		svc.repo = &failProviderForkMetadataWrite{sessionExecutorStore: svc.repo}
+		req := ForkConversationRequest{
+			TaskID: "task-fork", SourceSessionID: "session-fork", TurnID: "turn-fork", RequestID: requestID,
+		}
+		_, firstErr := svc.ForkConversation(ctx, req)
+		require.ErrorContains(t, firstErr, "provider identity persistence failed")
+		_, secondErr := svc.ForkConversation(ctx, req)
+		require.ErrorIs(t, secondErr, ErrCodexForkUncertain)
+		require.Equal(t, 1, manager.forkCalls)
+
+		source, err := repo.GetTaskSession(ctx, "session-fork")
+		require.NoError(t, err)
+		record := readCodexForkOperation(source.Metadata[models.SessionMetaKeyCodexForkRequestPrefix+requestID])
+		require.Equal(t, codexForkStatusUncertain, record[codexForkStatusKey])
+	})
+
+	t.Run("known pre-provider refusal releases the request for retry", func(t *testing.T) {
+		manager := &forkTestAgentManager{
+			mockAgentManager: &mockAgentManager{},
+			forkErr:          protocol.ErrForkPrecondition,
+		}
+		svc, repo, _ := newForkTestService(t, manager, nil)
+		req := ForkConversationRequest{
+			TaskID: "task-fork", SourceSessionID: "session-fork", TurnID: "turn-fork", RequestID: requestID,
+		}
+		_, firstErr := svc.ForkConversation(ctx, req)
+		if errors.Is(firstErr, ErrCodexForkUncertain) {
+			t.Fatalf("pre-provider refusal was marked uncertain: %v", firstErr)
+		}
+		source, err := repo.GetTaskSession(ctx, "session-fork")
+		require.NoError(t, err)
+		require.NotContains(t, source.Metadata, models.SessionMetaKeyCodexForkRequestPrefix+requestID)
+
+		manager.forkErr = nil
+		manager.forkID = "fork-thread"
+		second, err := svc.ForkConversation(ctx, req)
+		require.NoError(t, err)
+		require.NotEmpty(t, second.SessionID)
+		require.Equal(t, 2, manager.forkCalls)
+	})
+
 	t.Run("source activity is rejected before provider fork", func(t *testing.T) {
 		manager := &forkTestAgentManager{mockAgentManager: &mockAgentManager{}, forkID: "fork-thread"}
 		active := &models.Turn{ID: "active-turn"}
@@ -174,4 +233,23 @@ func TestForkOwnershipAndIdempotency(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, all, 2)
 	})
+}
+
+func TestForkConversationRequiresSessionPromptScope(t *testing.T) {
+	manager := &forkTestAgentManager{mockAgentManager: &mockAgentManager{}, forkID: "fork-thread"}
+	svc, repo, _ := newForkTestService(t, manager, nil)
+	svc.SetSessionAccessChecker(func(context.Context, string) error { return nil })
+	svc.SetTaskAccessChecker(func(context.Context, string) error { return nil })
+	denied := errors.New("session.prompt denied")
+	svc.SetSessionPromptChecker(func(context.Context, string) error { return denied })
+	requestID := uuid.NewString()
+
+	_, err := svc.ForkConversation(context.Background(), ForkConversationRequest{
+		TaskID: "task-fork", SourceSessionID: "session-fork", TurnID: "turn-fork", RequestID: requestID,
+	})
+	require.ErrorIs(t, err, denied)
+	require.Zero(t, manager.forkCalls)
+	source, err := repo.GetTaskSession(context.Background(), "session-fork")
+	require.NoError(t, err)
+	require.NotContains(t, source.Metadata, models.SessionMetaKeyCodexForkRequestPrefix+requestID)
 }

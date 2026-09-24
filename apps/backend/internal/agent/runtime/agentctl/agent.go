@@ -13,6 +13,7 @@ import (
 	"github.com/kandev/kandev/internal/agentctl/types"
 	"github.com/kandev/kandev/internal/agentctl/types/streams"
 	v1 "github.com/kandev/kandev/pkg/api/v1"
+	protocol "github.com/kandev/kandev/pkg/codexappserver"
 	ws "github.com/kandev/kandev/pkg/websocket"
 	"go.uber.org/zap"
 )
@@ -194,6 +195,9 @@ func (c *Client) ForkSession(ctx context.Context, sessionID, completedTurnID str
 		var payload ws.ErrorPayload
 		if err := resp.ParsePayload(&payload); err != nil {
 			return "", errors.New("fork session failed: unable to parse error")
+		}
+		if payload.Code == ws.ErrorCodeConflict {
+			return "", fmt.Errorf("%w: %s", protocol.ErrForkPrecondition, payload.Message)
 		}
 		return "", fmt.Errorf("fork session failed: %s", payload.Message)
 	}

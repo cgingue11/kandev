@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { UsageTurn } from "@/lib/types/conversation-usage";
-import { formatUsageCost, formatUsageTokens, latestUsageTurn } from "./conversation-usage";
+import {
+  formatUsageCost,
+  formatUsageTokens,
+  latestUsageTurn,
+  usageDetailForTurn,
+} from "./conversation-usage";
 
 describe("conversation usage formatting", () => {
   it("formats token counts and int64 subcent prices without float conversion", () => {
@@ -19,5 +24,25 @@ describe("conversation usage formatting", () => {
     const turns = [{ turn_id: "new" }, { turn_id: "old" }] as UsageTurn[];
     expect(latestUsageTurn(turns)?.turn_id).toBe("new");
     expect(latestUsageTurn([])).toBeUndefined();
+  });
+
+  it("uses detail only when it belongs to the refreshed latest turn", () => {
+    const latest = { turn_id: "new" } as UsageTurn;
+    const stale = {
+      turnId: "old",
+      turn: { turn_id: "old" } as UsageTurn,
+      loading: false,
+    };
+    expect(usageDetailForTurn(latest, stale)).toBeNull();
+
+    const loading = { turnId: "new", turn: null, loading: true };
+    expect(usageDetailForTurn(latest, loading)).toBe(loading);
+
+    const mismatchedResponse = {
+      turnId: "new",
+      turn: { turn_id: "old" } as UsageTurn,
+      loading: false,
+    };
+    expect(usageDetailForTurn(latest, mismatchedResponse)).toBeNull();
   });
 });
