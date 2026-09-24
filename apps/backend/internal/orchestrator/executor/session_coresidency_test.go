@@ -208,8 +208,9 @@ func TestLaunchPreparedSession_ObservesWorkingSiblingOnAgentStart(t *testing.T) 
 		t.Fatal("timed out waiting for the agent process to start")
 	}
 
-	if after := counterValue(sessionCoresidencyAdmittedTotalVar, sessionCoresidencySiteLaunch); after != before+1 {
-		t.Fatalf("admitted[launch] counter = %d, want %d", after, before+1)
+	// Other tests can still emit asynchronous observations into the global counter.
+	if after := counterValue(sessionCoresidencyAdmittedTotalVar, sessionCoresidencySiteLaunch); after < before+1 {
+		t.Fatalf("admitted[launch] counter = %d, want at least %d", after, before+1)
 	}
 	warnings := logs.FilterMessageSnippet("starting an agent while another session").All()
 	if len(warnings) != 1 {
