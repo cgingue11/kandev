@@ -9,6 +9,7 @@ import {
   cleanupPRLinkForkLaunchFixture,
   createPRLinkForkLaunchFixture,
   expectForkPRLaunchState,
+  waitForForkPRInfo,
 } from "./pr-link-fork-launch-helpers";
 import { openTaskRepositoryPicker } from "../../helpers/task-repository-picker";
 
@@ -213,7 +214,9 @@ test.describe("Task creation from GitHub URL", () => {
       await kanban.createTaskButton.first().click();
       const dialog = testPage.getByTestId("create-task-dialog");
       await expect(dialog).toBeVisible();
+      const prInfoResponse = waitForForkPRInfo(testPage, fixture);
       await openRemoteAndPasteURL(testPage, fixture.prURL);
+      expect((await prInfoResponse).status()).toBe(200);
       await expect(testPage.getByTestId("remote-branch-chip-trigger").first()).toContainText(
         fixture.headBranch,
       );
@@ -232,10 +235,19 @@ test.describe("Task creation from GitHub URL", () => {
       const created = JSON.parse(responseBody) as { id: string };
       taskId = created.id;
       const requestBody = response.request().postDataJSON() as {
+        workspace_sources?: Array<Record<string, unknown>>;
         repositories?: Array<Record<string, unknown>>;
       };
-      expect(requestBody.repositories?.[0]).not.toHaveProperty("remote_contribution");
-      expect(requestBody.repositories?.[0]).not.toHaveProperty("comparison_target");
+      const repositorySource =
+        requestBody.workspace_sources?.find((source) => source.kind === "repository") ??
+        requestBody.repositories?.[0];
+      expect(repositorySource).toBeDefined();
+      expect(repositorySource).toMatchObject({
+        base_branch: "main",
+        checkout_branch: fixture.headBranch,
+      });
+      expect(repositorySource).not.toHaveProperty("remote_contribution");
+      expect(repositorySource).not.toHaveProperty("comparison_target");
 
       await expect(dialog).not.toBeVisible();
       await expect(testPage).toHaveURL(new RegExp(`/t/${taskId}$`));

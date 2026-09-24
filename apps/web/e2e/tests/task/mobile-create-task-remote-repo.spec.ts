@@ -9,6 +9,7 @@ import {
   cleanupPRLinkForkLaunchFixture,
   createPRLinkForkLaunchFixture,
   expectForkPRLaunchState,
+  waitForForkPRInfo,
 } from "./pr-link-fork-launch-helpers";
 import { openTaskRepositoryPicker } from "../../helpers/task-repository-picker";
 
@@ -156,19 +157,20 @@ test.describe("Create task Remote repo picker on mobile", () => {
 
       const taskTitle = `Phone fork PR ${fixture.repositoryName}`;
       const mobile = new MobileKanbanPage(testPage);
-      await mobile.goto();
-      await mobile.mobileFab.tap();
+      await openRemotePicker(testPage);
       const dialog = testPage.getByTestId("create-task-dialog");
       await expect(dialog).toBeVisible();
-      await testPage.getByTestId("source-mode-remote").tap();
-      await testPage.getByTestId("remote-repo-chip-trigger").first().tap();
-      const urlInput = testPage.getByTestId("remote-repo-input");
+      const prInfoResponse = waitForForkPRInfo(testPage, fixture);
+      const urlInput = testPage.getByTestId("task-repository-picker-input");
       await expect(urlInput).toBeVisible();
       await urlInput.fill(fixture.prURL);
       await urlInput.press("Enter");
+      expect((await prInfoResponse).status()).toBe(200);
+      await openRepositoryManagement(testPage);
       await expect(testPage.getByTestId("remote-branch-chip-trigger").first()).toContainText(
         fixture.headBranch,
       );
+      await testPage.getByTestId("mobile-repository-done").tap();
       await testPage.getByTestId("task-title-input").fill(taskTitle);
       await testPage.getByTestId("task-description-input").fill("/e2e:simple-message");
 
@@ -184,10 +186,19 @@ test.describe("Create task Remote repo picker on mobile", () => {
       const created = JSON.parse(responseBody) as { id: string };
       taskId = created.id;
       const requestBody = response.request().postDataJSON() as {
+        workspace_sources?: Array<Record<string, unknown>>;
         repositories?: Array<Record<string, unknown>>;
       };
-      expect(requestBody.repositories?.[0]).not.toHaveProperty("remote_contribution");
-      expect(requestBody.repositories?.[0]).not.toHaveProperty("comparison_target");
+      const repositorySource =
+        requestBody.workspace_sources?.find((source) => source.kind === "repository") ??
+        requestBody.repositories?.[0];
+      expect(repositorySource).toBeDefined();
+      expect(repositorySource).toMatchObject({
+        base_branch: "main",
+        checkout_branch: fixture.headBranch,
+      });
+      expect(repositorySource).not.toHaveProperty("remote_contribution");
+      expect(repositorySource).not.toHaveProperty("comparison_target");
 
       await expect(dialog).not.toBeVisible();
       await expect(mobile.taskCard(taskId)).toBeVisible({ timeout: 15_000 });
