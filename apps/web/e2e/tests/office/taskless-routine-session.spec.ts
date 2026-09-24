@@ -6,12 +6,24 @@ type RoutineRun = {
   status: string;
 };
 
+type AgentRun = { id: string; reason: string };
+
 async function routineRuns(
   officeApi: { listRoutineRuns(id: string): Promise<Record<string, unknown>> },
   id: string,
 ) {
   const result = await officeApi.listRoutineRuns(id);
   return (Array.isArray(result.runs) ? result.runs : []) as RoutineRun[];
+}
+
+async function listAgentRuns(
+  officeApi: { rawRequest: (method: string, path: string) => Promise<Response> },
+  agentId: string,
+): Promise<AgentRun[]> {
+  const response = await officeApi.rawRequest("GET", `/agents/${agentId}/runs?limit=100`);
+  if (!response.ok) return [];
+  const result = (await response.json()) as { runs?: AgentRun[] };
+  return result.runs ?? [];
 }
 
 test.describe("Office taskless routine sessions", () => {
@@ -29,8 +41,8 @@ test.describe("Office taskless routine sessions", () => {
     });
     const routineId = routine.id as string;
 
-    const existing = await officeApi.listRuns(officeSeed.workspaceId);
-    const seen = new Set(((existing.runs ?? []) as { id: string }[]).map((run) => run.id));
+    const existing = await listAgentRuns(officeApi, officeSeed.agentId);
+    const seen = new Set(existing.map((run) => run.id));
     const sessions: string[] = [];
     for (let attempt = 1; attempt <= 2; attempt += 1) {
       const response = await officeApi.runRoutine(routineId);
@@ -42,8 +54,8 @@ test.describe("Office taskless routine sessions", () => {
       await expect
         .poll(
           async () => {
-            const result = await officeApi.listRuns(officeSeed.workspaceId);
-            const run = ((result.runs ?? []) as { id: string; reason: string }[]).find(
+            const runs = await listAgentRuns(officeApi, officeSeed.agentId);
+            const run = runs.find(
               (candidate) => !seen.has(candidate.id) && candidate.reason.startsWith("routine_"),
             );
             runId = run?.id ?? "";

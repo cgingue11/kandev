@@ -92,19 +92,24 @@ export async function waitForSessionAgentctlReady(
 export async function waitForActiveSessionForegroundActivity(
   page: Page,
   activity: "generating" | "background" | null,
+  targetSessionId?: string,
+  timeoutMs = 20_000,
 ): Promise<void> {
   await page.waitForFunction(
-    (expected) => {
+    ({ expected, sessionId: targetSessionId }) => {
       const store = (window as E2EStoreWindow).__KANDEV_E2E_STORE__;
       if (!store) return false;
       const state = store.getState();
-      const sessionId = state.tasks.activeSessionId;
+      const sessionId = targetSessionId ?? state.tasks.activeSessionId;
       if (!sessionId) return false;
       const current = state.taskSessions.items[sessionId]?.foreground_activity;
       return expected === null ? current == null : current === expected;
     },
-    activity,
-    { timeout: 20_000 },
+    { expected: activity, sessionId: targetSessionId },
+    {
+      timeout: timeoutMs,
+      message: `Session ${targetSessionId ?? "active"} did not reach foreground activity ${activity}`,
+    },
   );
 }
 
@@ -159,17 +164,21 @@ export async function seedActiveSessionForegroundActivity(
 export async function waitForActiveSessionCancellationPending(
   page: Page,
   pending: boolean,
+  targetSessionId?: string,
 ): Promise<void> {
   await page.waitForFunction(
-    (expected) => {
+    ({ expected, sessionId: targetSessionId }) => {
       const store = (window as E2EStoreWindow).__KANDEV_E2E_STORE__;
       if (!store) return false;
-      const sessionId = store.getState().tasks.activeSessionId;
+      const sessionId = targetSessionId ?? store.getState().tasks.activeSessionId;
       if (!sessionId) return false;
       return store.getState().taskSessions.items[sessionId]?.cancellation_pending === expected;
     },
-    pending,
-    { timeout: 45_000 },
+    { expected: pending, sessionId: targetSessionId },
+    {
+      timeout: 45_000,
+      message: `Session ${targetSessionId ?? "active"} did not reach cancellation_pending=${pending}`,
+    },
   );
 }
 
@@ -233,7 +242,11 @@ export async function waitForQuickChatCancellationPending(
   );
 }
 
-export async function waitForQuickChatSessionSettled(page: Page, sessionId: string): Promise<void> {
+export async function waitForQuickChatSessionSettled(
+  page: Page,
+  sessionId: string,
+  timeoutMs = 20_000,
+): Promise<void> {
   await page.waitForFunction(
     (sid) => {
       const store = (window as E2EStoreWindow).__KANDEV_E2E_STORE__;
@@ -248,7 +261,7 @@ export async function waitForQuickChatSessionSettled(page: Page, sessionId: stri
       );
     },
     sessionId,
-    { timeout: 20_000, message: `Quick Chat session ${sessionId} did not settle` },
+    { timeout: timeoutMs, message: `Quick Chat session ${sessionId} did not settle` },
   );
 }
 

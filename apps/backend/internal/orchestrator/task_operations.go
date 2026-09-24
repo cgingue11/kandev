@@ -9524,7 +9524,9 @@ func (s *Service) runExplicitCancellation(requestCtx context.Context, sessionID 
 	operationCtx, cancel := context.WithTimeout(context.WithoutCancel(requestCtx), cancellationOperationTTL)
 	defer cancel()
 	err := s.runExplicitCancellationOwned(operationCtx, sessionID, operation)
-	s.finishCancellationWithActions(operationCtx, sessionID, operation, err)
+	finishCtx, cancelFinish := context.WithTimeout(context.WithoutCancel(operationCtx), cancellationOperationTTL)
+	defer cancelFinish()
+	s.finishCancellationWithActions(finishCtx, sessionID, operation, err)
 }
 
 func (s *Service) runExplicitCancellationOwned(ctx context.Context, sessionID string, operation *cancelOperation) (err error) {
@@ -9563,7 +9565,7 @@ func (s *Service) runExplicitCancellationOwned(ctx context.Context, sessionID st
 			return err
 		}
 	}
-	if err := s.finishCancelledAgentTurn(ctx, sessionID, prepared); err != nil {
+	if err := s.finishCancelledAgentTurnWithFreshContext(ctx, sessionID, prepared); err != nil {
 		return err
 	}
 
@@ -9660,7 +9662,7 @@ func (s *Service) reconcileJoinedExplicitCancellationLocked(
 			cancelTurnID:       identity.turnID,
 			identity:           identity,
 		}
-		operation.explicitReconcileErr = s.finishCancelledAgentTurn(operationCtx, sessionID, prepared)
+		operation.explicitReconcileErr = s.finishCancelledAgentTurnWithFreshContext(operationCtx, sessionID, prepared)
 	})
 	return operation.explicitReconcileErr
 }
@@ -9835,6 +9837,16 @@ func (s *Service) finishCancelledAgentTurn(ctx context.Context, sessionID string
 	s.recordCancelledAgentMessage(ctx, session, sessionID, prepared.cancelTurnID)
 	s.reconcileCancelledAgentWorkflow(ctx, session, prepared.completionEligible)
 	return nil
+}
+
+func (s *Service) finishCancelledAgentTurnWithFreshContext(
+	ctx context.Context,
+	sessionID string,
+	prepared cancelAgentPreparation,
+) error {
+	finishCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), cancellationOperationTTL)
+	defer cancel()
+	return s.finishCancelledAgentTurn(finishCtx, sessionID, prepared)
 }
 
 func (s *Service) recordCancelledAgentMessage(ctx context.Context, session *models.TaskSession, sessionID, cancelTurnID string) {
