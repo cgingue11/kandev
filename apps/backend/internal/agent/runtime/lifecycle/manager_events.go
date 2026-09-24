@@ -985,6 +985,10 @@ func (m *Manager) handleAgentEventWithoutPublication(execution *AgentExecution, 
 
 func (m *Manager) handleAgentEventState(execution *AgentExecution, event agentctl.AgentEvent) agentctl.AgentEvent {
 	switch event.Type {
+	case streams.EventTypeUsageObservation:
+		if event.TurnID == "" {
+			event.TurnID = execution.promptTurnIDSnapshot()
+		}
 	case "tool_call":
 		// ACP tool_call events do not carry the lifecycle prompt generation
 		// either (same gap as message_chunk/reasoning). Neither this dispatch

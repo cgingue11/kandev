@@ -176,6 +176,44 @@ func (c *Client) LoadSession(ctx context.Context, sessionID string, mcpServers [
 	return nil
 }
 
+// ForkSession asks the current provider session to fork through a completed
+// turn. The operation is not retried because an interrupted response is
+// ambiguous at the provider boundary.
+func (c *Client) ForkSession(ctx context.Context, sessionID, completedTurnID string) (string, error) {
+	if sessionID == "" || completedTurnID == "" {
+		return "", errors.New("session ID and completed turn ID are required")
+	}
+	resp, err := c.sendStreamRequest(ctx, "agent.session.fork", struct {
+		SessionID       string `json:"session_id"`
+		CompletedTurnID string `json:"completed_turn_id"`
+	}{SessionID: sessionID, CompletedTurnID: completedTurnID})
+	if err != nil {
+		return "", fmt.Errorf("fork session request failed: %w", err)
+	}
+	if resp.Type == ws.MessageTypeError {
+		var payload ws.ErrorPayload
+		if err := resp.ParsePayload(&payload); err != nil {
+			return "", errors.New("fork session failed: unable to parse error")
+		}
+		return "", fmt.Errorf("fork session failed: %s", payload.Message)
+	}
+	var result struct {
+		Success   bool   `json:"success"`
+		SessionID string `json:"session_id"`
+		Error     string `json:"error"`
+	}
+	if err := resp.ParsePayload(&result); err != nil {
+		return "", fmt.Errorf("failed to parse fork session response: %w", err)
+	}
+	if !result.Success || result.SessionID == "" {
+		if result.Error == "" {
+			result.Error = "response omitted forked session ID"
+		}
+		return "", fmt.Errorf("fork session failed: %s", result.Error)
+	}
+	return result.SessionID, nil
+}
+
 // SetMode changes the agent's session mode via the agent WebSocket stream.
 func (c *Client) SetMode(ctx context.Context, sessionID, modeID string) error {
 	payload := struct {

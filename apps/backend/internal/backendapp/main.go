@@ -415,7 +415,7 @@ func startServices( //nolint:cyclop
 		return false
 	}
 
-	agentRegistry, _, err := registry.Provide(log)
+	agentRegistry, _, err := registry.Provide(log, cfg.Features.CodexAppServer)
 	if err != nil {
 		log.Error("Failed to initialize agent registry", zap.Error(err))
 		return false

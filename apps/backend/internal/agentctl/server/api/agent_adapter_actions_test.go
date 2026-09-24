@@ -60,6 +60,47 @@ type capableAgentAdapter struct {
 	modelState   *streams.SessionModelState
 }
 
+type forkCapableAgentAdapter struct {
+	capableAgentAdapter
+	completedTurn string
+	forkedID      string
+}
+
+func (a *forkCapableAgentAdapter) ForkSession(_ context.Context, sourceSessionID, completedTurnID string) (string, error) {
+	if sourceSessionID != a.sessionID || completedTurnID != a.completedTurn {
+		return "", errors.New("unexpected fork request")
+	}
+	return a.forkedID, nil
+}
+
+func TestAgentSessionForkRequiresCapabilityAndReturnsNativeThread(t *testing.T) {
+	s := newTestServer(t)
+	adapter := &forkCapableAgentAdapter{
+		capableAgentAdapter: capableAgentAdapter{bareAgentAdapter: bareAgentAdapter{sessionID: "source-thread"}},
+		completedTurn:       "turn-complete",
+		forkedID:            "forked-thread",
+	}
+	s.procMgr.SetAdapterForTest(adapter)
+
+	msg, err := ws.NewRequest("req-fork", "agent.session.fork", map[string]string{
+		"session_id": "source-thread", "completed_turn_id": "turn-complete",
+	})
+	if err != nil {
+		t.Fatalf("build request: %v", err)
+	}
+	response := s.handleAgentStreamRequest(context.Background(), msg)
+	assertAdapterActionSuccess(t, response)
+	var payload struct {
+		SessionID string `json:"session_id"`
+	}
+	if err := response.ParsePayload(&payload); err != nil {
+		t.Fatalf("parse response: %v", err)
+	}
+	if payload.SessionID != "forked-thread" {
+		t.Fatalf("forked session_id = %q, want forked-thread", payload.SessionID)
+	}
+}
+
 func (a *capableAgentAdapter) SetMode(_ context.Context, modeID string) error {
 	a.modeID = modeID
 	return a.failWith

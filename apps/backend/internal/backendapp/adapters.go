@@ -850,6 +850,12 @@ func (a *lifecycleAdapter) SetSessionModeBySessionID(ctx context.Context, sessio
 	return a.mgr.SetSessionModeBySessionID(ctx, sessionID, modeID)
 }
 
+// ForkSessionBySessionID asks an agent runtime with native fork support to
+// fork one of its completed provider turns.
+func (a *lifecycleAdapter) ForkSessionBySessionID(ctx context.Context, sessionID, providerTurnID string) (string, error) {
+	return a.mgr.ForkSessionBySessionID(ctx, sessionID, providerTurnID)
+}
+
 // RespondToPermissionBySessionID sends a response to a permission request for a session
 func (a *lifecycleAdapter) RespondToPermissionBySessionID(ctx context.Context, sessionID, pendingID, optionID string, cancelled bool) error {
 	return a.mgr.RespondToPermissionBySessionID(sessionID, pendingID, optionID, cancelled)

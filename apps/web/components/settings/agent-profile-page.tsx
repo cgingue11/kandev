@@ -37,6 +37,7 @@ import {
 } from "@/components/settings/agent-profile-page-state";
 import {
   profileSaveInvalidReason,
+  resolveProfileEditorInvalidReason,
   useProfileDuplicateAction,
 } from "@/components/settings/agent-profile-duplicate-action";
 import { CustomCLIFlagsCard } from "@/components/settings/cli-flags-field";
@@ -45,11 +46,6 @@ import { ProviderSection } from "@/components/settings/profile-edit/provider-sec
 import { settingsActionClassName } from "@/components/settings/settings-control";
 import { providerConfigInvalidReasonKey } from "@/lib/settings/provider-config-validation";
 
-export {
-  ProfileEnvVarsEditor,
-  ProfileEnvVarsSection,
-} from "@/components/settings/profile-edit/profile-env-vars-section";
-export { preserveNewerProfileDraft } from "@/components/settings/agent-profile-page-state";
 import { useSecrets } from "@/hooks/domains/settings/use-secrets";
 import type {
   Agent,
@@ -111,6 +107,7 @@ type ProfileEditorHeaderProps = {
   onEnabledChange: (enabled: boolean) => void;
   onDuplicate: () => void;
   duplicating: boolean;
+  unavailable?: boolean;
 };
 
 function ProfileEditorHeader({
@@ -121,6 +118,7 @@ function ProfileEditorHeader({
   onEnabledChange,
   onDuplicate,
   duplicating,
+  unavailable = false,
 }: ProfileEditorHeaderProps) {
   const { t } = useTranslation();
   return (
@@ -140,7 +138,7 @@ function ProfileEditorHeader({
           onClick={onDuplicate}
           data-testid="duplicate-profile-header"
           className={settingsActionClassName("w-full md:w-auto")}
-          disabled={duplicating}
+          disabled={duplicating || unavailable}
           aria-busy={duplicating}
           title={t("agents:duplicateProfileNamed", { name: savedProfileName })}
         >
@@ -156,6 +154,7 @@ function ProfileEditorHeader({
           onCheckedChange={onEnabledChange}
           data-testid="profile-enabled-toggle"
           aria-label={enabled ? t("agents:disableProfile") : t("agents:enableProfile")}
+          disabled={unavailable}
         />
       </div>
     </div>
@@ -421,6 +420,8 @@ function ProfileEditor({
   const { toast } = useToast();
   const [modelConfigResolutionPending, setModelConfigResolutionPending] = useState(false);
   const settingsAgents = useAppStore((state) => state.settingsAgents.items);
+  const nativeCodexAvailable = useAppStore((state) => state.features?.codexAppServer ?? false);
+  const nativeCodexUnavailable = agent.name === "codex-app-server" && !nativeCodexAvailable;
   const syncAgentsToStore = useSyncAgentsToStore();
   const { items: secrets } = useSecrets();
   const {
@@ -473,14 +474,20 @@ function ProfileEditor({
     revision: JSON.stringify(draft),
     isDirty,
     canSave:
+      !nativeCodexUnavailable &&
       Boolean(draft.name.trim()) &&
       !modelConfigResolutionPending &&
       !hasExternalConflict &&
       !providerInvalidKey,
-    invalidReason: hasExternalConflict
-      ? t("agents:profileExternalChangeInvalidReason")
-      : (profileSaveInvalidReason(draft.name, modelConfigResolutionPending, t) ??
-        (providerInvalidKey ? t(providerInvalidKey) : undefined)),
+    invalidReason: resolveProfileEditorInvalidReason(
+      {
+        nativeCodexUnavailable,
+        hasExternalConflict,
+        profileInvalidReason: profileSaveInvalidReason(draft.name, modelConfigResolutionPending, t),
+        providerInvalidReason: providerInvalidKey ? t(providerInvalidKey) : undefined,
+      },
+      t,
+    ),
     save: () => handleSave(),
     discard: discardProfileDraft,
   });
@@ -495,6 +502,13 @@ function ProfileEditor({
 
   return (
     <div className="space-y-8">
+      {nativeCodexUnavailable && (
+        <Alert data-testid="native-codex-profile-unavailable">
+          <IconAlertTriangle className="h-4 w-4" />
+          <AlertTitle>{t("agents:nativeCodexUnavailableTitle")}</AlertTitle>
+          <AlertDescription>{t("agents:nativeCodexUnavailable")}</AlertDescription>
+        </Alert>
+      )}
       {hasExternalConflict ? (
         <Alert variant="destructive" data-testid="profile-external-change-alert">
           <IconAlertTriangle className="h-4 w-4" />
@@ -521,31 +535,34 @@ function ProfileEditor({
         onEnabledChange={(next) => updateDraft({ enabled: next })}
         onDuplicate={() => void handleDuplicateProfile()}
         duplicating={duplicating}
+        unavailable={nativeCodexUnavailable}
       />
 
       <Separator />
 
-      <ProfileEditorBody
-        agent={agent}
-        draft={draft}
-        savedProfile={savedProfile}
-        isDirty={isDirty}
-        updateDraft={updateDraft}
-        modelConfig={modelConfig}
-        permissionSettings={permissionSettings}
-        passthroughConfig={passthroughConfig}
-        secrets={secrets}
-        initialMcpConfig={initialMcpConfig}
-        onToastError={(error) => {
-          if (isHandledApiError(error)) return;
-          toast({
-            title: t("agents:failedToSaveMcpConfig"),
-            description: errorMessage(error),
-            variant: "error",
-          });
-        }}
-        onModelConfigResolutionPendingChange={setModelConfigResolutionPending}
-      />
+      <fieldset disabled={nativeCodexUnavailable} className="min-w-0 space-y-8">
+        <ProfileEditorBody
+          agent={agent}
+          draft={draft}
+          savedProfile={savedProfile}
+          isDirty={isDirty}
+          updateDraft={updateDraft}
+          modelConfig={modelConfig}
+          permissionSettings={permissionSettings}
+          passthroughConfig={passthroughConfig}
+          secrets={secrets}
+          initialMcpConfig={initialMcpConfig}
+          onToastError={(error) => {
+            if (isHandledApiError(error)) return;
+            toast({
+              title: t("agents:failedToSaveMcpConfig"),
+              description: errorMessage(error),
+              variant: "error",
+            });
+          }}
+          onModelConfigResolutionPendingChange={setModelConfigResolutionPending}
+        />
+      </fieldset>
 
       <DeleteProfileCard
         profile={savedProfile}

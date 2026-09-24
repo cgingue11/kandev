@@ -157,6 +157,12 @@ type SessionResettableAdapter interface {
 	ResetSession(ctx context.Context, mcpServers []types.McpServer) (string, error)
 }
 
+// ForkableSession is an optional capability for providers that can fork a
+// completed conversation without changing the active session.
+type ForkableSession interface {
+	ForkSession(ctx context.Context, sourceSessionID, completedTurnID string) (string, error)
+}
+
 // TurnStartRecorder is an optional interface implemented by adapters that
 // record a wall-clock turn-start timestamp per session, covering both a
 // human prompt dispatch and a synthetic ScheduleWakeup self-resume (spec

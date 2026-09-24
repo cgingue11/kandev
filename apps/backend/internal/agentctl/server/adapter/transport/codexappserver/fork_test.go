@@ -1,0 +1,61 @@
+package codexappserver
+
+import (
+	"context"
+	"encoding/json"
+	"testing"
+	"time"
+
+	"github.com/kandev/kandev/internal/agentctl/server/adapter/transport/shared"
+	"github.com/kandev/kandev/internal/common/logger"
+)
+
+type nativeForkCapability interface {
+	ForkSession(context.Context, string, string) (string, error)
+}
+
+func TestForkSessionPreservesSourceAndRejectsActiveWork(t *testing.T) {
+	server := newProtocolServer(t, func(req map[string]json.RawMessage, write func(any) error) error {
+		if method := readString(req, "method"); method != "thread/fork" {
+			return write(errorFrame(req["id"], -32601, "unexpected method"))
+		}
+		var params struct {
+			ThreadID   string `json:"threadId"`
+			LastTurnID string `json:"lastTurnId"`
+		}
+		if err := json.Unmarshal(req["params"], &params); err != nil {
+			return err
+		}
+		if params.ThreadID != "source-thread" || params.LastTurnID != "completed-turn" {
+			t.Errorf("thread/fork params = %#v", params)
+		}
+		return write(resultFrame(req["id"], map[string]any{"thread": map[string]any{"id": "forked-thread"}}))
+	})
+	defer server.close()
+
+	adapter := NewAdapter(&shared.Config{}, logger.Default())
+	defer func() { _ = adapter.Close() }()
+	if err := adapter.Connect(server.clientWriter, server.clientReader); err != nil {
+		t.Fatal(err)
+	}
+	adapter.threadID = "source-thread"
+	capability, ok := any(adapter).(nativeForkCapability)
+	if !ok {
+		t.Fatal("native Codex adapter does not expose conversation forking")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	forkedID, err := capability.ForkSession(ctx, "source-thread", "completed-turn")
+	if err != nil {
+		t.Fatalf("ForkSession: %v", err)
+	}
+	if forkedID != "forked-thread" || adapter.GetSessionID() != "source-thread" {
+		t.Fatalf("forked ID = %q, active source ID = %q", forkedID, adapter.GetSessionID())
+	}
+
+	adapter.turnID = "active-turn"
+	if _, err := capability.ForkSession(ctx, "source-thread", "completed-turn"); err == nil {
+		t.Fatal("ForkSession succeeded while the source turn was active")
+	}
+}

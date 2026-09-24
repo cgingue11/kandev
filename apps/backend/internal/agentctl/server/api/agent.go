@@ -81,6 +81,17 @@ type LoadSessionResponse struct {
 	Error      string                     `json:"error,omitempty"`
 }
 
+type ForkSessionRequest struct {
+	SessionID       string `json:"session_id"`
+	CompletedTurnID string `json:"completed_turn_id"`
+}
+
+type ForkSessionResponse struct {
+	Success   bool   `json:"success"`
+	SessionID string `json:"session_id,omitempty"`
+	Error     string `json:"error,omitempty"`
+}
+
 // PromptRequest is a request to send a prompt to the agent
 type PromptRequest struct {
 	Text             string                 `json:"text"`                  // Simple text prompt
@@ -317,6 +328,8 @@ func (s *Server) handleAgentStreamRequest(ctx context.Context, msg *ws.Message) 
 		return s.handleWSNewSession(ctx, msg)
 	case "agent.session.load":
 		return s.handleWSLoadSession(ctx, msg)
+	case "agent.session.fork":
+		return s.handleWSForkSession(ctx, msg)
 	case "agent.prompt":
 		return s.handleWSPrompt(ctx, msg)
 	case "agent.cancel":
@@ -347,6 +360,34 @@ func (s *Server) handleAgentStreamRequest(ctx context.Context, msg *ws.Message) 
 		resp, _ := ws.NewError(msg.ID, msg.Action, ws.ErrorCodeUnknownAction, fmt.Sprintf("unknown action: %s", msg.Action), nil)
 		return resp
 	}
+}
+
+func (s *Server) handleWSForkSession(ctx context.Context, msg *ws.Message) *ws.Message {
+	var req ForkSessionRequest
+	if err := msg.ParsePayload(&req); err != nil || req.SessionID == "" || req.CompletedTurnID == "" {
+		resp, _ := ws.NewError(msg.ID, msg.Action, ws.ErrorCodeBadRequest, "session_id and completed_turn_id are required", nil)
+		return resp
+	}
+	agentAdapter := s.procMgr.GetAdapter()
+	if agentAdapter == nil {
+		resp, _ := ws.NewError(msg.ID, msg.Action, ws.ErrorCodeInternalError, "agent not running", nil)
+		return resp
+	}
+	forkable, ok := agentAdapter.(adapter.ForkableSession)
+	if !ok {
+		resp, _ := ws.NewError(msg.ID, msg.Action, ws.ErrorCodeInternalError, "agent does not support conversation forks", nil)
+		return resp
+	}
+	forkCtx, cancel := context.WithTimeout(ctx, constants.SessionLoadTimeout)
+	defer cancel()
+	sessionID, err := forkable.ForkSession(forkCtx, req.SessionID, req.CompletedTurnID)
+	if err != nil {
+		s.logger.Error(msg.Action+" failed", zap.Error(err))
+		resp, _ := ws.NewError(msg.ID, msg.Action, ws.ErrorCodeInternalError, err.Error(), nil)
+		return resp
+	}
+	resp, _ := ws.NewResponse(msg.ID, msg.Action, ForkSessionResponse{Success: true, SessionID: sessionID})
+	return resp
 }
 
 func (s *Server) handleWSPermissionCancel(msg *ws.Message) *ws.Message {

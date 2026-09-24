@@ -323,5 +323,8 @@
   "providerApiKeyLabel": "API 金鑰",
   "providerApiKeyHelp": "儲存傳送給提供方的持有者權杖的 Kandev 金鑰。若路由器無需鑑權，可不設定。",
   "providerModelSlash": "請去掉模型名稱中的斜槓：OpenAI 相容提供方需要的是不含字首的模型 ID。",
-  "providerPassthroughUnsupported": "請停用 CLI 直通模式，才能使用 OpenAI 相容提供方。"
+  "providerPassthroughUnsupported": "請停用 CLI 直通模式，才能使用 OpenAI 相容提供方。",
+  "nativeCodexUnavailableTitle": "原生 Codex app server 無法使用",
+  "nativeCodexUnavailable": "此已儲存的設定會保留，但 Codex app-server 功能關閉時無法編輯、複製、啟用或啟動。你可以刪除此設定，或在設定中啟用該功能。",
+  "nativeCodexUnavailableShort": "功能已關閉"
 }

@@ -323,5 +323,8 @@
   "providerApiKeyLabel": "API 密钥",
   "providerApiKeyHelp": "保存发送给提供方的持有者令牌的 Kandev 密钥。若路由器无需鉴权，可不设置。",
   "providerModelSlash": "请去掉模型名称中的斜杠：OpenAI 兼容提供方需要的是不含前缀的模型 ID。",
-  "providerPassthroughUnsupported": "请停用 CLI 直通模式，才能使用 OpenAI 兼容提供方。"
+  "providerPassthroughUnsupported": "请停用 CLI 直通模式，才能使用 OpenAI 兼容提供方。",
+  "nativeCodexUnavailableTitle": "原生 Codex app server 不可用",
+  "nativeCodexUnavailable": "此已保存的配置会保留，但 Codex app-server 功能关闭时无法编辑、复制、启用或启动。你可以删除此配置，或在设置中启用该功能。",
+  "nativeCodexUnavailableShort": "功能已关闭"
 }
