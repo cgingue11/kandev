@@ -82,10 +82,11 @@ func mergeEnvFillMissing(dst, src map[string]string) {
 // are removed before composition so a later request can replace
 // or remove them without hiding inherited user configuration.
 func composeExecutionRuntimeEnvironment(base, overlay map[string]string) (map[string]string, error) {
+	managed := base[githubauth.CredentialBrokerURLEnv] != "" || base[githubauth.CredentialLeaseEnv] != ""
 	removeObsoleteManagedCredentialEnvironment(base)
 	filtered, err := gitconfigenv.Filter(base, func(index int, entries []gitconfigenv.Entry) bool {
 		return !githubauth.IsHostGitHubCredentialHelperEntry(entries[index].Key, entries[index].Value) &&
-			!githubauth.IsManagedGitCredentialConfigEntry(index, entries)
+			!githubauth.IsManagedGitCredentialConfigEntry(index, entries, managed)
 	})
 	if err != nil {
 		return nil, fmt.Errorf("remove generated Git credential helpers: %w", err)

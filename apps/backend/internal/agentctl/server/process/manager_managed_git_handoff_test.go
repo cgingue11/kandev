@@ -29,10 +29,11 @@ func TestManagerManagedGitConfigurationReplacement(t *testing.T) {
 				githubauth.CredentialBrokerURLEnv:  "https://broker.example/resolve",
 				githubauth.CredentialLeaseEnv:      "current",
 				githubauth.CredentialHelperPathEnv: "/worker/agentctl",
-				"GIT_CONFIG_COUNT":                 "3",
+				"GIT_CONFIG_COUNT":                 "4",
 				"GIT_CONFIG_KEY_0":                 "core.hooksPath", "GIT_CONFIG_VALUE_0": "/user/hooks",
 				"GIT_CONFIG_KEY_1": "credential.https://github.com.helper", "GIT_CONFIG_VALUE_1": "",
 				"GIT_CONFIG_KEY_2": "credential.https://github.com.helper", "GIT_CONFIG_VALUE_2": githubauth.ManagedGitCredentialHelper,
+				"GIT_CONFIG_KEY_3": "credential.useHttpPath", "GIT_CONFIG_VALUE_3": "true",
 			}
 			require.NoError(t, configure("echo", nil, false, env, "", "", nil, false))
 			require.Equal(t, "current", envValue(cfg.AgentEnv, githubauth.CredentialLeaseEnv))
@@ -40,6 +41,7 @@ func TestManagerManagedGitConfigurationReplacement(t *testing.T) {
 			require.Empty(t, envValue(cfg.AgentEnv, githubauth.CredentialLeaseEnv))
 			require.Empty(t, envValue(cfg.AgentEnv, githubauth.CredentialHelperPathEnv))
 			require.NotContains(t, strings.Join(cfg.AgentEnv, "\n"), githubauth.ManagedGitCredentialHelper)
+			require.NotContains(t, strings.Join(cfg.AgentEnv, "\n"), "credential.useHttpPath")
 			if !replace {
 				require.Equal(t, "core.hooksPath", envValue(cfg.AgentEnv, "GIT_CONFIG_KEY_0"))
 			}
@@ -95,4 +97,15 @@ printf 'username=synthetic\npassword=synthetic\n'
 			}
 		}
 	}
+}
+
+func TestManagerConfigurePreservesUnmanagedLegacyHelper(t *testing.T) {
+	cfg := &config.InstanceConfig{WorkDir: t.TempDir(), AgentEnv: []string{
+		"GIT_CONFIG_COUNT=1", "GIT_CONFIG_KEY_0=credential.https://github.com.helper",
+		"GIT_CONFIG_VALUE_0=" + githubauth.LegacyGitCredentialHelper,
+	}}
+	mgr := NewManager(cfg, newTestLogger(t))
+	t.Cleanup(func() { require.NoError(t, mgr.StopForTeardown(context.Background())) })
+	require.NoError(t, mgr.Configure("echo", nil, false, nil, "", "", nil, false))
+	require.Equal(t, githubauth.LegacyGitCredentialHelper, envValue(cfg.AgentEnv, "GIT_CONFIG_VALUE_0"))
 }

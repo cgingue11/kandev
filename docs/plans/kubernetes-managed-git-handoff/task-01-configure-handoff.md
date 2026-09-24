@@ -133,3 +133,11 @@ production. Keep runtime snapshots memory-only.
   The test now waits for asynchronous startup, checks both existing observations
   before process start, and seeds the task needed by its successful-start path.
   That exact race command passes. No co-residency production behavior changed.
+
+PR #3909 review regressions first failed for the retained generated
+`credential.useHttpPath=true` entry, mixed-case Git variable names, and removal
+of an unowned legacy helper. The cleanup now uses adjacent generated entries
+and inherited broker ownership, preserving user helpers and case-sensitive URL
+subsections. Direct classifier and lifecycle tests cover these boundaries; the
+process-manager test exercises legacy user-helper preservation through Configure.
+The five-package race command above passed again after these fixes.

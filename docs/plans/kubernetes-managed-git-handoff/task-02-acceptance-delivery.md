@@ -148,4 +148,19 @@ Public docs: executor guide updated, no UI screenshots required. Public docs
 validator passed for 47 pages; its 62 tests passed. Specification catalog,
 specification lint and diff whitespace checks passed.
 
-PR publication and current-head CI/review disposition remain pending.
+PR [#3909](https://github.com/kdlbs/kandev/pull/3909) was published at
+`653520d6ad8af040b1c88dd087be7e1d6fc7bb64` with normal commit hooks passing.
+The five initial review threads identified generated path-setting cleanup,
+legacy helper ownership, key casing and direct-test coverage; the follow-up
+fixes and regression results are recorded in task 01. CodeRabbit's docstring
+coverage warning is informational: it reports no correctness finding and is
+not a repository-required coverage gate. Current-head CI/review disposition
+remains pending; the PR is not merged or deployed.
+
+Review-fixup validation: the full five-package race command passed, as did the
+focused Configure-mode regression after adding the generated path setting.
+Full backend changed-code lint passed with zero issues using
+`golangci-lint run ./... --new-from-rev=5cb908e4adf53fc6bca9727dc4f3a7d534ee38fd --timeout=5m`.
+A preceding attempt encountered missing shared Go cache export data, and the
+first retry timed out; the final warm-cache run exited successfully.
+Specification catalog validation, specification lint and whitespace checks passed.

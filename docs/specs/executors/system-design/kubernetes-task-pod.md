@@ -146,8 +146,13 @@ pod-wide environment or a host executable path.
 Agentctl's configure boundary continues to clear inherited managed credentials
 before applying the delivered environment. Both configure modes must preserve
 intentional removal; do not weaken this boundary to compensate for an incomplete
-lifecycle request. Generated managed helper entries and their owned reset pairs
-must be removed on replacement, while unrelated user configuration remains.
+lifecycle request. Generated managed helper entries, their preceding reset and
+adjacent generated `credential.useHttpPath=true` entry must be removed on
+replacement, while unrelated user configuration remains. The unmarked legacy
+`!agentctl git-credential` helper is managed only when the inherited environment
+also contains a broker URL or lease; without that ownership evidence it remains
+user configuration. Reset matching ignores Git section and variable name case,
+but preserves URL subsection case.
 Malformed indexed configuration fails before subprocess start.
 
 The existing [GitHub credential design](../../integrations/system-design/github-authentication-02.md)

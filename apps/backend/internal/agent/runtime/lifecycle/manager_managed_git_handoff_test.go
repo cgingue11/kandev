@@ -143,3 +143,14 @@ func newManagedGitConfigureClient(t *testing.T, captured *map[string]string) *ag
 	t.Cleanup(server.Close)
 	return newTestAgentctlClient(t, server.URL, log)
 }
+
+func TestComposeExecutionRuntimeEnvironmentRemovesManagedConfig(t *testing.T) {
+	env := managedGitHandoffEnvironment("previous")
+	env["GIT_CONFIG_COUNT"] = "4"
+	env["GIT_CONFIG_KEY_3"] = "credential.useHttpPath"
+	env["GIT_CONFIG_VALUE_3"] = "true"
+	got, err := composeExecutionRuntimeEnvironment(env, nil)
+	require.NoError(t, err)
+	require.Equal(t, "1", got["GIT_CONFIG_COUNT"])
+	require.Equal(t, "core.hooksPath", got["GIT_CONFIG_KEY_0"])
+}
