@@ -3,6 +3,7 @@ package worktree
 import (
 	"context"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -74,11 +75,31 @@ func (h *postRemovalSwapDirectoryHandle) ReadFileLimit(string, int64) ([]byte, e
 	return nil, os.ErrNotExist
 }
 
+func (h *postRemovalSwapDirectoryHandle) OpenFile(string) (io.ReadCloser, error) {
+	return nil, os.ErrNotExist
+}
+
+func (h *postRemovalSwapDirectoryHandle) OpenSubdirectory(string) (storageworkspaces.DirectoryHandle, error) {
+	return nil, os.ErrNotExist
+}
+
+func (h *postRemovalSwapDirectoryHandle) LstatEntry(string) (os.FileMode, error) {
+	return 0, os.ErrNotExist
+}
+
+func (h *postRemovalSwapDirectoryHandle) ReadLink(string) (string, error) {
+	return "", os.ErrNotExist
+}
+
 func (h *postRemovalSwapDirectoryHandle) CreateFile(string, []byte, os.FileMode) error {
 	return errors.New("fake directory handle does not support writes")
 }
 
-func (h *postRemovalSwapDirectoryHandle) ReadDir() ([]storageworkspaces.DirectoryEntry, error) {
+func (h *postRemovalSwapDirectoryHandle) ReadDir() ([]os.DirEntry, error) {
+	return nil, os.ErrNotExist
+}
+
+func (h *postRemovalSwapDirectoryHandle) ReadContextEntries() ([]storageworkspaces.DirectoryEntry, error) {
 	return nil, nil
 }
 

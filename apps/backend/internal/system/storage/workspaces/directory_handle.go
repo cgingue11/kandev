@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 )
@@ -19,8 +20,13 @@ type DirectoryHandle interface {
 	VerifyPath(path string) error
 	IsValidWorktree() bool
 	RemoveDirectory(ctx context.Context) error
-	ReadDir() ([]DirectoryEntry, error)
+	OpenFile(name string) (io.ReadCloser, error)
+	OpenSubdirectory(name string) (DirectoryHandle, error)
+	LstatEntry(name string) (os.FileMode, error)
+	ReadLink(name string) (string, error)
+	ReadDir() ([]os.DirEntry, error)
 	ReadFile(name string) ([]byte, error)
+	ReadContextEntries() ([]DirectoryEntry, error)
 	ReadFileLimit(name string, maxBytes int64) ([]byte, error)
 	CreateFile(name string, data []byte, mode os.FileMode) error
 	WriteFile(name string, data []byte, mode os.FileMode) error

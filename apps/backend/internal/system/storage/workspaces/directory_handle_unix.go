@@ -4,8 +4,6 @@ package workspaces
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -161,10 +159,19 @@ func (h *unixDirectoryHandle) RemoveDirectory(ctx context.Context) error {
 }
 
 func (h *unixDirectoryHandle) ReadFile(name string) ([]byte, error) {
-	return h.ReadFileLimit(name, 0)
+	file, err := h.OpenFile(name)
+	if err != nil {
+		return nil, err
+	}
+	content, readErr := io.ReadAll(file)
+	closeErr := file.Close()
+	if readErr != nil {
+		return nil, readErr
+	}
+	return content, closeErr
 }
 
-func (h *unixDirectoryHandle) ReadFileLimit(name string, maxBytes int64) ([]byte, error) {
+func (h *unixDirectoryHandle) OpenFile(name string) (io.ReadCloser, error) {
 	if h == nil || h.targetFD < 0 {
 		return nil, errors.New("directory handle is closed")
 	}
@@ -189,80 +196,111 @@ func (h *unixDirectoryHandle) ReadFileLimit(name string, maxBytes int64) ([]byte
 		_ = file.Close()
 		return nil, fmt.Errorf("directory entry is not a regular file: %s", name)
 	}
-	reader := io.Reader(file)
-	if maxBytes > 0 {
-		reader = io.LimitReader(file, maxBytes+1)
-	}
-	content, readErr := io.ReadAll(reader)
-	_ = file.Close()
-	if readErr == nil && maxBytes > 0 && int64(len(content)) > maxBytes {
-		return nil, fmt.Errorf("directory entry exceeds %d bytes: %s", maxBytes, name)
-	}
-	return content, readErr
+	return file, nil
 }
 
-func (h *unixDirectoryHandle) ReadDir() ([]DirectoryEntry, error) {
+func (h *unixDirectoryHandle) OpenSubdirectory(name string) (DirectoryHandle, error) {
 	if h == nil || h.targetFD < 0 {
 		return nil, errors.New("directory handle is closed")
 	}
-	fd, err := unix.Dup(h.targetFD)
+	if err := validateDirectoryEntryName(name); err != nil {
+		return nil, err
+	}
+	rootFD, err := unix.Dup(h.targetFD)
 	if err != nil {
-		return nil, fmt.Errorf("duplicate directory handle: %w", err)
+		return nil, err
 	}
-	file := os.NewFile(uintptr(fd), "worktree-directory")
-	if file == nil {
+	parentFD, err := unix.Dup(h.targetFD)
+	if err != nil {
+		_ = unix.Close(rootFD)
+		return nil, err
+	}
+	targetFD, err := unix.Openat(h.targetFD, name, dependencyDirectoryOpenFlags, 0)
+	if err != nil {
+		_ = unix.Close(parentFD)
+		_ = unix.Close(rootFD)
+		return nil, err
+	}
+	return &unixDirectoryHandle{rootFD: rootFD, parentFD: parentFD, targetFD: targetFD, target: name}, nil
+}
+
+func (h *unixDirectoryHandle) LstatEntry(name string) (os.FileMode, error) {
+	if h == nil || h.targetFD < 0 {
+		return 0, errors.New("directory handle is closed")
+	}
+	if err := validateDirectoryEntryName(name); err != nil {
+		return 0, err
+	}
+	var info unix.Stat_t
+	if err := unix.Fstatat(h.targetFD, name, &info, unix.AT_SYMLINK_NOFOLLOW); err != nil {
+		return 0, err
+	}
+	mode := os.FileMode(info.Mode & 0o777)
+	switch info.Mode & unix.S_IFMT {
+	case unix.S_IFDIR:
+		mode |= os.ModeDir
+	case unix.S_IFLNK:
+		mode |= os.ModeSymlink
+	case unix.S_IFIFO:
+		mode |= os.ModeNamedPipe
+	case unix.S_IFSOCK:
+		mode |= os.ModeSocket
+	case unix.S_IFCHR:
+		mode |= os.ModeDevice | os.ModeCharDevice
+	case unix.S_IFBLK:
+		mode |= os.ModeDevice
+	}
+	if info.Mode&0o4000 != 0 {
+		mode |= os.ModeSetuid
+	}
+	if info.Mode&0o2000 != 0 {
+		mode |= os.ModeSetgid
+	}
+	if info.Mode&0o1000 != 0 {
+		mode |= os.ModeSticky
+	}
+	return mode, nil
+}
+
+func (h *unixDirectoryHandle) ReadLink(name string) (string, error) {
+	if h == nil || h.targetFD < 0 {
+		return "", errors.New("directory handle is closed")
+	}
+	if err := validateDirectoryEntryName(name); err != nil {
+		return "", err
+	}
+	buffer := make([]byte, 256)
+	for {
+		n, err := unix.Readlinkat(h.targetFD, name, buffer)
+		if err != nil {
+			return "", err
+		}
+		if n < len(buffer) {
+			return string(buffer[:n]), nil
+		}
+		buffer = make([]byte, len(buffer)*2)
+	}
+}
+
+func (h *unixDirectoryHandle) ReadDir() ([]os.DirEntry, error) {
+	if h == nil || h.targetFD < 0 {
+		return nil, errors.New("directory handle is closed")
+	}
+	fd, err := unix.Openat(h.targetFD, ".", dependencyDirectoryOpenFlags, 0)
+	if err != nil {
+		return nil, err
+	}
+	directory := os.NewFile(uintptr(fd), "worktree-directory")
+	if directory == nil {
 		_ = unix.Close(fd)
-		return nil, errors.New("create directory file from handle")
+		return nil, errors.New("create directory reader from handle")
 	}
-	entries, readErr := file.ReadDir(-1)
-	closeErr := file.Close()
+	entries, readErr := directory.ReadDir(-1)
+	closeErr := directory.Close()
 	if readErr != nil {
 		return nil, readErr
 	}
-	if closeErr != nil {
-		return nil, closeErr
-	}
-	result := make([]DirectoryEntry, 0, len(entries))
-	for _, entry := range entries {
-		var info unix.Stat_t
-		if err := unix.Fstatat(h.targetFD, entry.Name(), &info, unix.AT_SYMLINK_NOFOLLOW); err != nil {
-			if errors.Is(err, unix.ENOENT) {
-				continue
-			}
-			return nil, err
-		}
-		result = append(result, DirectoryEntry{Name: entry.Name(), Mode: unixFileMode(info.Mode), Size: info.Size})
-	}
-	return result, nil
-}
-
-func unixFileMode(mode uint32) os.FileMode {
-	result := os.FileMode(mode & 0o777)
-	switch mode & unix.S_IFMT {
-	case unix.S_IFDIR:
-		result |= os.ModeDir
-	case unix.S_IFLNK:
-		result |= os.ModeSymlink
-	case unix.S_IFREG:
-	default:
-		result |= os.ModeDevice
-		if mode&unix.S_IFIFO != 0 {
-			result |= os.ModeNamedPipe
-		}
-		if mode&unix.S_IFSOCK != 0 {
-			result |= os.ModeSocket
-		}
-	}
-	if mode&unix.S_ISUID != 0 {
-		result |= os.ModeSetuid
-	}
-	if mode&unix.S_ISGID != 0 {
-		result |= os.ModeSetgid
-	}
-	if mode&unix.S_ISVTX != 0 {
-		result |= os.ModeSticky
-	}
-	return result
+	return entries, closeErr
 }
 
 func (h *unixDirectoryHandle) WriteFile(name string, data []byte, mode os.FileMode) error {
@@ -292,91 +330,6 @@ func (h *unixDirectoryHandle) WriteFile(name string, data []byte, mode os.FileMo
 		return err
 	}
 	return file.Close()
-}
-
-func (h *unixDirectoryHandle) CreateFile(name string, data []byte, mode os.FileMode) error {
-	if h == nil || h.targetFD < 0 {
-		return errors.New("directory handle is closed")
-	}
-	if err := validateDirectoryEntryName(name); err != nil {
-		return err
-	}
-	fd, err := unix.Openat(h.targetFD, name,
-		unix.O_WRONLY|unix.O_CREAT|unix.O_EXCL|unix.O_CLOEXEC|unix.O_NOFOLLOW,
-		uint32(mode.Perm()),
-	)
-	if err != nil {
-		return err
-	}
-	file := os.NewFile(uintptr(fd), filepath.Join("worktree-directory", name))
-	if file == nil {
-		_ = unix.Close(fd)
-		return errors.New("create file from directory handle")
-	}
-	if err := file.Chmod(mode.Perm()); err != nil {
-		_ = file.Close()
-		return err
-	}
-	if _, err := file.Write(data); err != nil {
-		_ = file.Close()
-		return err
-	}
-	if err := file.Sync(); err != nil {
-		_ = file.Close()
-		return err
-	}
-	return file.Close()
-}
-
-func (h *unixDirectoryHandle) WriteFileAtomic(name string, data []byte, mode os.FileMode) error {
-	if h == nil || h.targetFD < 0 {
-		return errors.New("directory handle is closed")
-	}
-	if err := validateDirectoryEntryName(name); err != nil {
-		return err
-	}
-	var nonce [16]byte
-	if _, err := rand.Read(nonce[:]); err != nil {
-		return fmt.Errorf("generate temporary file name: %w", err)
-	}
-	tempName := ".context-write-" + hex.EncodeToString(nonce[:])
-	tempFD, err := unix.Openat(h.targetFD, tempName,
-		unix.O_WRONLY|unix.O_CREAT|unix.O_EXCL|unix.O_CLOEXEC|unix.O_NOFOLLOW,
-		uint32(mode.Perm()),
-	)
-	if err != nil {
-		return err
-	}
-	tempFile := os.NewFile(uintptr(tempFD), tempName)
-	if tempFile == nil {
-		_ = unix.Close(tempFD)
-		_ = unix.Unlinkat(h.targetFD, tempName, 0)
-		return errors.New("create temporary file from directory handle")
-	}
-	renamed := false
-	defer func() {
-		_ = tempFile.Close()
-		if !renamed {
-			_ = unix.Unlinkat(h.targetFD, tempName, 0)
-		}
-	}()
-	if err := tempFile.Chmod(mode.Perm()); err != nil {
-		return err
-	}
-	if _, err := tempFile.Write(data); err != nil {
-		return err
-	}
-	if err := tempFile.Sync(); err != nil {
-		return err
-	}
-	if err := tempFile.Close(); err != nil {
-		return err
-	}
-	if err := unix.Renameat(h.targetFD, tempName, h.targetFD, name); err != nil {
-		return err
-	}
-	renamed = true
-	return unix.Fsync(h.targetFD)
 }
 
 func openOrCreateDependencyDirectoryPath(path string, mode os.FileMode) (int, error) {

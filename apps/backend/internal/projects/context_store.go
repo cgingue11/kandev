@@ -134,7 +134,7 @@ func (s *ContextStore) List(projectID, relative string) ([]ContextEntry, error) 
 		return nil, fmt.Errorf("open project context directory: %w", err)
 	}
 	defer func() { _ = contextDir.Close() }()
-	entries, err := contextDir.ReadDir()
+	entries, err := contextDir.ReadContextEntries()
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, ErrContextNotFound
 	}
