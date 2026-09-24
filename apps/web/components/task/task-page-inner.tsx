@@ -48,6 +48,7 @@ import type {
 import { useTranslation } from "react-i18next";
 import type { Canvas } from "@/lib/api/domains/canvas-api";
 import type { TaskCanvasesLoadStatus } from "@/hooks/domains/task/use-task-canvases";
+import { AgentProjectTaskProvider } from "./agent-project-task-context";
 
 export type TaskPageInnerProps = {
   task: Task | null;
@@ -139,6 +140,7 @@ function buildTaskTopBarProps(params: {
     currentStepId: resolveCurrentStepId(params.sessionWorkflowStepId, taskProps.workflowStepId),
     workflowId: taskProps.workflowId,
     taskState: params.task?.state ?? null,
+    isAgentProjectTask: Boolean(params.task?.agent_project_id),
     workspaceId: taskProps.workspaceId,
     projectId: taskProps.projectId,
     issueUrl: taskProps.issueUrl,
@@ -440,9 +442,21 @@ export function TaskPageInner(props: TaskPageInnerProps) {
                   isPassthrough={sessionPanel.isSessionPassthrough}
                 />
                 <TaskSharedError reserveMobileTopBar={isMobile} />
-                <div className="flex min-h-0 flex-1 flex-col">
-                  <TaskLayout {...layoutProps} />
-                </div>
+                <AgentProjectTaskProvider
+                  value={
+                    task.agent_project_id && task.agent_project_tier
+                      ? {
+                          projectId: task.agent_project_id,
+                          workspaceId: task.workspace_id,
+                          tier: task.agent_project_tier,
+                        }
+                      : null
+                  }
+                >
+                  <div className="flex min-h-0 flex-1 flex-col">
+                    <TaskLayout {...layoutProps} />
+                  </div>
+                </AgentProjectTaskProvider>
               </TaskLaunchErrorProvider>
             </TaskArchivedProvider>
           </div>

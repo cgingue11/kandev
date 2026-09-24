@@ -189,6 +189,9 @@ func (s *Service) UpdateTaskState(ctx context.Context, id string, state v1.TaskS
 	if err != nil {
 		return nil, err
 	}
+	if task.AgentProjectID != "" {
+		return nil, ErrAgentProjectWorkflowOperation
+	}
 
 	oldState := task.State
 
@@ -570,6 +573,9 @@ func (s *Service) MoveTaskWithOptions(
 	task, err := s.tasks.GetTask(ctx, id)
 	if err != nil {
 		return nil, err
+	}
+	if task.AgentProjectID != "" {
+		return nil, ErrAgentProjectWorkflowOperation
 	}
 	if opts.ExpectedWorkflowID != nil && task.WorkflowID != *opts.ExpectedWorkflowID {
 		// Cheap fast-fail only: this GetTask is not inside a lock, so it
@@ -1865,6 +1871,9 @@ func (s *Service) validateSelectedMoveBatch(ctx context.Context, taskIDs []strin
 		task, err := s.tasks.GetTask(ctx, id)
 		if err != nil {
 			return nil, err
+		}
+		if task.AgentProjectID != "" {
+			return nil, ErrAgentProjectWorkflowOperation
 		}
 		if task.WorkflowID != targetWorkflowID || task.WorkflowStepID != targetStepID {
 			if _, err := s.validateTaskMove(ctx, task, targetWorkflowID, targetStepID, MoveTaskOptions{}); err != nil {

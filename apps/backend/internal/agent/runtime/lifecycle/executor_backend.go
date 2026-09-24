@@ -604,6 +604,7 @@ type ExecutorCreateRequest struct {
 	PromptTurnID           string
 	WorkspacePath          string
 	WorkspaceSourceRoots   []string
+	ProjectWritableRoots   []string
 	Protocol               string
 	Env                    map[string]string
 	// ApprovedSecretEnvKeys contains repository binding keys explicitly
@@ -762,6 +763,7 @@ func (ri *ExecutorInstance) ToAgentExecution(req *ExecutorCreateRequest) *AgentE
 		ContainerIP:          ri.ContainerIP,
 		WorkspacePath:        workspacePath,
 		WorkspaceSourceRoots: append([]string(nil), req.WorkspaceSourceRoots...),
+		ProjectWritableRoots: append([]string(nil), req.ProjectWritableRoots...),
 		RuntimeName:          ri.RuntimeName,
 		Status:               v1.AgentStatusRunning,
 		StartedAt:            time.Now(),

@@ -818,6 +818,11 @@ func (s *Service) GetWorkspaceInfoForSession(ctx context.Context, taskID, sessio
 	if taskID == "" {
 		taskID = session.TaskID
 	}
+	task, taskErr := s.tasks.GetTask(ctx, taskID)
+	if taskErr != nil {
+		return nil, fmt.Errorf("load task for workspace recovery: %w", taskErr)
+	}
+	isAgentProject := task != nil && task.AgentProjectID != ""
 
 	// Get workspace path from the session's worktree(s).
 	// Multi-repo: every per-repo worktree sits as a sibling under the task root
@@ -827,7 +832,11 @@ func (s *Service) GetWorkspaceInfoForSession(ctx context.Context, taskID, sessio
 	// tracker fan-out that scanRepositorySubdirs relies on.
 	var workspacePath string
 	if len(session.Worktrees) > 1 {
-		workspacePath = filepath.Dir(session.Worktrees[0].WorktreePath)
+		if isAgentProject {
+			workspacePath = session.Worktrees[0].WorktreePath
+		} else {
+			workspacePath = filepath.Dir(session.Worktrees[0].WorktreePath)
+		}
 	} else if len(session.Worktrees) == 1 {
 		workspacePath = session.Worktrees[0].WorktreePath
 	}
@@ -901,6 +910,18 @@ func (s *Service) GetWorkspaceInfoForSession(ctx context.Context, taskID, sessio
 		RuntimeConfigOptions:    runtimeConfig.ConfigOptions,
 		RuntimeConfigOptionsSet: runtimeConfigOptionsSet,
 	}
+	if task != nil && task.AgentProjectID != "" {
+		info.AgentProjectID = task.AgentProjectID
+		if s.agentProjectContextPathResolver != nil {
+			contextPath, pathErr := s.agentProjectContextPathResolver(task.AgentProjectID)
+			if pathErr != nil {
+				return nil, fmt.Errorf("resolve project context path: %w", pathErr)
+			}
+			info.ProjectWorkspace = &lifecycle.ProjectWorkspaceAccess{ContextPath: contextPath}
+		} else {
+			return nil, errors.New("project context path resolver is unavailable")
+		}
+	}
 	// Durable folder attachments are replayed by lifecycle for both fresh
 	// launch and workspace-only session recovery.
 	if s.workspaceFolders != nil {
@@ -964,9 +985,15 @@ func (s *Service) GetWorkspaceInfoForSession(ctx context.Context, taskID, sessio
 	workspaceInventory := session.Worktrees
 	if taskEnv != nil {
 		workspaceInventory = taskEnv.Repos
+		if info.ProjectWorkspace != nil && len(taskEnv.Repos) > 0 && taskEnv.Repos[0] != nil && taskEnv.Repos[0].WorktreePath != "" {
+			info.WorkspacePath = taskEnv.Repos[0].WorktreePath
+		}
 	}
 	if err := s.populateWorkspaceRepositorySpecs(ctx, taskID, workspaceInventory, info); err != nil {
 		return nil, err
+	}
+	if info.ProjectWorkspace != nil {
+		populateProjectWorkspacePaths(info, workspaceInventory)
 	}
 
 	// Populate executor info for correct runtime selection and remote reconnection
@@ -1005,6 +1032,32 @@ func (s *Service) GetWorkspaceInfoForSession(ctx context.Context, taskID, sessio
 	}
 
 	return info, nil
+}
+
+func populateProjectWorkspacePaths(info *lifecycle.WorkspaceInfo, inventory []*models.TaskEnvironmentRepo) {
+	for _, repository := range info.WorkspaceRepositories {
+		if repository.WorktreePath != "" {
+			info.ProjectWorkspace.RepositoryWorktreePaths = append(
+				info.ProjectWorkspace.RepositoryWorktreePaths,
+				repository.WorktreePath,
+			)
+		}
+	}
+	if len(info.WorkspaceRepositories) > 0 && info.WorkspaceRepositories[0].WorktreePath != "" {
+		info.WorkspacePath = info.WorkspaceRepositories[0].WorktreePath
+		return
+	}
+	if len(info.ProjectWorkspace.RepositoryWorktreePaths) != 0 {
+		return
+	}
+	for _, worktree := range inventory {
+		if worktree != nil && worktree.WorktreePath != "" {
+			info.ProjectWorkspace.RepositoryWorktreePaths = append(
+				info.ProjectWorkspace.RepositoryWorktreePaths,
+				worktree.WorktreePath,
+			)
+		}
+	}
 }
 
 func (s *Service) applyWorkspaceExecutorRecord(
@@ -1092,6 +1145,7 @@ func (s *Service) populateWorkspaceRepositorySpecs(ctx context.Context, taskID s
 		}
 		if worktree := worktreesByIdentity[workspaceWorktreeKey{repositoryID: taskRepository.RepositoryID, branchSlug: branchPlans[index].IdentitySlug}]; worktree != nil {
 			spec.WorktreeID = worktree.WorktreeID
+			spec.WorktreePath = worktree.WorktreePath
 			spec.BranchSlug = worktree.BranchSlug
 			spec.BranchIdentitySlug = worktree.BranchSlug
 		}

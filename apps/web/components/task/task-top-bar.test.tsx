@@ -84,7 +84,7 @@ vi.mock("@/hooks/domains/linear/use-linear-availability", () => ({
 }));
 
 vi.mock("@/components/task/workflow-stepper", () => ({
-  WorkflowStepper: () => null,
+  WorkflowStepper: () => <span data-testid="workflow-stepper" />,
 }));
 
 vi.mock("@/components/task/layout-preset-selector", () => ({
@@ -231,6 +231,22 @@ function expectMenuOpen(open: boolean) {
 }
 
 describe("TaskTopBar actions menu trigger", () => {
+  it("hides workflow movement and generic task actions for Agent Project tasks", () => {
+    renderTopBar(
+      <TaskTopBar
+        taskId="project-task"
+        taskTitle={TASK_TITLE}
+        isAgentProjectTask
+        workflowId="workflow-1"
+        workflowSteps={[{ id: "step-1", label: "In progress" } as never]}
+        actionsMenuBoardRow={NORMAL_BOARD_ROW}
+      />,
+    );
+
+    expect(screen.queryByTestId("workflow-stepper")).toBeNull();
+    expect(screen.queryByTestId(TRIGGER_TEST_ID)).toBeNull();
+  });
+
   it("renders no trigger when the top bar has no subject task", () => {
     renderTopBar(<TaskTopBar taskId={null} actionsMenuBoardRow={null} />);
 

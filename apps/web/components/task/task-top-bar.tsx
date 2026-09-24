@@ -42,6 +42,7 @@ type TaskTopBarProps = {
   workflowSteps?: WorkflowStepperStep[];
   currentStepId?: string | null;
   workflowId?: string | null;
+  isAgentProjectTask?: boolean;
   taskState?: string | null;
   workspaceId?: string | null;
   projectId?: string | null;
@@ -71,6 +72,7 @@ const TaskTopBar = memo(function TaskTopBar({
   workflowSteps,
   currentStepId,
   workflowId,
+  isAgentProjectTask = false,
   taskState,
   workspaceId,
   projectId,
@@ -112,7 +114,7 @@ const TaskTopBar = memo(function TaskTopBar({
         ) : undefined
       }
       center={
-        workflowSteps && workflowSteps.length > 0 ? (
+        !isAgentProjectTask && workflowSteps && workflowSteps.length > 0 ? (
           <WorkflowStepper
             steps={workflowSteps}
             currentStepId={currentStepId ?? null}
@@ -145,6 +147,7 @@ const TaskTopBar = memo(function TaskTopBar({
           actionsMenuBoardRow={actionsMenuBoardRow}
           subjectWorkflowStepId={subjectWorkflowStepId}
           subjectPrimaryExecutorType={subjectPrimaryExecutorType}
+          isAgentProjectTask={isAgentProjectTask}
         />
       }
     />
@@ -387,6 +390,7 @@ function TopBarRight({
   actionsMenuBoardRow,
   subjectWorkflowStepId,
   subjectPrimaryExecutorType,
+  isAgentProjectTask,
 }: {
   taskId?: string | null;
   activeSessionId?: string | null;
@@ -403,6 +407,7 @@ function TopBarRight({
   actionsMenuBoardRow?: TaskActionsMenuBoardRow | null;
   subjectWorkflowStepId?: string | null;
   subjectPrimaryExecutorType?: string | null;
+  isAgentProjectTask?: boolean;
 }) {
   const { t } = useTranslation();
   return (
@@ -455,15 +460,17 @@ function TopBarRight({
         isArchived={isArchived}
         embeddedVscodeSupported={embeddedVscodeSupported}
       />
-      <TaskTopBarActionsMenu
-        taskId={taskId ?? null}
-        taskTitle={taskTitle ?? ""}
-        boardRow={actionsMenuBoardRow ?? null}
-        workspaceId={workspaceId ?? null}
-        isArchived={isArchived}
-        subjectWorkflowStepId={subjectWorkflowStepId}
-        subjectPrimaryExecutorType={subjectPrimaryExecutorType}
-      />
+      {!isAgentProjectTask && (
+        <TaskTopBarActionsMenu
+          taskId={taskId ?? null}
+          taskTitle={taskTitle ?? ""}
+          boardRow={actionsMenuBoardRow ?? null}
+          workspaceId={workspaceId ?? null}
+          isArchived={isArchived}
+          subjectWorkflowStepId={subjectWorkflowStepId}
+          subjectPrimaryExecutorType={subjectPrimaryExecutorType}
+        />
+      )}
     </div>
   );
 }
