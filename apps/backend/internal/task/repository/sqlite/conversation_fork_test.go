@@ -111,6 +111,42 @@ func TestConversationForkSourceRehydratesSelectedToolPayloadInSnapshot(t *testin
 	}
 }
 
+func TestConversationForkSourceWithoutToolEvidenceDoesNotCountToolPayloadBytes(t *testing.T) {
+	repo := newRepoForSessionTests(t)
+	ctx := context.Background()
+	seedForMsgTest(t, repo, "task-fork-large-tool", "session-fork-large-tool", "turn-fork-large-tool")
+	stamp := time.Date(2026, 9, 22, 12, 0, 0, 0, time.UTC)
+	if err := repo.CreateMessage(ctx, &models.Message{
+		ID: "tool-fork-large-payload", TaskID: "task-fork-large-tool", TaskSessionID: "session-fork-large-tool",
+		TurnID: "turn-fork-large-tool", AuthorType: models.MessageAuthorAgent, Type: models.MessageTypeToolExecute,
+		Content: "Ran command", CreatedAt: stamp, UpdatedAt: stamp,
+	}); err != nil {
+		t.Fatalf("create tool message: %v", err)
+	}
+	if _, err := repo.db.ExecContext(ctx, repo.db.Rebind(`
+		UPDATE task_session_messages SET payload_size = ? WHERE id = ?
+	`), conversationForkMaxSourceBytes+1, "tool-fork-large-payload"); err != nil {
+		t.Fatalf("set retained payload size: %v", err)
+	}
+	if err := repo.CreateMessage(ctx, &models.Message{
+		ID: "user-fork-large-cutoff", TaskID: "task-fork-large-tool", TaskSessionID: "session-fork-large-tool",
+		TurnID: "turn-fork-large-tool", AuthorType: models.MessageAuthorUser, Type: models.MessageTypeMessage,
+		Content: "Continue without tool output", CreatedAt: stamp.Add(time.Minute), UpdatedAt: stamp.Add(time.Minute),
+	}); err != nil {
+		t.Fatalf("create cutoff message: %v", err)
+	}
+
+	source, err := repo.ReadConversationForkSource(ctx, models.ConversationForkSourceRequest{
+		SessionID: "session-fork-large-tool", CutoffMessageID: "user-fork-large-cutoff", IncludeToolEvidence: false,
+	})
+	if err != nil {
+		t.Fatalf("read source without tool evidence: %v", err)
+	}
+	if len(source.Messages) != 2 {
+		t.Fatalf("source has %d messages, want 2", len(source.Messages))
+	}
+}
+
 func TestConversationForkAttachmentCandidatesAreBoundedAndPaged(t *testing.T) {
 	repo := newRepoForSessionTests(t)
 	ctx := context.Background()
@@ -183,8 +219,12 @@ func TestConversationForkDraftStorageQuotaIdempotencyAndRetention(t *testing.T) 
 	if err := repo.DiscardConversationForkDraft(ctx, "owner-a", first.Descriptor.ID); err != nil {
 		t.Fatalf("discard draft: %v", err)
 	}
-	if _, err := repo.GetConversationForkDraft(ctx, "owner-a", first.Descriptor.ID, now); err != nil {
-		t.Fatalf("discarded draft remains readable until expiry: %v", err)
+	discarded, err := repo.GetConversationForkDraft(ctx, "owner-a", first.Descriptor.ID, now)
+	if err != nil || discarded.Descriptor.State != "discarded" || discarded.CompiledText != "" || discarded.Descriptor.TextBytes != 0 {
+		t.Fatalf("discarded draft retained transcript data: %+v, %v", discarded.Descriptor, err)
+	}
+	if err := repo.DiscardConversationForkDraft(ctx, "owner-a", first.Descriptor.ID); err != nil {
+		t.Fatalf("idempotent discard: %v", err)
 	}
 
 	var firstActive models.ConversationForkDraft
@@ -215,18 +255,56 @@ func TestConversationForkDraftStorageQuotaIdempotencyAndRetention(t *testing.T) 
 		t.Fatalf("discard one active draft before expiry test: %v", err)
 	}
 
-	expired, err := repo.CreateConversationForkDraft(ctx, newConversationForkDraft("request-expired", "expired", now.Add(time.Minute)))
+	expiredDraft := newConversationForkDraft("request-expired", "expired", now.Add(time.Minute))
+	expiredDraft.Descriptor.AttachmentDescriptors = []models.ConversationForkAttachment{{ID: "expired-copy", Name: "expired.txt", Size: 10, Available: true}}
+	expired, err := repo.CreateConversationForkDraft(ctx, expiredDraft)
 	if err != nil {
 		t.Fatalf("create expiring draft: %v", err)
 	}
 	if _, err := repo.GetConversationForkDraft(ctx, "owner-a", expired.Descriptor.ID, now.Add(2*time.Minute)); !errors.Is(err, models.ErrConversationForkExpired) {
 		t.Fatalf("expired draft error = %v, want expired", err)
 	}
-	if err := repo.DeleteExpiredConversationForkDrafts(ctx, now.Add(2*time.Minute)); err != nil {
+	cleaned, err := repo.DeleteExpiredConversationForkDrafts(ctx, now.Add(2*time.Minute))
+	if err != nil {
 		t.Fatalf("delete expired drafts: %v", err)
+	}
+	foundExpiredCopy := false
+	for _, item := range cleaned {
+		for _, attachment := range item.Attachments {
+			if item.OwnerID == "owner-a" && attachment.ID == "expired-copy" {
+				foundExpiredCopy = true
+			}
+		}
+	}
+	if !foundExpiredCopy {
+		t.Fatalf("expired attachment cleanup result omitted expired copy: %+v", cleaned)
 	}
 	if _, err := repo.GetConversationForkDraft(ctx, "owner-a", expired.Descriptor.ID, now.Add(2*time.Minute)); !errors.Is(err, models.ErrConversationForkNotFound) {
 		t.Fatalf("expired draft after retention cleanup = %v, want not found", err)
+	}
+}
+
+func TestConversationForkDestinationCompletionMigrationAddsFalseDefault(t *testing.T) {
+	repo := newRepoForSessionTests(t)
+	ctx := context.Background()
+	if _, err := repo.db.ExecContext(ctx, `DROP TABLE task_conversation_forks`); err != nil {
+		t.Fatalf("drop current fork table: %v", err)
+	}
+	if _, err := repo.db.ExecContext(ctx, `CREATE TABLE task_conversation_forks (id TEXT PRIMARY KEY, state TEXT NOT NULL)`); err != nil {
+		t.Fatalf("create legacy fork table: %v", err)
+	}
+	if _, err := repo.db.ExecContext(ctx, `INSERT INTO task_conversation_forks(id, state) VALUES ('legacy-fork', 'attached')`); err != nil {
+		t.Fatalf("insert legacy fork row: %v", err)
+	}
+	if err := repo.migrateConversationForkDestinationComplete(); err != nil {
+		t.Fatalf("migrate destination completion column: %v", err)
+	}
+	var destinationComplete bool
+	if err := repo.db.QueryRowContext(ctx, `SELECT destination_complete FROM task_conversation_forks WHERE id = 'legacy-fork'`).Scan(&destinationComplete); err != nil {
+		t.Fatalf("read migrated completion value: %v", err)
+	}
+	if destinationComplete {
+		t.Fatal("legacy fork receipt should remain incomplete until synchronous destination work finishes")
 	}
 }
 

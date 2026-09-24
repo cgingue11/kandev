@@ -293,7 +293,7 @@ The design package passed catalog, traceability, link, and specification checks 
 - The saved-prompt, initial-task-brief, and deferred-launch regressions passed. `go test ./internal/backendapp` and `go build ./...` passed.
 - The focused frontend suite passed 141 tests across 14 files. `pnpm run typecheck`, `pnpm run i18n:check`, and `pnpm run i18n:ratchet` passed.
 - Managed desktop E2E passed 3 tests across agent, new-task, and child-task flows. Managed mobile E2E passed 3 tests across the same destinations, including create-without-start and later launch.
-- Targeted ESLint completed with no errors and 17 warnings on changed frontend files. The later review-remediation pass refactored the affected components; final targeted ESLint is clean with no warnings.
+- Targeted ESLint passed with zero errors and warnings after extracting the dialog surface into its own component.
 - Public documentation validation passed: 62 validator tests and 47 published pages. Catalog validation and full specification lint passed.
 - `git diff --check` passed.
 
@@ -303,7 +303,7 @@ All five work orders are done. Requirements are active and the system design is 
 
 ### Review remediation verification
 
-All six review findings are resolved. A task's permanent fork provenance no longer flows into later session delivery metadata; only its first atomic pending-snapshot claim enables delivery. Selected copied attachments reach agent, immediate-task, and delayed-task launch inputs and share the normal aggregate limits with new uploads. Separate-workspace creation rejects Local executors. Replacement previews preserve the previous usable snapshot on failure and clean up stale drafts. Accepted user cutoffs work during an active assistant turn. Known model limits appear from models.dev metadata, while estimates remain informational. Public guidance, requirements, system design, and test traceability now match these behaviors.
+The six direct review findings and subsequent PR findings are resolved in the working tree. A task's permanent fork provenance no longer flows into later session delivery metadata; only its first atomic pending-snapshot claim enables delivery. Selected copied attachments reach agent, immediate-task, and delayed-task launch inputs and share the normal aggregate limits with new uploads. Separate-workspace creation rejects Local executors. Replacement previews preserve the previous usable snapshot on failure and clean up stale drafts. Accepted user cutoffs work during an active assistant turn. Known model limits appear from models.dev metadata, while estimates remain informational. Fork retries preserve the exact compiled bytes, isolate historical text from trusted system context, and reuse the first user message without duplicating the fork block. Destination receipts distinguish completed setup from retryable partial creation; rollback restores staged copies and the draft. Expiry and discard release private copied files and compiled payloads. Public guidance, requirements, system design, and test traceability match these behaviors.
 
 Verification passed after remediation:
 
@@ -311,7 +311,7 @@ Verification passed after remediation:
 - `go build ./...` passed.
 - `pnpm exec vitest run hooks/domains/task/use-conversation-fork.test.ts` passed all 9 tests. `pnpm run typecheck` and `pnpm --filter @kandev/web build:vite` passed.
 - `pnpm run i18n:check`, `pnpm run i18n:ratchet`, catalog validation, full spec lint, public-doc validation (62 tests and 47 pages), and `git diff --check` passed.
-- Targeted ESLint reported 0 errors and 6 warnings on the hook and its tests. The later hook refactor removed those warnings; final targeted ESLint is clean with no warnings.
+- Targeted ESLint passed with zero errors and warnings after extracting the dialog surface into its own component.
 
 ## Risks
 
@@ -328,3 +328,7 @@ Verification passed after remediation:
 
 Task 05 added a how-to section to `docs/public/tasks-and-workflows.md` after desktop and phone flows passed.
 It checked `docs/public/agents-and-profiles.md`, `README.md`, and `docs/screenshots.md` for conflicting fork or context claims; no changes were needed there.
+
+## PR fixup status
+
+The worktree contains fixes and regression coverage for the review threads recorded on PR #3897. Local backend lint/build, targeted PostgreSQL-enabled Go tests, web typecheck, targeted ESLint, and desktop/phone fork E2E checks passed. The fixup commit, exact-head GitHub checks, review-thread dispositions, and advanced-base merge check remain delivery steps and are not claimed complete in this plan yet.

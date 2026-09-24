@@ -80,3 +80,37 @@ func TestConversationForkCompileRejectsInvalidRangeAndHostileDelimiter(t *testin
 		t.Fatalf("unavailable tool evidence error = %v, want visible failure", err)
 	}
 }
+
+func TestConversationForkCompileDoesNotRepeatInheritedAttachmentDescriptions(t *testing.T) {
+	stamp := time.Date(2026, 9, 22, 12, 0, 0, 0, time.UTC)
+	message := &models.Message{
+		ID: "fork-first-message", AuthorType: models.MessageAuthorUser, Type: models.MessageTypeMessage,
+		Content: "New request", CreatedAt: stamp, UpdatedAt: stamp,
+	}
+	inherited := &models.ConversationForkDraft{
+		CompiledText: "<conversation-fork-history>\n[Attachment 1: screen.png, 4 bytes]\n</conversation-fork-history>",
+		Descriptor: models.ConversationForkDescriptor{
+			MessageCount:          1,
+			AttachmentDescriptors: []models.ConversationForkAttachment{{ID: "inherited-copy", Name: "screen.png", Size: 4}},
+		},
+	}
+	attachments := []*models.TaskMessageAttachment{
+		{ID: "inherited-copy", MessageID: message.ID, Name: "screen.png", SizeBytes: 4},
+		{ID: "new-upload", MessageID: message.ID, Name: "new.txt", SizeBytes: 3},
+	}
+	text, count, _, err := compileConversationForkWithInherited(
+		[]*models.Message{message}, message.ID, "", false, inherited, message.ID, attachments,
+	)
+	if err != nil {
+		t.Fatalf("compile inherited conversation fork: %v", err)
+	}
+	if count != 2 {
+		t.Fatalf("message count = %d, want inherited and current messages", count)
+	}
+	if strings.Count(text, "Attachment 1: screen.png") != 1 {
+		t.Fatalf("inherited attachment was repeated: %s", text)
+	}
+	if strings.Count(text, "Attachment 1: new.txt") != 1 {
+		t.Fatalf("new attachment description missing or repeated: %s", text)
+	}
+}

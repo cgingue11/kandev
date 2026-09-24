@@ -1247,7 +1247,7 @@ func (e *Executor) prepareSessionAttempt(ctx context.Context, task *v1.Task, age
 			}
 			session.Metadata[models.MetaKeyConversationForkID] = forkInput.admission.ForkID
 		}
-		session.ConversationForkPendingTask = forkInput.pendingTask
+		session.ConversationForkPendingTask = forkInput.pendingTask && isTaskInitialSession
 	}
 
 	// Resolve executor configuration

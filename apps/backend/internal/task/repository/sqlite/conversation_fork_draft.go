@@ -19,7 +19,7 @@ const conversationForkDraftColumns = `id, owner_id, workspace_id, source_task_id
 	compiled_text, content_hash, selection_json, omissions_json, attachments_json, estimate_json,
 	message_count, text_bytes, created_at, expires_at, state, draft_request_id, draft_request_fingerprint,
 	COALESCE(destination_request_id, '') AS destination_request_id, destination_request_fingerprint,
-	destination_kind, destination_task_id, destination_session_id`
+	destination_kind, destination_complete, destination_task_id, destination_session_id`
 
 func (r *Repository) CreateConversationForkDraft(ctx context.Context, draft *models.ConversationForkDraft) (models.ConversationForkDraft, error) {
 	if draft == nil || draft.OwnerID == "" || draft.WorkspaceID == "" || draft.DraftRequestID == "" || draft.RequestFingerprint == "" {
@@ -203,25 +203,35 @@ func (r *Repository) DiscardConversationForkDraft(ctx context.Context, ownerID, 
 	if ownerID == "" || id == "" {
 		return models.ErrConversationForkNotFound
 	}
+	now := time.Now().UTC()
 	result, err := r.db.ExecContext(ctx, r.db.Rebind(`
-		UPDATE task_conversation_forks SET state = 'discarded'
+		UPDATE task_conversation_forks
+		SET state = 'discarded', compiled_text = '', content_hash = '', selection_json = '{}',
+		    omissions_json = '{}', estimate_json = '{}', message_count = 0, text_bytes = 0, expires_at = ?
 		WHERE owner_id = ? AND id = ? AND state = 'draft'
-	`), ownerID, id)
+	`), now, ownerID, id)
 	if err != nil {
 		return fmt.Errorf("discard conversation fork draft: %w", err)
 	}
-	if count, err := result.RowsAffected(); err == nil && count > 0 {
+	count, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("count discarded conversation fork rows: %w", err)
+	}
+	if count > 0 {
 		return nil
 	}
-	var exists int
+	var state string
 	if err := r.ro.QueryRowxContext(ctx, r.ro.Rebind(`
-		SELECT 1 FROM task_conversation_forks WHERE owner_id = ? AND id = ?
-	`), ownerID, id).Scan(&exists); errors.Is(err, sql.ErrNoRows) {
+		SELECT state FROM task_conversation_forks WHERE owner_id = ? AND id = ?
+	`), ownerID, id).Scan(&state); errors.Is(err, sql.ErrNoRows) {
 		return models.ErrConversationForkNotFound
 	} else if err != nil {
 		return fmt.Errorf("check conversation fork draft: %w", err)
 	}
-	return nil
+	if state == conversationForkStateDiscarded {
+		return nil
+	}
+	return models.ErrConversationForkConflict
 }
 
 func (r *Repository) UpdateConversationForkEstimate(ctx context.Context, ownerID, id string, estimate models.ConversationForkEstimate) error {
@@ -250,13 +260,32 @@ func (r *Repository) UpdateConversationForkEstimate(ctx context.Context, ownerID
 	return models.ErrConversationForkConflict
 }
 
-func (r *Repository) DeleteExpiredConversationForkDrafts(ctx context.Context, now time.Time) error {
-	if _, err := r.db.ExecContext(ctx, r.db.Rebind(`
-		DELETE FROM task_conversation_forks WHERE state IN ('draft', 'discarded') AND expires_at <= ?
-	`), now); err != nil {
-		return fmt.Errorf("delete expired conversation fork drafts: %w", err)
+func (r *Repository) DeleteExpiredConversationForkDrafts(ctx context.Context, now time.Time) ([]models.ConversationForkExpiredDraftAttachments, error) {
+	rows, err := r.db.QueryxContext(ctx, r.db.Rebind(`
+		DELETE FROM task_conversation_forks
+		WHERE state IN ('draft', 'discarded') AND expires_at <= ?
+		RETURNING owner_id, attachments_json
+	`), now)
+	if err != nil {
+		return nil, fmt.Errorf("delete expired conversation fork drafts: %w", err)
 	}
-	return nil
+	defer func() { _ = rows.Close() }()
+	var expired []models.ConversationForkExpiredDraftAttachments
+	for rows.Next() {
+		var item models.ConversationForkExpiredDraftAttachments
+		var attachments string
+		if err := rows.Scan(&item.OwnerID, &attachments); err != nil {
+			return nil, fmt.Errorf("scan expired conversation fork attachment copies: %w", err)
+		}
+		if err := json.Unmarshal([]byte(attachments), &item.Attachments); err != nil {
+			return nil, fmt.Errorf("decode expired conversation fork attachment copies: %w", err)
+		}
+		expired = append(expired, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("read expired conversation fork attachment copies: %w", err)
+	}
+	return expired, nil
 }
 
 type conversationForkDraftScanner interface {
@@ -275,7 +304,7 @@ func scanConversationForkDraft(row conversationForkDraftScanner) (models.Convers
 		&d.CompilerVersion, &draft.CompiledText, &d.ContentHash, &selection, &omissions,
 		&attachments, &estimate, &d.MessageCount, &d.TextBytes, &d.CreatedAt, &d.ExpiresAt,
 		&d.State, &requestID, &draft.RequestFingerprint, &draft.DestinationRequestID,
-		&draft.DestinationFingerprint, &destinationKind, &d.DestinationTaskID, &d.DestinationSessionID,
+		&draft.DestinationFingerprint, &destinationKind, &d.DestinationComplete, &d.DestinationTaskID, &d.DestinationSessionID,
 	); err != nil {
 		return models.ConversationForkDraft{}, err
 	}

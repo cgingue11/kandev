@@ -15,6 +15,7 @@ test.describe("Conversation fork into a new agent", () => {
     testPage,
     apiClient,
     seedData,
+    prCapture,
   }, testInfo) => {
     test.setTimeout(180_000);
     const source = await seedConversationForkSource(
@@ -48,6 +49,16 @@ test.describe("Conversation fork into a new agent", () => {
     const chip = launchDialog.getByTestId("conversation-fork-chip");
     await expect(chip).toContainText("Conversation fork source");
     await expect(chip).toContainText("Full conversation");
+    if (prCapture.capturing) {
+      await launchDialog.evaluate(async (element) => {
+        await Promise.all(
+          element
+            .getAnimations({ subtree: true })
+            .map((animation) => animation.finished.catch(() => undefined)),
+        );
+      });
+      await prCapture.screenshot("desktop-conversation-fork-form");
+    }
 
     expect(await testPage.evaluate(() => matchMedia("(pointer:fine)").matches)).toBe(true);
     const previewButton = chip.getByRole("button", { name: "Preview" });
@@ -69,6 +80,16 @@ test.describe("Conversation fork into a new agent", () => {
     await expect(preview.getByTestId("conversation-fork-content")).not.toContainText(
       FORK_SOURCE_AFTER_CUTOFF,
     );
+    if (prCapture.capturing) {
+      await preview.evaluate(async (element) => {
+        await Promise.all(
+          element
+            .getAnimations({ subtree: true })
+            .map((animation) => animation.finished.catch(() => undefined)),
+        );
+      });
+      await prCapture.screenshot("desktop-conversation-fork-preview");
+    }
     await testInfo.attach("conversation-fork-preview.png", {
       body: await preview.screenshot(),
       contentType: "image/png",

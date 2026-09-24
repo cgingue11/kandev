@@ -51,6 +51,9 @@ func TestConversationForkTaskAdmissionBindsSnapshotAndAttachmentsAtomically(t *t
 	if err != nil || attachment.State != models.AttachmentStateClaimed || attachment.TaskID != task.ID || attachment.SessionID != "" {
 		t.Fatalf("fork attachment claim = %+v, %v", attachment, err)
 	}
+	if err := repo.DiscardConversationForkDraft(ctx, admission.OwnerID, fork.Descriptor.ID); !errors.Is(err, models.ErrConversationForkConflict) {
+		t.Fatalf("discard attached fork error = %v, want conflict", err)
+	}
 }
 
 func TestConversationForkTaskAdmissionFailureLeavesNoDestination(t *testing.T) {
@@ -74,6 +77,68 @@ func TestConversationForkTaskAdmissionFailureLeavesNoDestination(t *testing.T) {
 	}
 	if _, err := repo.GetTask(ctx, task.ID); !errors.Is(err, ErrTaskNotFound) {
 		t.Fatalf("rejected destination lookup = %v, want no task", err)
+	}
+}
+
+func TestConversationForkTaskDestinationCompletionAndCreateRollback(t *testing.T) {
+	repo := newRepoForSessionTests(t)
+	ctx := context.Background()
+	workspaceID := "workspace-fork-rollback"
+	if err := repo.CreateWorkspace(ctx, &models.Workspace{ID: workspaceID, Name: "Fork rollback", OwnerID: "owner-a"}); err != nil {
+		t.Fatalf("create workspace: %v", err)
+	}
+	now := time.Now().UTC()
+	fork := newConversationForkDraft("draft-rollback", "rollback-hash", now.Add(time.Hour))
+	fork.Descriptor.ID = "fork-rollback"
+	fork.WorkspaceID = workspaceID
+	fork.Descriptor.AttachmentDescriptors = []models.ConversationForkAttachment{{
+		ID: "fork-rollback-copy", Name: "notes.txt", Size: 12, Available: true,
+	}}
+	if _, err := repo.CreateConversationForkDraft(ctx, fork); err != nil {
+		t.Fatalf("create fork draft: %v", err)
+	}
+	if err := repo.CreateMessageAttachment(ctx, &models.TaskMessageAttachment{
+		ID: "fork-rollback-copy", OwnerID: "owner-a", WorkspaceID: workspaceID, Name: "notes.txt",
+		MimeType: "text/plain", Kind: "resource", DeliveryMode: "prompt", SizeBytes: 12,
+		StorageKey: "fork-rollback-copy", State: models.AttachmentStateStaged, ExpiresAt: now.Add(time.Hour),
+	}); err != nil {
+		t.Fatalf("create staged fork copy: %v", err)
+	}
+	firstTask := &models.Task{ID: "task-fork-rollback-first", WorkspaceID: workspaceID, Title: "Rollback destination"}
+	firstAdmission := models.ConversationForkAdmission{
+		OwnerID: "owner-a", WorkspaceID: workspaceID, ForkID: fork.Descriptor.ID,
+		DestinationKind: "task", DestinationRequestID: "rollback-create-first",
+		RequestFingerprint: "rollback-fingerprint-first", DestinationTaskID: firstTask.ID,
+	}
+	if err := repo.CreateTaskWithConversationFork(ctx, firstTask, firstAdmission); err != nil {
+		t.Fatalf("create first destination: %v", err)
+	}
+	if err := repo.MarkConversationForkTaskDestinationComplete(ctx, "owner-a", fork.Descriptor.ID, firstTask.ID); err != nil {
+		t.Fatalf("mark destination complete: %v", err)
+	}
+	completed, err := repo.GetConversationForkByDestinationRequest(ctx, "owner-a", firstAdmission.DestinationRequestID)
+	if err != nil || !completed.Descriptor.DestinationComplete {
+		t.Fatalf("completed destination state = %+v, %v", completed.Descriptor, err)
+	}
+
+	if err := repo.RestoreConversationForkTaskDestinationForRollback(ctx, firstTask.ID); err != nil {
+		t.Fatalf("restore fork after create rollback: %v", err)
+	}
+	restored, err := repo.GetConversationForkDraft(ctx, "owner-a", fork.Descriptor.ID, now)
+	if err != nil || restored.Descriptor.State != "draft" || restored.Descriptor.DestinationComplete || restored.Descriptor.DestinationTaskID != "" {
+		t.Fatalf("restored draft = %+v, %v", restored.Descriptor, err)
+	}
+	copy, err := repo.GetMessageAttachment(ctx, "fork-rollback-copy")
+	if err != nil || copy.State != models.AttachmentStateStaged || copy.TaskID != "" {
+		t.Fatalf("restaged fork copy = %+v, %v", copy, err)
+	}
+	secondTask := &models.Task{ID: "task-fork-rollback-second", WorkspaceID: workspaceID, Title: "Retry destination"}
+	secondAdmission := firstAdmission
+	secondAdmission.DestinationRequestID = "rollback-create-second"
+	secondAdmission.RequestFingerprint = "rollback-fingerprint-second"
+	secondAdmission.DestinationTaskID = secondTask.ID
+	if err := repo.CreateTaskWithConversationFork(ctx, secondTask, secondAdmission); err != nil {
+		t.Fatalf("admit restored fork to retry destination: %v", err)
 	}
 }
 

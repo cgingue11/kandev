@@ -224,14 +224,6 @@ func (s *Service) CreateTask(ctx context.Context, req *CreateTaskRequest) (Creat
 	if err := s.AuthorizeWorkspaceScope(ctx, req.WorkspaceID, authz.ScopeTaskWrite); err != nil {
 		return CreateTaskResult{}, err
 	}
-	forkAdmission, forkRetry, hasFork, err := s.prepareTaskConversationForkAdmission(ctx, req)
-	if err != nil {
-		return CreateTaskResult{}, err
-	}
-	if forkRetry != nil {
-		return *forkRetry, nil
-	}
-
 	externalID, err := NormalizeExternalID(req.ExternalID)
 	if err != nil {
 		return CreateTaskResult{}, err
@@ -240,6 +232,13 @@ func (s *Service) CreateTask(ctx context.Context, req *CreateTaskRequest) (Creat
 
 	if found, result, err := s.findTaskByExternalIDIfPresent(ctx, req.WorkspaceID, externalID); found {
 		return result, err
+	}
+	forkAdmission, forkRetry, hasFork, err := s.prepareTaskConversationForkAdmission(ctx, req)
+	if err != nil {
+		return CreateTaskResult{}, err
+	}
+	if forkRetry != nil {
+		return *forkRetry, nil
 	}
 
 	prepared, err := s.prepareTaskForCreation(ctx, req, externalID)

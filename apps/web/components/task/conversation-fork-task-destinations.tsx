@@ -23,7 +23,7 @@ export function ConversationForkTaskDestinations({
   sourceTask: SourceTask;
   workspaceId: string | null;
   steps: TaskCreateDialogProps["steps"];
-  conversationFork: ConversationForkFormContext;
+  conversationFork?: ConversationForkFormContext;
   onClose: () => void;
 }) {
   const router = useRouter();
@@ -45,7 +45,7 @@ export function ConversationForkTaskDestinations({
         steps={steps}
         conversationFork={conversationFork}
         onSuccess={(task) => {
-          conversationFork.onConsumed();
+          conversationFork?.onConsumed();
           onClose();
           router.push(linkToTask(task.id));
         }}

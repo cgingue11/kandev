@@ -12,6 +12,7 @@ import (
 
 	"github.com/kandev/kandev/internal/task/models"
 	taskrepo "github.com/kandev/kandev/internal/task/repository"
+	v1 "github.com/kandev/kandev/pkg/api/v1"
 )
 
 func (s *Service) prepareTaskConversationForkAdmission(
@@ -85,15 +86,41 @@ func (s *Service) validateTaskConversationForkDestination(ctx context.Context, r
 	if req.IsEphemeral || req.ProjectID != "" || req.ParentID != "" && req.ParentID != draft.Descriptor.SourceTaskID {
 		return models.ErrConversationForkUnsupportedDestination
 	}
+	if err := validateTaskConversationForkAttachments(draft.Descriptor.AttachmentDescriptors, req.InitialAttachments); err != nil {
+		return err
+	}
+	if err := validateTaskConversationForkWorkspaceMode(s, ctx, req); err != nil {
+		return err
+	}
 	if err := s.prepareWorkspacePolicyForCreation(ctx, req); err != nil {
 		return err
 	}
-	return validateTaskConversationForkWorkspaceMode(s, ctx, req)
+	return nil
+}
+
+func validateTaskConversationForkAttachments(forkAttachments []models.ConversationForkAttachment, newAttachments []v1.MessageAttachment) error {
+	if len(forkAttachments)+len(newAttachments) > models.MaxMessageAttachmentCount {
+		return models.ErrConversationForkLimitExceeded
+	}
+	var total int64
+	for _, attachment := range forkAttachments {
+		if attachment.Size < 0 || attachment.Size > models.MaxMessageAttachmentBytes-total {
+			return models.ErrConversationForkLimitExceeded
+		}
+		total += attachment.Size
+	}
+	for _, attachment := range newAttachments {
+		if attachment.SizeBytes < 0 || attachment.SizeBytes > models.MaxMessageAttachmentBytes-total {
+			return models.ErrConversationForkLimitExceeded
+		}
+		total += attachment.SizeBytes
+	}
+	return nil
 }
 
 func validateTaskConversationForkWorkspaceMode(s *Service, ctx context.Context, req *CreateTaskRequest) error {
 	mode := workspaceModeForForkRequest(req)
-	if req.ParentID == "" && (mode == workspaceModeSharedGroup || mode == workspaceModeInheritParent) {
+	if mode == workspaceModeSharedGroup || req.ParentID == "" && mode == workspaceModeInheritParent {
 		return models.ErrConversationForkUnsupportedDestination
 	}
 	if req.ParentID == "" || mode == "" || mode == workspaceModeNewWorkspace {
@@ -105,36 +132,66 @@ func validateTaskConversationForkWorkspaceMode(s *Service, ctx context.Context, 
 }
 
 func (s *Service) conversationForkExecutorCanIsolateWorkspace(ctx context.Context, req *CreateTaskRequest) bool {
-	executorID := strings.TrimSpace(req.ExecutorID)
-	if executorID == "" {
-		executorID, _ = req.Metadata[models.MetaKeyExecutorID].(string)
-		executorID = strings.TrimSpace(executorID)
+	executorID, ok := s.resolveConversationForkExecutorID(ctx, req)
+	if !ok || executorID == models.ExecutorIDLocal || s.executors == nil {
+		return false
 	}
-	if executorID == "" && s.workspaces != nil {
-		workspace, err := s.workspaces.GetWorkspace(ctx, req.WorkspaceID)
-		if err != nil || workspace == nil {
-			return false
+	executor, err := s.executors.GetExecutor(ctx, executorID)
+	return err == nil && executor != nil && executor.Status == models.ExecutorStatusActive && conversationForkExecutorTypeCanIsolate(executor.Type)
+}
+
+func (s *Service) resolveConversationForkExecutorID(ctx context.Context, req *CreateTaskRequest) (string, bool) {
+	executorID := strings.TrimSpace(req.ExecutorID)
+	executorProfileID := strings.TrimSpace(req.ExecutorProfileID)
+	if executorID == "" {
+		executorID = conversationForkMetadataString(req.Metadata, models.MetaKeyExecutorID)
+	}
+	if executorProfileID == "" {
+		executorProfileID = conversationForkMetadataString(req.Metadata, models.MetaKeyExecutorProfileID)
+	}
+	if executorProfileID != "" {
+		if s.executors == nil {
+			return "", false
 		}
-		if workspace.DefaultExecutorID != nil {
-			executorID = strings.TrimSpace(*workspace.DefaultExecutorID)
+		profile, err := s.executors.GetExecutorProfile(ctx, executorProfileID)
+		if err != nil || profile == nil || strings.TrimSpace(profile.ExecutorID) == "" {
+			return "", false
 		}
+		if executorID != "" && executorID != profile.ExecutorID {
+			return "", false
+		}
+		executorID = strings.TrimSpace(profile.ExecutorID)
+	}
+	if executorID == "" {
+		workspaceExecutorID, ok := s.conversationForkWorkspaceExecutorID(ctx, req.WorkspaceID)
+		if !ok {
+			return "", false
+		}
+		executorID = workspaceExecutorID
 	}
 	if executorID == "" {
 		executorID = models.ExecutorIDLocal
 	}
-	var executorType models.ExecutorType
-	if executorID == models.ExecutorIDLocal {
-		executorType = models.ExecutorTypeLocal
-	} else {
-		if s.executors == nil {
-			return false
-		}
-		executor, err := s.executors.GetExecutor(ctx, executorID)
-		if err != nil || executor == nil || executor.Status != models.ExecutorStatusActive {
-			return false
-		}
-		executorType = executor.Type
+	return executorID, true
+}
+
+func (s *Service) conversationForkWorkspaceExecutorID(ctx context.Context, workspaceID string) (string, bool) {
+	if s.workspaces == nil {
+		return "", true
 	}
+	workspace, err := s.workspaces.GetWorkspace(ctx, workspaceID)
+	if err != nil || workspace == nil || workspace.DefaultExecutorID == nil {
+		return "", err == nil && workspace != nil
+	}
+	return strings.TrimSpace(*workspace.DefaultExecutorID), true
+}
+
+func conversationForkMetadataString(metadata map[string]interface{}, key string) string {
+	value, _ := metadata[key].(string)
+	return strings.TrimSpace(value)
+}
+
+func conversationForkExecutorTypeCanIsolate(executorType models.ExecutorType) bool {
 	switch executorType {
 	case models.ExecutorTypeWorktree,
 		models.ExecutorTypeLocalDocker,
@@ -173,7 +230,34 @@ func (s *Service) findConversationForkTaskRetry(
 	if task == nil {
 		return CreateTaskResult{}, true, models.ErrConversationForkConflict
 	}
-	return CreateTaskResult{Task: task, Outcome: CreateTaskOutcomeFoundSettled}, true, nil
+	outcome := CreateTaskOutcomeFoundSettled
+	if !draft.Descriptor.DestinationComplete {
+		outcome = CreateTaskOutcomeFoundUnsettled
+	}
+	return CreateTaskResult{Task: task, Outcome: outcome}, true, nil
+}
+
+func (s *Service) MarkConversationForkTaskDestinationComplete(ctx context.Context, workspaceID, forkID, taskID string) error {
+	ownerID, err := s.conversationForkOwnerID(ctx, workspaceID)
+	if err != nil {
+		return models.ErrConversationForkNotFound
+	}
+	destinations, ok := s.messages.(taskrepo.ConversationForkTaskDestinationRepository)
+	if !ok {
+		return models.ErrConversationForkSourceUnavailable
+	}
+	return destinations.MarkConversationForkTaskDestinationComplete(ctx, ownerID, forkID, taskID)
+}
+
+func (s *Service) RollbackTaskCreationWithConversationFork(ctx context.Context, taskID string) error {
+	destinations, ok := s.messages.(taskrepo.ConversationForkTaskDestinationRepository)
+	if !ok {
+		return models.ErrConversationForkSourceUnavailable
+	}
+	if err := destinations.RestoreConversationForkTaskDestinationForRollback(ctx, taskID); err != nil {
+		return err
+	}
+	return s.DeleteTaskWithLifecycle(ctx, taskID)
 }
 
 func taskForkDestinationFingerprint(req *CreateTaskRequest) (string, error) {

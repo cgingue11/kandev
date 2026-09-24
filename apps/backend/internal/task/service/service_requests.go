@@ -123,8 +123,9 @@ type CreateTaskRequest struct {
 	// ConversationForkID and ConversationForkRequestID are populated only by
 	// authenticated first-party task-create adapters after decoding the
 	// explicit destination fields.
-	ConversationForkID        string `json:"-"`
-	ConversationForkRequestID string `json:"-"`
+	ConversationForkID        string                 `json:"-"`
+	ConversationForkRequestID string                 `json:"-"`
+	InitialAttachments        []v1.MessageAttachment `json:"-"`
 
 	// Office extensions
 	AssigneeAgentProfileID string   `json:"assignee_agent_profile_id,omitempty"`

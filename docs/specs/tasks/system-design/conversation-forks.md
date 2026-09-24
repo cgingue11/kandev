@@ -107,6 +107,7 @@ Model context size does not impose a compilation limit.
 
 Historical `@name` references remain literal text. The preview explains that hidden saved-prompt definitions are excluded.
 The historical segment never enters saved-prompt lookup, entity expansion, workflow action parsing, or system-content trust promotion.
+Preserve the reviewed compiled bytes in the ordinary user-prompt content. A separate server-authored trusted boundary instruction tells the model to treat that segment as historical data; snapshot text never enters the trusted system-context parameter.
 
 Default history is one source session. A source first prompt can already contain an earlier admitted fork.
 Use its persisted fork provenance to include that earlier context once, as nested historical context.
@@ -142,11 +143,19 @@ An admitted first-message projection resolves the reference for human preview an
 The snapshot belongs to exactly one destination creation request. A retry returns that same destination.
 A separate intentional fork creates a separate snapshot.
 
+Task destinations keep a `destination_complete` receipt marker separate from the `attached` snapshot state.
+The create handler marks the receipt complete only after synchronous destination setup succeeds.
+An idempotent retry of an incomplete receipt returns an unsettled result so the handler can finish that setup.
+If setup fails, rollback restores the fork to `draft` and its copied attachment claims to staging in one transaction before deleting the partial task.
+This keeps a retryable snapshot from being mistaken for a completed destination or lost with a failed task create.
+
 Attached snapshots remain until their owning destination is deleted under existing task/session cleanup rules.
 A pending task-bound snapshot survives until the first session binds it or the task is deleted.
 Source foreign keys must not cascade deletion into attached destination snapshots.
 Source IDs become provenance only after attachment. Workspace deletion removes its snapshots and copied attachments.
 Cleanup must coordinate with admission so an expiring draft cannot disappear during a successful attach.
+Discarded drafts release compiled text, selection, omissions, and estimate data after the state change succeeds.
+Expiry cleanup returns expired attachment descriptors with deleted rows so private staged files can be removed; attached copies do not expire with drafts.
 
 This is an explicit user-created context artifact, not a second live conversation journal.
 The [source reconciliation decision](../../../decisions/2026-09-16-conversation-source-reconciliation.md) remains authoritative for ordinary history reads.
@@ -171,6 +180,7 @@ Reference-counting source files is outside this package. Physical copies preserv
 Failed or expired draft cleanup removes only its copies.
 On first-prompt delivery, merge retained-copy descriptors with newly uploaded attachments and pass the combined list through ordinary destination materialization and error handling.
 Enforce the existing aggregate count and byte limits before runtime dispatch. Do not re-add copied attachments on retries or later sessions.
+Task creation checks copied plus newly uploaded attachments before creating the destination, and launch checks the same combined batch before materialization.
 The compiled text identifies attachment positions by safe display names and ordinal, not source paths.
 
 ## Estimates
@@ -228,6 +238,10 @@ The exact response DTOs retain current task/session result shapes plus a bounded
 5. Publish task/session events and schedule launch only after commit.
 6. Bind a task's pending fork to exactly one first session through the existing first-prompt ownership boundary. Only a successful atomic claim adds the fork ID to that session's delivery metadata; task provenance is not inherited as session delivery metadata.
 7. Persist one user message with its admitted fork reference and the new request. Merge copied attachments into the first launch's current attachment list, then dispatch the reconstructed prompt.
+
+When an already-bound first launch fails without a live execution, retry the same destination session.
+Reuse its persisted first user message and resolve the same frozen snapshot and attachment copies for redispatch with message recording skipped.
+Do not append another fork block or first user message. Normal later sessions never consume task-level fork provenance.
 
 The transaction requires a narrow repository admission operation. Sequential create-then-attach calls are insufficient.
 Reuse the current task creation and session initialization semantics inside that operation.

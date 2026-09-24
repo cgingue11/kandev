@@ -167,3 +167,9 @@ Validation passed:
 - `python3 scripts/list-docs.py validate`, `python3 scripts/lint-spec-files.py --all`, and `git diff --check` passed.
 
 `pnpm run i18n:zh-hant` passed after the existing `workflows:openAgentSettings` phrase was added to the reviewed converter overrides. Fork entries pass the six-catalog completeness check and new-code ratchet.
+
+### PR review remediation
+
+The mobile child-task E2E now selects an isolation-capable worktree executor for the separate-workspace choice; the Local executor is intentionally rejected before task creation. The test verifies the child-task form and preview fit the phone surface after their opening animations settle.
+
+Validation passed: targeted mobile child-fork E2E with retries disabled. The shared-child and same-task agent flows remain available.

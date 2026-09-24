@@ -54,6 +54,9 @@ test.describe("Conversation forks into tasks on phone", () => {
     await expect(dialog).toBeVisible();
     const viewport = testPage.viewportSize();
     expect(viewport).not.toBeNull();
+    await expect
+      .poll(async () => (await dialog.boundingBox())?.height ?? 0)
+      .toBeGreaterThanOrEqual(viewport!.height - 4);
     const dialogBox = await dialog.boundingBox();
     expect(dialogBox).not.toBeNull();
     expect(dialogBox!.height).toBeGreaterThanOrEqual(viewport!.height - 4);
@@ -68,6 +71,9 @@ test.describe("Conversation forks into tasks on phone", () => {
     await previewButton.tap();
     const preview = testPage.getByTestId("conversation-fork-preview-overlay");
     await expect(preview.getByTestId("conversation-fork-content")).toContainText(FORK_SOURCE_USER);
+    await expect
+      .poll(async () => (await preview.boundingBox())?.height ?? 0)
+      .toBeGreaterThanOrEqual(viewport!.height - 4);
     const previewBoxOnPhone = await preview.boundingBox();
     expect(previewBoxOnPhone).not.toBeNull();
     expect(previewBoxOnPhone!.height).toBeGreaterThanOrEqual(viewport!.height - 4);
@@ -144,6 +150,9 @@ test.describe("Conversation forks into tasks on phone", () => {
     await expect(dialog).toBeVisible();
     const viewport = testPage.viewportSize();
     expect(viewport).not.toBeNull();
+    await expect
+      .poll(async () => (await dialog.boundingBox())?.height ?? 0)
+      .toBeGreaterThanOrEqual(viewport!.height - 20);
     const dialogBox = await dialog.boundingBox();
     expect(dialogBox).not.toBeNull();
     expect(dialogBox!.height).toBeGreaterThanOrEqual(viewport!.height - 20);
@@ -159,6 +168,17 @@ test.describe("Conversation forks into tasks on phone", () => {
     expect(separateBox?.height).toBeGreaterThanOrEqual(44);
     await separateOption.tap();
     await expect(separateOption).toHaveAttribute("aria-checked", "true");
+    const { executors } = await apiClient.listExecutors();
+    const worktreeProfile = executors
+      .flatMap((executor) => executor.profiles ?? [])
+      .find((profile) => profile.id === seedData.worktreeExecutorProfileId);
+    expect(worktreeProfile).toBeDefined();
+    const executorSelector = dialog.getByTestId("executor-profile-selector");
+    await executorSelector.tap();
+    const worktreeOption = testPage.getByRole("option").filter({ hasText: worktreeProfile!.name });
+    await expect(worktreeOption).toBeVisible();
+    await worktreeOption.tap();
+    await expect(executorSelector).toContainText(worktreeProfile!.name);
     await dialog.getByTestId("subtask-title-input").fill("Mobile forked child in new workspace");
     await dialog.getByTestId("subtask-prompt-input").fill(FORK_NEW_INSTRUCTION);
     await dialog.getByRole("button", { name: "Create subtask" }).tap();

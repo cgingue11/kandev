@@ -15,6 +15,7 @@ test.describe("Conversation fork into a new agent on phone", () => {
     testPage,
     apiClient,
     seedData,
+    prCapture,
   }, testInfo) => {
     test.setTimeout(180_000);
     const source = await seedConversationForkSource(
@@ -46,11 +47,25 @@ test.describe("Conversation fork into a new agent on phone", () => {
 
     const launchDialog = session.sessionLaunchDialog();
     await expect(launchDialog).toBeVisible({ timeout: 10_000 });
+    const previewSurface = testPage.getByTestId("new-session-drawer");
+    await expect
+      .poll(async () => (await launchDialog.boundingBox())?.height ?? 0)
+      .toBeGreaterThanOrEqual(viewport!.height - 4);
     const launchBox = await launchDialog.boundingBox();
     expect(launchBox).not.toBeNull();
     expect(launchBox!.height).toBeGreaterThanOrEqual(viewport!.height - 4);
     expect(launchBox!.x).toBeGreaterThanOrEqual(0);
     expect(launchBox!.x + launchBox!.width).toBeLessThanOrEqual(viewport!.width);
+    if (prCapture.capturing) {
+      await previewSurface.evaluate(async (element) => {
+        await Promise.all(
+          element
+            .getAnimations({ subtree: true })
+            .map((animation) => animation.finished.catch(() => undefined)),
+        );
+      });
+      await prCapture.screenshot("phone-conversation-fork-form");
+    }
 
     const chip = launchDialog.getByTestId("conversation-fork-chip");
     await expect(chip.getByRole("button", { name: "Preview" })).toBeVisible();
@@ -60,15 +75,28 @@ test.describe("Conversation fork into a new agent on phone", () => {
 
     const preview = testPage.getByTestId("conversation-fork-preview");
     await expect(preview).toBeVisible();
+    await expect(preview.getByTestId("conversation-fork-content")).toContainText(FORK_SOURCE_USER);
     const scrollOwners = await preview.locator(".overflow-y-auto").count();
     expect(scrollOwners).toBe(1);
+    await expect
+      .poll(async () => (await previewSurface.boundingBox())?.height ?? 0)
+      .toBeGreaterThanOrEqual(viewport!.height - 4);
     const previewBounds = await preview.boundingBox();
     expect(previewBounds).not.toBeNull();
-    const previewSurface = testPage.getByTestId("new-session-drawer");
     const previewSurfaceBounds = await previewSurface.boundingBox();
     expect(previewSurfaceBounds).not.toBeNull();
     expect(previewSurfaceBounds!.height).toBeGreaterThanOrEqual(viewport!.height - 4);
     expect(previewBounds!.height).toBeGreaterThan(200);
+    if (prCapture.capturing) {
+      await previewSurface.evaluate(async (element) => {
+        await Promise.all(
+          element
+            .getAnimations({ subtree: true })
+            .map((animation) => animation.finished.catch(() => undefined)),
+        );
+      });
+      await prCapture.screenshot("phone-conversation-fork-preview");
+    }
     await testInfo.attach("mobile-conversation-fork-preview.png", {
       body: await preview.screenshot(),
       contentType: "image/png",

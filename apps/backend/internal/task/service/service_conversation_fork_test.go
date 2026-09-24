@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -74,6 +75,63 @@ func TestConversationForkDraftServiceCompilesEstimatesAndAuthorizes(t *testing.T
 		AttachmentIDs:  []string{"attachment-source"},
 	}); !errors.Is(err, models.ErrConversationForkAttachmentMissing) {
 		t.Fatalf("task-01 selected attachment error = %v, want explicit unavailable", err)
+	}
+}
+
+func TestConversationForkDraftIncludesPersistedParentContextOnce(t *testing.T) {
+	svc, _, repo := createTestService(t)
+	seedConversationForkServiceSource(t, repo)
+	ctx := ctxAs("user-a")
+	original, err := svc.CreateConversationForkDraft(ctx, models.ConversationForkCreateRequest{
+		Source:         models.ConversationForkSourceRequest{SessionID: "session-fork-service", CutoffMessageID: "message-fork-service"},
+		DraftRequestID: "nested-original-draft",
+	})
+	if err != nil {
+		t.Fatalf("create original fork draft: %v", err)
+	}
+	admission, _, err := svc.PrepareConversationForkAgentAdmission(ctx,
+		"task-fork-service", original.Descriptor.ID, "nested-agent-request", "nested-agent-fingerprint")
+	if err != nil {
+		t.Fatalf("prepare original fork admission: %v", err)
+	}
+	admission.DestinationSessionID = "session-fork-origin"
+	if _, err := repo.BindConversationForkToSession(ctx, admission); err != nil {
+		t.Fatalf("bind original fork to source session: %v", err)
+	}
+	if err := repo.CreateTaskSession(ctx, &models.TaskSession{
+		ID: "session-fork-origin", TaskID: "task-fork-service", State: models.TaskSessionStateCreated,
+		Metadata: map[string]interface{}{models.MetaKeyConversationForkID: original.Descriptor.ID},
+	}); err != nil {
+		t.Fatalf("create fork destination session: %v", err)
+	}
+	if err := repo.CreateTurn(ctx, &models.Turn{
+		ID: "turn-fork-origin", TaskID: "task-fork-service", TaskSessionID: "session-fork-origin",
+		StartedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("create fork destination turn: %v", err)
+	}
+	if err := repo.CreateMessage(ctx, &models.Message{
+		ID: "message-fork-origin", TaskID: "task-fork-service", TaskSessionID: "session-fork-origin", TurnID: "turn-fork-origin",
+		AuthorType: models.MessageAuthorUser, Type: models.MessageTypeMessage,
+		Content:   "New request after the prior fork.",
+		Metadata:  map[string]interface{}{models.MetaKeyConversationForkID: original.Descriptor.ID},
+		CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("create fork destination message: %v", err)
+	}
+
+	nested, err := svc.CreateConversationForkDraft(ctx, models.ConversationForkCreateRequest{
+		Source:         models.ConversationForkSourceRequest{SessionID: "session-fork-origin", CutoffMessageID: "message-fork-origin"},
+		DraftRequestID: "nested-child-draft",
+	})
+	if err != nil {
+		t.Fatalf("create nested fork draft: %v", err)
+	}
+	if strings.Count(nested.CompiledText, "Keep the source context intact.") != 1 {
+		t.Fatalf("inherited context count = %d, want once: %q", strings.Count(nested.CompiledText, "Keep the source context intact."), nested.CompiledText)
+	}
+	if strings.Count(nested.CompiledText, "New request after the prior fork.") != 1 {
+		t.Fatalf("new request count = %d, want once: %q", strings.Count(nested.CompiledText, "New request after the prior fork."), nested.CompiledText)
 	}
 }
 

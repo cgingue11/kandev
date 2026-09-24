@@ -2,6 +2,11 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Message } from "@/lib/types/http";
 
+const FORK_ID = "fork-1";
+const REMOVE_FORK_LABEL = "Remove fork";
+const NEW_SESSION_FLOW_TEST_ID = "new-session-flow";
+const FORK_ID_ATTRIBUTE = "data-fork-id";
+
 const mockLoadSource = vi.fn();
 const mockCreateSnapshot = vi.fn();
 const mockLoadAttachments = vi.fn();
@@ -47,7 +52,7 @@ vi.mock("@/hooks/domains/task/use-conversation-fork", () => ({
     sourceError: null,
     snapshot: {
       descriptor: {
-        id: "fork-1",
+        id: FORK_ID,
         source_task_id: "task-1",
         source_session_id: "session-1",
         source_message_id: "message-2",
@@ -88,10 +93,17 @@ vi.mock("@/components/task/new-session-dialog", () => ({
     conversationFork,
   }: {
     open: boolean;
-    conversationFork?: { snapshot: { descriptor: { id: string } } };
+    conversationFork?: { snapshot: { descriptor: { id: string } }; onRemove: () => void };
   }) =>
     open ? (
-      <div data-testid="new-session-flow" data-fork-id={conversationFork?.snapshot.descriptor.id} />
+      <div
+        data-testid={NEW_SESSION_FLOW_TEST_ID}
+        data-fork-id={conversationFork?.snapshot.descriptor.id}
+      >
+        {conversationFork && (
+          <button onClick={conversationFork.onRemove}>{REMOVE_FORK_LABEL}</button>
+        )}
+      </div>
     ) : null,
 }));
 
@@ -101,7 +113,11 @@ vi.mock("@/components/task-create-dialog", () => ({
     workspaceId: string;
     workflowId: string;
     defaultStepId: string;
-    conversationFork?: { snapshot: { descriptor: { id: string } }; creationRequestId: string };
+    conversationFork?: {
+      snapshot: { descriptor: { id: string } };
+      creationRequestId: string;
+      onRemove: () => void;
+    };
   }) =>
     props.open ? (
       <div
@@ -111,7 +127,11 @@ vi.mock("@/components/task-create-dialog", () => ({
         data-step-id={props.defaultStepId}
         data-fork-id={props.conversationFork?.snapshot.descriptor.id}
         data-request-id={props.conversationFork?.creationRequestId}
-      />
+      >
+        {props.conversationFork && (
+          <button onClick={props.conversationFork.onRemove}>{REMOVE_FORK_LABEL}</button>
+        )}
+      </div>
     ) : null,
 }));
 
@@ -119,7 +139,11 @@ vi.mock("@/components/task/new-subtask-dialog", () => ({
   NewSubtaskDialog: (props: {
     open: boolean;
     parentTaskId: string;
-    conversationFork?: { snapshot: { descriptor: { id: string } }; creationRequestId: string };
+    conversationFork?: {
+      snapshot: { descriptor: { id: string } };
+      creationRequestId: string;
+      onRemove: () => void;
+    };
   }) =>
     props.open ? (
       <div
@@ -127,7 +151,11 @@ vi.mock("@/components/task/new-subtask-dialog", () => ({
         data-parent-id={props.parentTaskId}
         data-fork-id={props.conversationFork?.snapshot.descriptor.id}
         data-request-id={props.conversationFork?.creationRequestId}
-      />
+      >
+        {props.conversationFork && (
+          <button onClick={props.conversationFork.onRemove}>{REMOVE_FORK_LABEL}</button>
+        )}
+      </div>
     ) : null,
 }));
 
@@ -166,7 +194,7 @@ describe("ConversationForkFlow", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockCreateSnapshot.mockResolvedValue({
-      descriptor: { id: "fork-1" },
+      descriptor: { id: FORK_ID },
       content: { content: "frozen history", content_hash: "hash-1", compiler_version: "v1" },
     });
   });
@@ -182,7 +210,9 @@ describe("ConversationForkFlow", () => {
     fireEvent.click(screen.getByRole("button", { name: "Continue" }));
 
     await waitFor(() =>
-      expect(screen.getByTestId("new-session-flow").getAttribute("data-fork-id")).toBe("fork-1"),
+      expect(screen.getByTestId(NEW_SESSION_FLOW_TEST_ID).getAttribute(FORK_ID_ATTRIBUTE)).toBe(
+        FORK_ID,
+      ),
     );
     expect(mockCreateSnapshot).toHaveBeenCalledWith({
       includeToolEvidence: false,
@@ -204,7 +234,7 @@ describe("ConversationForkFlow", () => {
       fireEvent.click(screen.getByRole("button", { name: "Continue" }));
 
       const form = await screen.findByTestId(formTestId);
-      expect(form.getAttribute("data-fork-id")).toBe("fork-1");
+      expect(form.getAttribute(FORK_ID_ATTRIBUTE)).toBe(FORK_ID);
       expect(form.getAttribute("data-request-id")).toMatch(/^[\w-]+$/);
       if (destination === "task") {
         expect(form.getAttribute("data-workspace-id")).toBe("workspace-1");
@@ -219,4 +249,40 @@ describe("ConversationForkFlow", () => {
       });
     },
   );
+
+  it.each([
+    ["task", "conversation-fork-task-form"],
+    ["child_task", "conversation-fork-child-form"],
+  ] as const)(
+    "removes fork context from the open %s form without closing it",
+    async (destination, formTestId) => {
+      render(<ConversationForkFlow open onOpenChange={mockOnOpenChange} message={MESSAGE} />);
+      fireEvent.click(screen.getByTestId(`conversation-fork-destination-${destination}`));
+      fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+      const form = await screen.findByTestId(formTestId);
+      expect(form.getAttribute(FORK_ID_ATTRIBUTE)).toBe(FORK_ID);
+
+      fireEvent.click(screen.getByRole("button", { name: REMOVE_FORK_LABEL }));
+
+      await waitFor(() => expect(form.getAttribute(FORK_ID_ATTRIBUTE)).toBe(null));
+      expect(screen.getByTestId(formTestId)).toBe(form);
+      expect(mockDiscardSnapshot).toHaveBeenCalledOnce();
+      expect(mockOnOpenChange).not.toHaveBeenCalled();
+    },
+  );
+
+  it("removes fork context from the open agent form without closing it", async () => {
+    render(<ConversationForkFlow open onOpenChange={mockOnOpenChange} message={MESSAGE} />);
+    fireEvent.click(screen.getByTestId("conversation-fork-destination-agent"));
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    const form = await screen.findByTestId(NEW_SESSION_FLOW_TEST_ID);
+    expect(form.getAttribute(FORK_ID_ATTRIBUTE)).toBe(FORK_ID);
+
+    fireEvent.click(screen.getByRole("button", { name: REMOVE_FORK_LABEL }));
+
+    await waitFor(() => expect(form.getAttribute(FORK_ID_ATTRIBUTE)).toBe(null));
+    expect(screen.getByTestId(NEW_SESSION_FLOW_TEST_ID)).toBe(form);
+    expect(mockDiscardSnapshot).toHaveBeenCalledOnce();
+    expect(mockOnOpenChange).not.toHaveBeenCalled();
+  });
 });

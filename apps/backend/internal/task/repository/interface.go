@@ -370,7 +370,7 @@ type ConversationForkDraftRepository interface {
 	GetConversationForkDraft(context.Context, string, string, time.Time) (models.ConversationForkDraft, error)
 	UpdateConversationForkEstimate(context.Context, string, string, models.ConversationForkEstimate) error
 	DiscardConversationForkDraft(context.Context, string, string) error
-	DeleteExpiredConversationForkDrafts(context.Context, time.Time) error
+	DeleteExpiredConversationForkDrafts(context.Context, time.Time) ([]models.ConversationForkExpiredDraftAttachments, error)
 }
 
 // ConversationForkDestinationRepository owns destination receipts and the
@@ -381,6 +381,11 @@ type ConversationForkDestinationRepository interface {
 	GetConversationForkByDestinationSession(context.Context, string, string, string) (models.ConversationForkDraft, error)
 	BindConversationForkToSession(context.Context, models.ConversationForkAdmission) (models.ConversationForkDraft, error)
 	DeleteConversationForksByDestinationTask(context.Context, string) error
+}
+
+type ConversationForkTaskDestinationRepository interface {
+	MarkConversationForkTaskDestinationComplete(context.Context, string, string, string) error
+	RestoreConversationForkTaskDestinationForRollback(context.Context, string) error
 }
 
 // ConversationForkTaskCreator inserts a destination task and attaches its

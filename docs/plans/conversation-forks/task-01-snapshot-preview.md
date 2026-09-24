@@ -114,6 +114,6 @@ KANDEV_TEST_POSTGRES_DSN='postgres://postgres:<disposable>@127.0.0.1:55432/postg
 
 ### Review remediation
 
-Accepted user cutoffs remain eligible while the assistant turn is active; assistant cutoffs still require a completed turn. Initial and refreshed estimates now resolve a selected model's known context limit through the models.dev lookup.
+Accepted user cutoffs remain eligible while the assistant turn is active; assistant cutoffs still require a completed turn. Initial and refreshed estimates now resolve a selected model's known context limit through the models.dev lookup. Nested forks include an already-admitted fork once. The ordinary prompt retains the frozen compiled bytes, with an independent trusted boundary instruction and without promoting snapshot content into system context. Discard clears compiled text, selection, omission, and estimate payload after the state change; expiry cleanup removes associated private attachment copies.
 
 Validation passed: `go test ./internal/task/service -run '^(TestConversationForkEstimateUsesKnownSelectedModelContextLimit|TestConversationForkDraftServiceCompilesEstimatesAndAuthorizes)$' -count=1`.

@@ -99,4 +99,4 @@ The PostgreSQL test ran against a disposable PostgreSQL 16 container and passed 
 
 ### Review remediation
 
-The retained attachment descriptors are now merged into the first destination prompt alongside new uploads and passed through the ordinary attachment materialization path. The combined attachment count and byte limits are checked before launch. Task 03 owns delivery verification.
+The retained attachment descriptors are now merged into the first destination prompt alongside new uploads and passed through the ordinary attachment materialization path. The combined attachment count and byte limits are checked at task admission and before launch. Expired and discarded drafts remove their physical staged copies; attached copies remain destination-owned after source deletion. Task 03 owns launch delivery verification.

@@ -170,7 +170,7 @@ Validation passed:
 - `pnpm run typecheck`, `pnpm run i18n:check`, and `pnpm run i18n:ratchet` passed.
 - Managed desktop E2E: all 3 agent and task destination tests passed.
 - Managed mobile E2E: all 3 agent and task destination tests passed. The preview, new-task form, and child-task form fit their mobile surfaces with safe-area clearance and touch-sized controls.
-- ESLint initially completed with 0 errors and 17 warnings across changed frontend files. The later dialog refactor removed those warnings; final ESLint is clean on the affected dialog, actions, tests, and fixtures.
+- Targeted ESLint completed with 0 errors and warnings after extracting the dialog surface into its own component.
 
 `pnpm run i18n:zh-hant` passed after the existing `workflows:openAgentSettings` phrase was added to the reviewed converter overrides. The fork entries pass the six-catalog completeness check and new-code ratchet.
 
@@ -179,3 +179,9 @@ Validation passed:
 The shared hook now keeps the current usable snapshot until a replacement draft and preview both load, ignores stale responses, and accepts a persisted user cutoff during an active assistant turn. A failed replacement leaves the original snapshot available for launch.
 
 Validation passed: `pnpm exec vitest run hooks/domains/task/use-conversation-fork.test.ts` (9 tests), including failed replacement, overlapping requests, stale selection, and active-turn user-cutoff regressions.
+
+### PR review remediation
+
+The flow mounts only while open. Removing the conversation chip keeps the selected destination form open, and Escape or Back from preview returns to creation before dismissing the dialog. On phone, opening the session dialog focuses its title without opening the keyboard. Mobile E2E geometry assertions wait for the drawer animation to settle instead of reading a transient position.
+
+Validation passed: targeted desktop and phone fork-agent E2E with form and preview screenshots; mobile session-dialog and saved-prompt launch regressions passed with retries disabled. Targeted ESLint completed with 0 errors and warnings.

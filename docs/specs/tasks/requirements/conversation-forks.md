@@ -88,9 +88,9 @@ This document defines the current product contract for conversation forks.
 #### Acceptance criteria
 
 - **AC-TASKS-CONVERSATION-FORK-005.1:** Preview and creation shall require current source access and destination creation permission. Knowledge of an identifier shall grant no access.
-- **AC-TASKS-CONVERSATION-FORK-005.2:** Unattached snapshots shall expire with a visible expiry error. Attached snapshots shall follow destination retention and survive ordinary backend restarts.
+- **AC-TASKS-CONVERSATION-FORK-005.2:** Unattached snapshots shall expire with a visible expiry error. Expired or discarded drafts shall release their compiled payload and staged attachment copies. Attached snapshots and copies shall follow destination retention and survive ordinary backend restarts.
 - **AC-TASKS-CONVERSATION-FORK-005.3:** Source deletion before creation shall prevent attachment. Source deletion after creation shall preserve the authorized destination copy.
-- **AC-TASKS-CONVERSATION-FORK-005.4:** Failed creation shall not launch an agent or leave a partially attached snapshot. Storage failures shall preserve recoverable user input.
+- **AC-TASKS-CONVERSATION-FORK-005.4:** Failed creation shall not launch an agent or leave a partially attached snapshot. Task-creation rollback shall restore the fork and copied attachments to a retryable draft before removing a partial destination. Storage failures shall preserve recoverable user input.
 
 ### REQ-TASKS-CONVERSATION-FORK-006: Desktop and phone parity
 

@@ -24,6 +24,7 @@ const (
 	conversationForkCompilerMethod = "o200k_base:conversation-fork-v1"
 	conversationForkStateDraft     = "draft"
 	conversationForkStateAttached  = "attached"
+	conversationForkStateDiscarded = "discarded"
 )
 
 var conversationForkCodec struct {
@@ -130,8 +131,13 @@ func (s *Service) compileConversationForkRequest(ctx context.Context, req models
 	if len(req.AttachmentIDs) > 0 {
 		selectedAttachments = source.Attachments
 	}
-	compiled, count, omissions, err := compileConversationFork(
-		source.Messages, req.Source.CutoffMessageID, req.Source.StartMessageID, req.IncludeToolEvidence, selectedAttachments,
+	inherited, inheritedMessageID, err := s.inheritedConversationForkContext(ctx, source)
+	if err != nil {
+		return compiledConversationForkRequest{}, err
+	}
+	compiled, count, omissions, err := compileConversationForkWithInherited(
+		source.Messages, req.Source.CutoffMessageID, req.Source.StartMessageID, req.IncludeToolEvidence,
+		inherited, inheritedMessageID, selectedAttachments,
 	)
 	if err != nil {
 		return compiledConversationForkRequest{}, conversationForkCompileError(err)
@@ -140,6 +146,66 @@ func (s *Service) compileConversationForkRequest(ctx context.Context, req models
 		source: source, selectedAttachments: selectedAttachments, compiled: compiled, count: count, omissions: omissions,
 	}, nil
 }
+
+func (s *Service) inheritedConversationForkContext(
+	ctx context.Context,
+	source models.ConversationForkSource,
+) (*models.ConversationForkDraft, string, error) {
+	firstUserMessage := firstConversationForkUserMessage(source.Messages)
+	if firstUserMessage == nil {
+		return nil, "", nil
+	}
+	forkID, _ := firstUserMessage.Metadata[models.MetaKeyConversationForkID].(string)
+	if forkID == "" {
+		return nil, "", nil
+	}
+	destinations, ok := s.messages.(taskrepo.ConversationForkDestinationRepository)
+	if !ok {
+		return nil, "", models.ErrConversationForkSourceUnavailable
+	}
+	ownerID, err := s.conversationForkOwnerID(ctx, source.WorkspaceID)
+	if err != nil {
+		return nil, "", models.ErrConversationForkNotFound
+	}
+	inherited, err := destinations.GetConversationForkByDestinationSession(ctx, ownerID, source.TaskID, source.SessionID)
+	if err != nil {
+		return nil, "", conversationForkInheritedLookupError(err)
+	}
+	if !matchesConversationForkSource(inherited, source, forkID) {
+		return nil, "", models.ErrConversationForkConflict
+	}
+	return &inherited, firstUserMessage.ID, nil
+}
+
+func firstConversationForkUserMessage(messages []*models.Message) *models.Message {
+	for _, message := range messages {
+		if message != nil && message.AuthorType == models.MessageAuthorUser {
+			return message
+		}
+	}
+	return nil
+}
+
+func conversationForkInheritedLookupError(err error) error {
+	if errors.Is(err, models.ErrConversationForkNotFound) {
+		return models.ErrConversationForkSourceUnavailable
+	}
+	return err
+}
+
+func matchesConversationForkSource(
+	draft models.ConversationForkDraft,
+	source models.ConversationForkSource,
+	forkID string,
+) bool {
+	return draft.Descriptor.ID == forkID &&
+		draft.Descriptor.State == conversationForkStateAttached &&
+		draft.Descriptor.DestinationTaskID == source.TaskID &&
+		draft.Descriptor.DestinationSessionID == source.SessionID &&
+		draft.WorkspaceID == source.WorkspaceID &&
+		draft.CompiledText != ""
+}
+
 func conversationForkCompileError(err error) error {
 	switch {
 	case errors.Is(err, errConversationForkInvalidRange):
@@ -303,6 +369,9 @@ func (s *Service) DiscardConversationForkDraft(ctx context.Context, id string) e
 	if readErr != nil && !errors.Is(readErr, models.ErrConversationForkExpired) {
 		return readErr
 	}
+	if draft.Descriptor.State == conversationForkStateDiscarded {
+		return nil
+	}
 	if draft.Descriptor.State != conversationForkStateDraft {
 		return models.ErrConversationForkConflict
 	}
@@ -390,7 +459,19 @@ func (s *Service) cleanupExpiredConversationForkDraftRows(ctx context.Context, n
 	if !ok {
 		return
 	}
-	if err := drafts.DeleteExpiredConversationForkDrafts(ctx, now); err != nil {
+	expired, err := drafts.DeleteExpiredConversationForkDrafts(ctx, now)
+	if err != nil {
 		s.logger.Warn("conversation fork draft cleanup failed", zap.Error(err))
+		return
+	}
+	for _, item := range expired {
+		copies := make([]*models.TaskMessageAttachment, 0, len(item.Attachments))
+		for _, descriptor := range item.Attachments {
+			copies = append(copies, &models.TaskMessageAttachment{ID: descriptor.ID})
+		}
+		if err := deleteStagedForkAttachments(ctx, s.attachmentSvc, item.OwnerID, copies); err != nil {
+			s.logger.Warn("expired conversation fork attachment cleanup failed",
+				zap.String("owner_id", item.OwnerID), zap.Error(err))
+		}
 	}
 }

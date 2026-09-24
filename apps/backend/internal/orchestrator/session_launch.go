@@ -304,7 +304,7 @@ func (s *Service) prepareConversationForkLaunch(
 	if existing.Descriptor.State != "attached" || existing.Descriptor.DestinationSessionID == "" {
 		return nil, nil
 	}
-	response, ready, err := s.existingConversationForkSessionResponse(ctx, req.TaskID, existing.Descriptor.DestinationSessionID)
+	response, ready, err := s.existingConversationForkSessionResponse(ctx, req, existing.Descriptor.DestinationSessionID)
 	if err != nil || ready {
 		return response, err
 	}
@@ -337,26 +337,57 @@ func conversationForkLaunchFingerprint(req *LaunchSessionRequest) (string, error
 	return hex.EncodeToString(digest[:]), nil
 }
 
-func (s *Service) existingConversationForkSessionResponse(ctx context.Context, taskID, sessionID string) (*LaunchSessionResponse, bool, error) {
+func (s *Service) existingConversationForkSessionResponse(ctx context.Context, req *LaunchSessionRequest, sessionID string) (*LaunchSessionResponse, bool, error) {
 	session, err := s.repo.GetTaskSession(ctx, sessionID)
 	if err != nil {
 		return nil, false, err
 	}
-	if session == nil || session.TaskID != taskID {
+	if session == nil || session.TaskID != req.TaskID {
 		return nil, false, models.ErrConversationForkConflict
 	}
 	if s.executor != nil {
 		if execution, ok := s.executor.GetExecutionBySession(sessionID); ok && execution != nil {
-			return executionToLaunchResponse(taskID, execution), true, nil
+			return executionToLaunchResponse(req.TaskID, execution), true, nil
 		}
 	}
 	if session.State == models.TaskSessionStateCreated || session.State == models.TaskSessionStateWaitingForInput {
 		return nil, false, nil
 	}
+	if session.State == models.TaskSessionStateFailed || session.State == models.TaskSessionStateCancelled {
+		if err := s.resetConversationForkSessionForRetry(ctx, sessionID, session.State); err != nil {
+			return nil, false, err
+		}
+		req.SkipMessageRecord = true
+		return nil, false, nil
+	}
 	return &LaunchSessionResponse{
-		Success: true, TaskID: taskID, SessionID: sessionID,
+		Success: true, TaskID: req.TaskID, SessionID: sessionID,
 		AgentProfileID: session.AgentProfileID, State: string(session.State),
 	}, true, nil
+}
+
+func (s *Service) resetConversationForkSessionForRetry(
+	ctx context.Context,
+	sessionID string,
+	state models.TaskSessionState,
+) error {
+	changed, _, err := s.repo.UpdateTaskSessionStateIfCurrent(
+		ctx, sessionID, state, models.TaskSessionStateCreated, "",
+	)
+	if err != nil {
+		return fmt.Errorf("reset failed conversation fork session for retry: %w", err)
+	}
+	if changed {
+		return nil
+	}
+	current, err := s.repo.GetTaskSession(ctx, sessionID)
+	if err != nil {
+		return err
+	}
+	if current == nil || (current.State != models.TaskSessionStateCreated && current.State != models.TaskSessionStateWaitingForInput) {
+		return models.ErrConversationForkConflict
+	}
+	return nil
 }
 
 func validateLaunchActivationSource(source LaunchActivationSource) error {

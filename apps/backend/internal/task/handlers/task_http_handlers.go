@@ -997,6 +997,7 @@ func (h *TaskHandlers) httpCreateTask(c *gin.Context) {
 		ExternalID:                  body.ExternalID,
 		ConversationForkID:          body.ConversationForkID,
 		ConversationForkRequestID:   body.ConversationForkRequestID,
+		InitialAttachments:          body.Attachments,
 		WorkspacePolicy:             &wsPolicy,
 	})
 	if err != nil {
@@ -1018,7 +1019,7 @@ func (h *TaskHandlers) httpCreateTask(c *gin.Context) {
 	if err := h.service.ClaimMessageAttachments(c.Request.Context(), task.ID, "", body.Attachments); err != nil {
 		rollbackCtx, cancel := context.WithTimeout(context.WithoutCancel(c.Request.Context()), 10*time.Second)
 		defer cancel()
-		if deleteErr := h.service.DeleteTaskWithLifecycle(rollbackCtx, task.ID); deleteErr != nil {
+		if deleteErr := h.rollbackCreatedTask(rollbackCtx, task.ID, body.ConversationForkID); deleteErr != nil {
 			h.logger.Warn("failed to roll back task after attachment claim", zap.String("task_id", task.ID), zap.Error(deleteErr))
 		}
 		switch {
@@ -1035,7 +1036,7 @@ func (h *TaskHandlers) httpCreateTask(c *gin.Context) {
 		return
 	}
 
-	if !h.commitFreshBranch(c, task.ID, task.Title, body.WorkspaceID, body.Repositories, repos) {
+	if !h.commitFreshBranch(c, task.ID, task.Title, body.WorkspaceID, body.Repositories, repos, body.ConversationForkID) {
 		return
 	}
 
@@ -1079,12 +1080,26 @@ func (h *TaskHandlers) httpCreateTask(c *gin.Context) {
 		// create was running. The task survives holding no external_id; per
 		// the spec, no asynchronous work (session start, PR association) is
 		// dispatched for it. Any session prepared above is not launched.
+		if body.ConversationForkID != "" {
+			if err := h.service.MarkConversationForkTaskDestinationComplete(c.Request.Context(), body.WorkspaceID, body.ConversationForkID, task.ID); err != nil {
+				h.logger.Error("failed to complete conversation fork destination", zap.String("task_id", task.ID), zap.Error(err))
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "task creation is still in progress"})
+				return
+			}
+		}
 		c.JSON(http.StatusOK, createTaskResponse{
 			TaskDTO:          dto.FromTask(survivor),
 			Deduplicated:     false,
 			CreationComplete: true,
 		})
 		return
+	}
+	if body.ConversationForkID != "" {
+		if err := h.service.MarkConversationForkTaskDestinationComplete(c.Request.Context(), body.WorkspaceID, body.ConversationForkID, task.ID); err != nil {
+			h.logger.Error("failed to complete conversation fork destination", zap.String("task_id", task.ID), zap.Error(err))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "task creation is still in progress"})
+			return
+		}
 	}
 
 	h.dispatchTaskSession(c.Request.Context(), taskDTO.ID, taskDTO.Description, body, dispatch)
@@ -1211,6 +1226,7 @@ func (h *TaskHandlers) commitFreshBranch(
 	taskID, title, workspaceID string,
 	inputs []httpTaskRepositoryInput,
 	repos []dto.TaskRepositoryInput,
+	forkID string,
 ) bool {
 	hasFresh := false
 	for _, raw := range inputs {
@@ -1227,12 +1243,12 @@ func (h *TaskHandlers) commitFreshBranch(
 	task, err := h.service.GetTask(c.Request.Context(), taskID)
 	if err != nil {
 		h.logger.Error("failed to reload task repositories for fresh branch", zap.String("task_id", taskID), zap.Error(err))
-		h.rollbackFreshBranchTask(c.Request.Context(), taskID)
+		h.rollbackFreshBranchTask(c.Request.Context(), taskID, forkID)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to resolve task repository"})
 		return false
 	}
 	if !h.applyFreshBranch(c, title, task, inputs, repos, task.Repositories) {
-		h.rollbackFreshBranchTask(c.Request.Context(), taskID)
+		h.rollbackFreshBranchTask(c.Request.Context(), taskID, forkID)
 		return false
 	}
 	// Persist the rewritten BaseBranch (set by applyFreshBranch) onto the task.
@@ -1251,11 +1267,18 @@ func (h *TaskHandlers) commitFreshBranch(
 	return true
 }
 
-func (h *TaskHandlers) rollbackFreshBranchTask(ctx context.Context, taskID string) {
-	if err := h.service.DeleteTaskWithLifecycle(ctx, taskID); err != nil {
+func (h *TaskHandlers) rollbackFreshBranchTask(ctx context.Context, taskID, forkID string) {
+	if err := h.rollbackCreatedTask(ctx, taskID, forkID); err != nil {
 		h.logger.Warn("failed to compensate by deleting task after fresh-branch failure",
 			zap.String("task_id", taskID), zap.Error(err))
 	}
+}
+
+func (h *TaskHandlers) rollbackCreatedTask(ctx context.Context, taskID, forkID string) error {
+	if forkID != "" {
+		return h.service.RollbackTaskCreationWithConversationFork(ctx, taskID)
+	}
+	return h.service.DeleteTaskWithLifecycle(ctx, taskID)
 }
 
 // applyFreshBranch executes the fresh-branch flow for any local-executor

@@ -113,6 +113,38 @@ func TestConversationForkPostgresSnapshotAndDurableDraft(t *testing.T) {
 	if err != nil || attached.Descriptor.State != "attached" || attached.Descriptor.DestinationTaskID != destination.ID {
 		t.Fatalf("postgres attached destination = %+v, %v", attached.Descriptor, err)
 	}
+	if err := repo.MarkConversationForkTaskDestinationComplete(ctx, "owner-pg", created.Descriptor.ID, destination.ID); err != nil {
+		t.Fatalf("complete postgres task destination: %v", err)
+	}
+	completed, err := repo.GetConversationForkByDestinationRequest(ctx, "owner-pg", "fork-pg-destination-request")
+	if err != nil || !completed.Descriptor.DestinationComplete {
+		t.Fatalf("postgres completed destination = %+v, %v", completed.Descriptor, err)
+	}
+
+	rollbackDraft := *draft
+	rollbackDraft.Descriptor.ID = ""
+	rollbackDraft.DraftRequestID = "fork-pg-rollback-request"
+	rollbackDraft.RequestFingerprint = "pg-rollback-fingerprint"
+	rollbackDraft.Descriptor.ContentHash = "pg-rollback-hash"
+	rollbackFork, err := repo.CreateConversationForkDraft(ctx, &rollbackDraft)
+	if err != nil {
+		t.Fatalf("create postgres rollback draft: %v", err)
+	}
+	rollbackTask := &models.Task{ID: "task-fork-pg-rollback", WorkspaceID: workspace, Title: "Rollback task"}
+	if err := repo.CreateTaskWithConversationFork(ctx, rollbackTask, models.ConversationForkAdmission{
+		OwnerID: "owner-pg", WorkspaceID: workspace, ForkID: rollbackFork.Descriptor.ID,
+		DestinationKind: "task", DestinationRequestID: "fork-pg-rollback-destination",
+		RequestFingerprint: "pg-rollback-destination-fingerprint", DestinationTaskID: rollbackTask.ID,
+	}); err != nil {
+		t.Fatalf("create postgres rollback destination: %v", err)
+	}
+	if err := repo.RestoreConversationForkTaskDestinationForRollback(ctx, rollbackTask.ID); err != nil {
+		t.Fatalf("restore postgres fork after task rollback: %v", err)
+	}
+	rollbackRestored, err := repo.GetConversationForkDraft(ctx, "owner-pg", rollbackFork.Descriptor.ID, time.Now().UTC())
+	if err != nil || rollbackRestored.Descriptor.State != "draft" || rollbackRestored.Descriptor.DestinationComplete {
+		t.Fatalf("postgres restored rollback draft = %+v, %v", rollbackRestored.Descriptor, err)
+	}
 	if err := repo.DeleteTask(ctx, taskID); err != nil {
 		t.Fatalf("delete postgres source task: %v", err)
 	}

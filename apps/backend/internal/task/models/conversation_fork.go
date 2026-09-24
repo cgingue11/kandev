@@ -81,6 +81,7 @@ type ConversationForkDescriptor struct {
 	DestinationKind       string                       `json:"destination_kind,omitempty"`
 	DestinationTaskID     string                       `json:"destination_task_id,omitempty"`
 	DestinationSessionID  string                       `json:"destination_session_id,omitempty"`
+	DestinationComplete   bool                         `json:"-"`
 }
 
 type ConversationForkAttachment struct {
@@ -113,4 +114,9 @@ type ConversationForkDraft struct {
 	RequestFingerprint     string                     `json:"-"`
 	DestinationRequestID   string                     `json:"-"`
 	DestinationFingerprint string                     `json:"-"`
+}
+
+type ConversationForkExpiredDraftAttachments struct {
+	OwnerID     string
+	Attachments []ConversationForkAttachment
 }

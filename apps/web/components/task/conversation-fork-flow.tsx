@@ -200,6 +200,7 @@ export function ConversationForkFlow({
   const [destination, setDestination] = useState<Destination | null>(null);
   const [selection, setSelection] = useState(DEFAULT_SELECTION);
   const [creationRequestId, setCreationRequestId] = useState("");
+  const [forkRemoved, setForkRemoved] = useState(false);
   const consumedRef = useRef(false);
   const messageId = message.id;
   const sessionId = message.session_id;
@@ -215,6 +216,7 @@ export function ConversationForkFlow({
       return;
     }
     consumedRef.current = false;
+    setForkRemoved(false);
     setDestination(null);
     setSelection(DEFAULT_SELECTION);
     setPickerOpen(true);
@@ -266,9 +268,13 @@ export function ConversationForkFlow({
   const onConsumed = useCallback(() => {
     consumedRef.current = true;
   }, []);
+  const removeFork = useCallback(async () => {
+    await fork.discardSnapshot();
+    setForkRemoved(true);
+  }, [fork.discardSnapshot]);
   const conversationFork: ConversationForkFormContext | undefined = useMemo(
     () =>
-      fork.source && fork.snapshot
+      !forkRemoved && fork.source && fork.snapshot
         ? {
             source: fork.source,
             snapshot: fork.snapshot,
@@ -277,7 +283,7 @@ export function ConversationForkFlow({
             creationRequestId,
             attachmentsLoading: fork.attachmentsLoading,
             onPreview: () => undefined,
-            onRemove: () => void closeFlow(),
+            onRemove: () => void removeFork(),
             onApplySelection: handleApplySelection,
             onRangeStartChange,
             onModelChange,
@@ -287,11 +293,13 @@ export function ConversationForkFlow({
     [
       closeFlow,
       creationRequestId,
+      forkRemoved,
       fork.attachmentsLoading,
       fork.snapshot,
       fork.source,
       handleApplySelection,
       onConsumed,
+      removeFork,
       onModelChange,
       onRangeStartChange,
       selection,
@@ -394,7 +402,7 @@ export function ConversationForkFlow({
         groupId={groupId}
         conversationFork={conversationFork}
       />
-      {sourceTask && conversationFork && (
+      {sourceTask && taskDestination && (
         <ConversationForkTaskDestinations
           destination={taskDestination}
           sourceTask={sourceTask}

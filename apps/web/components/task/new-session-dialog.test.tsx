@@ -70,7 +70,22 @@ const mockState = {
 vi.mock("@kandev/ui/dialog", () => ({
   Dialog: ({ open, children }: { open: boolean; children: React.ReactNode }) =>
     open ? <div>{children}</div> : null,
-  DialogContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  DialogContent: ({
+    children,
+    onEscapeKeyDown,
+  }: {
+    children: React.ReactNode;
+    onEscapeKeyDown?: (event: { preventDefault: () => void }) => void;
+  }) => (
+    <div>
+      <button
+        type="button"
+        aria-label="Escape dialog"
+        onClick={() => onEscapeKeyDown?.({ preventDefault: vi.fn() })}
+      />
+      {children}
+    </div>
+  ),
   DialogHeader: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   DialogTitle: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   DialogFooter: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
@@ -324,6 +339,22 @@ describe("NewSessionDialog conversation forks", () => {
     );
     expect(FORK_CONTEXT.onConsumed).toHaveBeenCalled();
     expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it("Escape closes the fork preview and restores focus without closing the creation dialog", async () => {
+    const onOpenChange = vi.fn();
+    renderNewSessionDialog({ onOpenChange, conversationFork: FORK_CONTEXT });
+    const previewButton = screen.getByRole("button", { name: "Preview" });
+    previewButton.focus();
+    fireEvent.click(previewButton);
+    expect(screen.getByTestId("conversation-fork-content")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Escape dialog" }));
+
+    await waitFor(() => expect(screen.queryByTestId("conversation-fork-content")).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(previewButton));
+    expect(onOpenChange).not.toHaveBeenCalled();
+    expect(screen.getByTestId(DESCRIPTION_INPUT_TEST_ID)).toBeTruthy();
   });
 });
 

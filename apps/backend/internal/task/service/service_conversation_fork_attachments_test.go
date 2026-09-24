@@ -103,6 +103,31 @@ func TestConversationForkCopiesSelectedAttachmentsIntoIndependentDraftStorage(t 
 	}
 }
 
+func TestConversationForkExpiryCleanupDeletesDraftOwnedAttachmentCopies(t *testing.T) {
+	svc, repo, attachments, source, ctx := newConversationForkAttachmentFixture(t, "source-file.txt", "private source bytes")
+	draft, err := svc.CreateConversationForkDraft(ctx, models.ConversationForkCreateRequest{
+		Source: models.ConversationForkSourceRequest{
+			SessionID: "session-fork-service", CutoffMessageID: "message-fork-service",
+		},
+		DraftRequestID: "fork-expiry-copy",
+		AttachmentIDs:  []string{source.ID},
+	})
+	if err != nil {
+		t.Fatalf("create fork with selected attachment: %v", err)
+	}
+	copyID := draft.Descriptor.AttachmentDescriptors[0].ID
+	if _, err := repo.DB().ExecContext(ctx, `UPDATE task_conversation_forks SET expires_at = ? WHERE id = ?`, time.Now().UTC().Add(-time.Minute), draft.Descriptor.ID); err != nil {
+		t.Fatalf("expire fork draft: %v", err)
+	}
+	svc.cleanupExpiredConversationForkDraftRows(ctx, time.Now().UTC())
+	if _, err := attachments.Get(ctx, "user-a", copyID); !errors.Is(err, ErrAttachmentNotFound) {
+		t.Fatalf("expired draft retained attachment copy: %v", err)
+	}
+	if _, err := svc.GetConversationForkDraft(ctx, draft.Descriptor.ID); !errors.Is(err, models.ErrConversationForkNotFound) {
+		t.Fatalf("expired draft remains readable after cleanup: %v", err)
+	}
+}
+
 func TestConversationForkAttachmentCopyFailureKeepsExistingDraft(t *testing.T) {
 	svc, repo, attachments, source, ctx := newConversationForkAttachmentFixture(t, "source-file.txt", "private source bytes")
 	firstRequest := models.ConversationForkCreateRequest{

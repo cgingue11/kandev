@@ -1,9 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import type { FormEvent, KeyboardEvent, ReactNode, RefObject } from "react";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@kandev/ui/dialog";
-import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from "@kandev/ui/drawer";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { FormEvent, KeyboardEvent, RefObject } from "react";
+import { DialogFooter, DialogHeader, DialogTitle } from "@kandev/ui/dialog";
 import { Button } from "@kandev/ui/button";
 import { useAppStore } from "@/components/state-provider";
 import { useToast } from "@/components/toast-provider";
@@ -36,6 +35,7 @@ import { useResponsiveBreakpoint } from "@/hooks/use-responsive-breakpoint";
 import { ConversationForkChip } from "./conversation-fork-chip";
 import { ConversationForkPreview } from "./conversation-fork-preview";
 import type { ConversationForkFormContext } from "./conversation-fork-types";
+import { NewSessionDialogSurface } from "./new-session-dialog-surface";
 
 export type { HandoffPreset } from "./handoff-types";
 export { useSessionPromptController };
@@ -211,7 +211,7 @@ function SessionFormFields({
         isSessionMode
         taskId={taskId}
         workspaceId={workspaceId}
-        autoFocus
+        autoFocus={!isMobile}
         initialDescription=""
         onDescriptionChange={setHasPrompt}
         onPendingAttachmentUploadsChange={setHasPendingAttachmentUploads}
@@ -452,55 +452,6 @@ function NoAgentBanner({
   return null;
 }
 
-function NewSessionDialogSurface({
-  open,
-  onOpenChange,
-  isMobile,
-  previewOpen,
-  hasConversationFork,
-  children,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  isMobile: boolean;
-  previewOpen: boolean;
-  hasConversationFork: boolean;
-  children: ReactNode;
-}) {
-  const { t } = useTranslation();
-  if (isMobile) {
-    return (
-      <Drawer open={open} onOpenChange={onOpenChange}>
-        <DrawerContent
-          className="!top-0 !bottom-auto !mt-0 !h-dvh !max-h-dvh min-h-0 overflow-hidden rounded-none pb-[env(safe-area-inset-bottom,0px)]"
-          data-testid="new-session-drawer"
-        >
-          {previewOpen ? (
-            <DrawerHeader className="sr-only">
-              <DrawerTitle>{t("task:conversationForkPreview")}</DrawerTitle>
-            </DrawerHeader>
-          ) : null}
-          <div className="flex h-full min-h-0 flex-col">{children}</div>
-        </DrawerContent>
-      </Drawer>
-    );
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        className={
-          hasConversationFork
-            ? "flex max-h-[85dvh] min-h-0 flex-col overflow-hidden sm:max-w-[520px]"
-            : "min-w-0 overflow-hidden sm:max-w-[520px]"
-        }
-      >
-        {children}
-      </DialogContent>
-    </Dialog>
-  );
-}
-
 function createForkPreviewContext(
   conversationFork: ConversationForkFormContext | undefined,
   previewTriggerRef: { current: HTMLElement | null },
@@ -545,6 +496,11 @@ export function NewSessionDialog({
     ? `${taskId}-${open}-${handoff.sourceSessionId}-${handoff.targetProfileId}`
     : `${taskId}-${open}`;
   const forkContext = createForkPreviewContext(conversationFork, previewTriggerRef, setPreviewOpen);
+  const mobileTitleRef = useRef<HTMLHeadingElement>(null);
+  const closePreview = useCallback(() => {
+    setPreviewOpen(false);
+    requestAnimationFrame(() => previewTriggerRef.current?.focus());
+  }, []);
   useEffect(() => {
     if (!open) setPreviewOpen(false);
   }, [open]);
@@ -558,13 +514,15 @@ export function NewSessionDialog({
     </Trans>
   );
   const titleHeader = previewOpen ? null : (
-    <>
-      <DialogHeader className="shrink-0 px-4 pt-4 sm:px-0 sm:pt-0">
-        <DialogTitle className="min-w-0 wrap-break-word pr-6 text-sm font-medium">
-          {title}
-        </DialogTitle>
-      </DialogHeader>
-    </>
+    <DialogHeader className="shrink-0 px-4 pt-4 sm:px-0 sm:pt-0">
+      <DialogTitle
+        ref={mobileTitleRef}
+        tabIndex={-1}
+        className="min-w-0 wrap-break-word pr-6 text-sm font-medium"
+      >
+        {title}
+      </DialogTitle>
+    </DialogHeader>
   );
   const body = (
     <>
@@ -588,13 +546,7 @@ export function NewSessionDialog({
         />
       </div>
       {previewOpen && forkContext && (
-        <ConversationForkPreview
-          fork={forkContext}
-          onBack={() => {
-            setPreviewOpen(false);
-            requestAnimationFrame(() => previewTriggerRef.current?.focus());
-          }}
-        />
+        <ConversationForkPreview fork={forkContext} onBack={closePreview} />
       )}
     </>
   );
@@ -609,6 +561,8 @@ export function NewSessionDialog({
       onOpenChange={surfaceOnOpenChange}
       isMobile={isMobile}
       previewOpen={previewOpen}
+      onClosePreview={closePreview}
+      mobileTitleRef={mobileTitleRef}
       hasConversationFork={!!conversationFork}
     >
       {body}

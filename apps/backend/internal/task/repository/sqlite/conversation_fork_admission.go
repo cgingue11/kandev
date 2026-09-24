@@ -3,20 +3,32 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 	"time"
 
+	"github.com/jmoiron/sqlx"
 	"github.com/kandev/kandev/internal/db/dialect"
 	"github.com/kandev/kandev/internal/task/models"
 )
 
-const conversationForkStateDraft = "draft"
+const (
+	conversationForkStateDraft     = "draft"
+	conversationForkStateDiscarded = "discarded"
+)
 
 type conversationForkDestinationTx interface {
 	ExecContext(context.Context, string, ...any) (sql.Result, error)
 	QueryRowContext(context.Context, string, ...any) *sql.Row
+}
+
+type conversationForkRollbackRecord struct {
+	id          string
+	ownerID     string
+	workspaceID string
+	attachments []models.ConversationForkAttachment
 }
 
 func (r *Repository) attachConversationForkToDestinationTx(ctx context.Context, tx conversationForkDestinationTx, admission models.ConversationForkAdmission) error {
@@ -111,7 +123,8 @@ func (r *Repository) attachNewConversationForkDraft(ctx context.Context, tx conv
 	var destinationRequestID any = admission.DestinationRequestID
 	result, err := tx.ExecContext(ctx, r.db.Rebind(`
 		UPDATE task_conversation_forks
-		SET state = 'attached', destination_kind = ?, destination_task_id = ?, destination_session_id = ?,
+		SET state = 'attached', destination_kind = ?, destination_complete = FALSE,
+			destination_task_id = ?, destination_session_id = ?,
 			destination_request_id = ?, destination_request_fingerprint = ?
 		WHERE owner_id = ? AND id = ? AND state = 'draft' AND expires_at > ?
 	`), admission.DestinationKind, admission.DestinationTaskID, admission.DestinationSessionID, destinationRequestID,
@@ -127,6 +140,149 @@ func (r *Repository) attachNewConversationForkDraft(ctx context.Context, tx conv
 			return fmt.Errorf("count attached conversation fork rows: %w", err)
 		}
 		return fmt.Errorf("%w: snapshot attachment update matched %d rows", models.ErrConversationForkConflict, changed)
+	}
+	return nil
+}
+
+func (r *Repository) MarkConversationForkTaskDestinationComplete(ctx context.Context, ownerID, forkID, taskID string) error {
+	if ownerID == "" || forkID == "" || taskID == "" {
+		return models.ErrConversationForkConflict
+	}
+	result, err := r.db.ExecContext(ctx, r.db.Rebind(`
+		UPDATE task_conversation_forks SET destination_complete = TRUE
+		WHERE owner_id = ? AND id = ? AND destination_task_id = ? AND state = 'attached'
+		  AND destination_kind IN ('task', 'child_task')
+	`), ownerID, forkID, taskID)
+	if err != nil {
+		return fmt.Errorf("mark conversation fork destination complete: %w", err)
+	}
+	changed, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("count completed conversation fork destinations: %w", err)
+	}
+	if changed != 1 {
+		return models.ErrConversationForkConflict
+	}
+	return nil
+}
+
+func (r *Repository) RestoreConversationForkTaskDestinationForRollback(ctx context.Context, taskID string) error {
+	if taskID == "" {
+		return models.ErrConversationForkConflict
+	}
+	tx, err := r.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin conversation fork destination rollback: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	forks, err := loadConversationForkRollbackRecords(ctx, tx, taskID)
+	if err != nil {
+		return err
+	}
+	if len(forks) == 0 {
+		return tx.Commit()
+	}
+	now := time.Now().UTC()
+	expiresAt := now.Add(24 * time.Hour)
+	for _, fork := range forks {
+		if err := restageConversationForkAttachments(ctx, tx, fork, taskID, expiresAt, now); err != nil {
+			return err
+		}
+		if err := restoreConversationForkDraft(ctx, tx, fork.id, taskID, expiresAt); err != nil {
+			return err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit conversation fork destination rollback: %w", err)
+	}
+	return nil
+}
+
+func loadConversationForkRollbackRecords(
+	ctx context.Context,
+	tx *sqlx.Tx,
+	taskID string,
+) ([]conversationForkRollbackRecord, error) {
+	rows, err := tx.QueryxContext(ctx, tx.Rebind(`
+		SELECT id, owner_id, workspace_id, attachments_json
+		FROM task_conversation_forks
+		WHERE destination_task_id = ? AND destination_kind IN ('task', 'child_task') AND state = 'attached'
+	`), taskID)
+	if err != nil {
+		return nil, fmt.Errorf("read conversation fork destination for rollback: %w", err)
+	}
+	var forks []conversationForkRollbackRecord
+	for rows.Next() {
+		var fork conversationForkRollbackRecord
+		var encodedAttachments string
+		if err := rows.Scan(&fork.id, &fork.ownerID, &fork.workspaceID, &encodedAttachments); err != nil {
+			_ = rows.Close()
+			return nil, fmt.Errorf("scan conversation fork destination for rollback: %w", err)
+		}
+		if err := json.Unmarshal([]byte(encodedAttachments), &fork.attachments); err != nil {
+			_ = rows.Close()
+			return nil, fmt.Errorf("decode conversation fork copies for rollback: %w", err)
+		}
+		forks = append(forks, fork)
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return nil, fmt.Errorf("iterate conversation fork destinations for rollback: %w", err)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, fmt.Errorf("close conversation fork destinations for rollback: %w", err)
+	}
+	return forks, nil
+}
+
+func restageConversationForkAttachments(
+	ctx context.Context,
+	tx *sqlx.Tx,
+	fork conversationForkRollbackRecord,
+	taskID string,
+	expiresAt, now time.Time,
+) error {
+	for _, attachment := range fork.attachments {
+		if attachment.ID == "" {
+			return models.ErrConversationForkAttachmentMissing
+		}
+		result, err := tx.ExecContext(ctx, tx.Rebind(`
+			UPDATE task_message_attachments
+			SET task_id = '', session_id = '', state = ?, expires_at = ?, updated_at = ?
+			WHERE id = ? AND owner_id = ? AND workspace_id = ? AND task_id = ? AND state = ?
+		`), models.AttachmentStateStaged, expiresAt, now, attachment.ID,
+			fork.ownerID, fork.workspaceID, taskID, models.AttachmentStateClaimed)
+		if err != nil {
+			return fmt.Errorf("restage conversation fork attachment during rollback: %w", err)
+		}
+		changed, err := result.RowsAffected()
+		if err != nil {
+			return fmt.Errorf("count restaged conversation fork attachments: %w", err)
+		}
+		if changed != 1 {
+			return models.ErrConversationForkAttachmentMissing
+		}
+	}
+	return nil
+}
+
+func restoreConversationForkDraft(ctx context.Context, tx *sqlx.Tx, forkID, taskID string, expiresAt time.Time) error {
+	result, err := tx.ExecContext(ctx, tx.Rebind(`
+		UPDATE task_conversation_forks
+		SET state = 'draft', destination_kind = '', destination_complete = FALSE,
+		    destination_task_id = '', destination_session_id = '', destination_request_id = NULL,
+		    destination_request_fingerprint = '', expires_at = ?
+		WHERE id = ? AND destination_task_id = ? AND state = 'attached'
+	`), expiresAt, forkID, taskID)
+	if err != nil {
+		return fmt.Errorf("restore conversation fork draft after task rollback: %w", err)
+	}
+	changed, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("count restored conversation fork drafts: %w", err)
+	}
+	if changed != 1 {
+		return models.ErrConversationForkConflict
 	}
 	return nil
 }

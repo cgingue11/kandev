@@ -355,7 +355,7 @@ function MessageForkAction({
       >
         <IconGitBranch className="h-full w-full" aria-hidden="true" />
       </button>
-      <ConversationForkFlow open={open} onOpenChange={setOpen} message={message} />
+      {open && <ConversationForkFlow open onOpenChange={setOpen} message={message} />}
     </>
   );
 }

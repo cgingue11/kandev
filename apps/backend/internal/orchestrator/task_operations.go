@@ -873,7 +873,7 @@ func (s *Service) startCreatedSession(
 			effectivePrompt = sysprompt.InjectConfigContext(sessionID, effectivePrompt)
 		}
 	}
-	effectivePrompt, forkContext, forkAttachments, err := s.prepareConversationForkPrompt(ctx, taskID, session, effectivePrompt)
+	effectivePrompt, forkContext, forkAttachments, err := s.prepareConversationForkPrompt(ctx, taskID, session, effectivePrompt, skipMessageRecord)
 	if err != nil {
 		return nil, fmt.Errorf("prepare conversation fork prompt: %w", err)
 	}
@@ -1415,6 +1415,9 @@ func (s *Service) startTask(ctx context.Context, taskID string, agentProfileID s
 		if existing.Descriptor.State != "draft" {
 			return nil, models.ErrConversationForkConflict
 		}
+		if _, err := appendConversationForkAttachments(attachments, existing.Descriptor.AttachmentDescriptors); err != nil {
+			return nil, err
+		}
 		conversationForkAdmission = &admission
 	}
 
@@ -1742,7 +1745,7 @@ func (s *Service) startTask(ctx context.Context, taskID string, agentProfileID s
 		configMode = true
 		effectivePrompt = sysprompt.InjectConfigContext(sessionID, effectivePrompt)
 	}
-	effectivePrompt, forkContext, forkAttachments, err := s.prepareConversationForkPrompt(ctx, task.ID, launchSession, effectivePrompt)
+	effectivePrompt, forkContext, forkAttachments, err := s.prepareConversationForkPrompt(ctx, task.ID, launchSession, effectivePrompt, false)
 	if err != nil {
 		return nil, fmt.Errorf("prepare conversation fork prompt: %w", err)
 	}

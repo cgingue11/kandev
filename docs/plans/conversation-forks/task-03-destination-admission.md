@@ -117,6 +117,8 @@ The PostgreSQL check initially exposed an existing missing-table transaction-abo
 
 Task-level fork provenance no longer becomes session delivery metadata through task metadata cloning. The repository stamps the fork reference only on the session that atomically claims the pending snapshot. Regression coverage verifies selected copied attachments reach agent, new-task, and delayed-task launch requests, with task uploads kept alongside fork copies, then starts an ordinary additional session and verifies it receives neither fork attachments nor delivery metadata. New-task and separate-child admission now fail before creation when the resolved executor is Local and cannot isolate its execution workspace.
 
+Destination receipts remain retryable until synchronous setup completes. Failed creation restores the attached draft and copied attachment claims before deleting the partial destination. Failed first-session delivery retries the same session with the persisted user message and frozen fork payload; ordinary later sessions and workflow-created sessions receive no fork metadata. The first claim and attachment merge are covered by launch regressions.
+
 Validation passed:
 
 - `go test ./internal/task/repository/sqlite -run '^TestConversationForkPendingTaskBindsFirstSessionAtomically$' -count=1`

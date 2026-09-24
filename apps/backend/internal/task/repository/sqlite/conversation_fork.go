@@ -45,6 +45,8 @@ func (r *Repository) initConversationForkSchema() error {
 			created_at TIMESTAMP NOT NULL,
 			expires_at TIMESTAMP NOT NULL,
 			state TEXT NOT NULL CHECK (state IN ('draft', 'attached', 'discarded')),
+			destination_kind TEXT NOT NULL DEFAULT '',
+			destination_complete BOOLEAN NOT NULL DEFAULT FALSE,
 			destination_task_id TEXT NOT NULL DEFAULT '',
 			destination_session_id TEXT NOT NULL DEFAULT '',
 			draft_request_id TEXT,
@@ -56,8 +58,8 @@ func (r *Repository) initConversationForkSchema() error {
 	if err != nil {
 		return fmt.Errorf("create task conversation forks: %w", err)
 	}
-	if err := r.migrate.Apply("task_conversation_forks.destination_kind", `ALTER TABLE task_conversation_forks ADD COLUMN destination_kind TEXT NOT NULL DEFAULT ''`); err != nil {
-		return fmt.Errorf("migrate task conversation fork destination kind: %w", err)
+	if err := r.migrateConversationForkDestinationComplete(); err != nil {
+		return err
 	}
 	if _, err := r.db.ExecContext(r.migrationContext(), `
 		CREATE TABLE IF NOT EXISTS task_conversation_fork_owners (
@@ -81,6 +83,27 @@ func (r *Repository) initConversationForkSchema() error {
 		CREATE INDEX IF NOT EXISTS idx_task_conversation_forks_expiry
 		ON task_conversation_forks(state, expires_at)`); err != nil {
 		return fmt.Errorf("create conversation fork expiry index: %w", err)
+	}
+	return nil
+}
+
+func (r *Repository) migrateConversationForkDestinationComplete() error {
+	tx, err := r.db.BeginTxx(r.migrationContext(), nil)
+	if err != nil {
+		return fmt.Errorf("begin conversation fork destination completion migration: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	exists, err := r.columnExists(tx, "task_conversation_forks", "destination_complete")
+	if err != nil {
+		return err
+	}
+	if !exists {
+		if _, err := tx.ExecContext(r.migrationContext(), `ALTER TABLE task_conversation_forks ADD COLUMN destination_complete BOOLEAN NOT NULL DEFAULT FALSE`); err != nil {
+			return fmt.Errorf("add conversation fork destination completion: %w", err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit conversation fork destination completion migration: %w", err)
 	}
 	return nil
 }
@@ -256,7 +279,7 @@ func (r *Repository) readConversationForkMessages(
 	maxRows, maxBytes int,
 ) ([]*models.Message, error) {
 	where, args := conversationForkRangeWhere(r.db.DriverName(), req.SessionID, start, cutoff)
-	rows, byteCount, err := countConversationForkSourceRows(ctx, tx, r.db.DriverName(), where, args, maxRows)
+	rows, byteCount, err := countConversationForkSourceRows(ctx, tx, r.db.DriverName(), where, args, maxRows, req.IncludeToolEvidence)
 	if err != nil {
 		return nil, err
 	}
@@ -462,9 +485,13 @@ func conversationForkRangeArgs(sessionID string, start, cutoff *conversationFork
 	return args
 }
 
-func countConversationForkSourceRows(ctx context.Context, tx *sqlx.Tx, driver, where string, args []interface{}, maxRows int) (int, int64, error) {
+func countConversationForkSourceRows(ctx context.Context, tx *sqlx.Tx, driver, where string, args []interface{}, maxRows int, includeToolEvidence bool) (int, int64, error) {
 	contentBytes := "length(CAST(COALESCE(content, '') AS BLOB))"
 	metadataBytes := "length(CAST(COALESCE(metadata, '') AS BLOB))"
+	payloadBytes := "0"
+	if includeToolEvidence {
+		payloadBytes = "COALESCE(payload_size, 0)"
+	}
 	if dialect.IsPostgres(driver) {
 		contentBytes = "octet_length(COALESCE(content, ''))"
 		metadataBytes = "octet_length(COALESCE(metadata::text, ''))"
@@ -472,7 +499,7 @@ func countConversationForkSourceRows(ctx context.Context, tx *sqlx.Tx, driver, w
 	query := `
 		SELECT COUNT(*), COALESCE(SUM(source_bytes), 0)
 		FROM (
-			SELECT ` + contentBytes + ` + ` + metadataBytes + ` + ` + "COALESCE(payload_size, 0)" + ` AS source_bytes
+			SELECT ` + contentBytes + ` + ` + metadataBytes + ` + ` + payloadBytes + ` AS source_bytes
 			FROM task_session_messages
 			WHERE ` + where + `
 			ORDER BY ` + dialect.NormalizedMicrosecond(driver, "created_at") + ` ASC, id ASC
