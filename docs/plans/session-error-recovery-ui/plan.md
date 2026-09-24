@@ -542,3 +542,18 @@ focused suites passed 60 tests, including initially failing regressions. Final
 rendered reruns passed six desktop and seven mobile cases on the completed
 remediation build. Exact-head GitHub CI/reviews remain externally pending until
 the fixup completes.
+
+### CI fixture alignment
+
+Updated legacy browser assertions for the shared recovery card, native details
+disclosure, visible missing-profile explanation and standard 28px desktop control.
+Archive/Delete remain in task menus as specified; provider-link URL, redaction,
+keyboard and 44px mobile coverage are retained. Added the store dependency to
+Quick Chat and Office test harnesses without changing production behavior.
+
+All reported deterministic failures reproduced before correction. The affected
+unit suites passed 14 tests. Desktop verification passed eight cases plus both
+deleted-profile cases in a focused rerun; the mobile provider-link case passed.
+The three CI retry-only failures (preview capture, environment reuse and file
+drag/drop) passed locally without retries. Exact-head CI remains externally
+pending after delivery of these test-only corrections.
