@@ -347,7 +347,12 @@ test.describe("mobile CLI mode: passthrough composer", () => {
     const searchInput = testPage.getByPlaceholder("Search files and prompts...");
     await expect(searchInput).toBeVisible({ timeout: 5_000 });
     await searchInput.fill(promptName);
-    await testPage.getByText(promptName, { exact: true }).tap();
+    const promptCheckbox = testPage.getByRole("checkbox", { name: promptName, exact: true });
+    await expect(promptCheckbox).toBeVisible({ timeout: 5_000 });
+    const promptRow = testPage.getByTestId("context-prompt-item").filter({ hasText: promptName });
+    await expectTouchTarget(promptRow);
+    await promptRow.tap();
+    await expect(promptCheckbox).toBeChecked();
     await expect(firstComposer.getByText(promptName, { exact: true })).toBeVisible({
       timeout: 5_000,
     });
