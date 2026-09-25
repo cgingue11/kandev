@@ -147,3 +147,11 @@ inside the actual Plugins section and can be tapped. It also checks the real
 SVG geometry at 16px for topbar and 14px for sidebar Actions, including a
 component-rendered glyph. The updated mobile action suite passed 5/5 tests and
 the updated Chromium action suite passed 4/4 tests.
+
+PR review remediation (2026-09-25): `MainTopBarPluginActions` now memoizes its
+surface context and `PluginSlot` subtree. An unchanged topbar rerender therefore
+does not re-render plugin components. The focused topbar regression passed in
+the combined renderer suite (3 files, 19 tests):
+`(cd apps/web && pnpm exec vitest run components/plugins/plugin-action.test.tsx components/kanban/main-top-bar-plugin-actions.test.tsx components/actions/surface-action-styles.test.ts)`.
+Also passed: `(cd apps/web && pnpm run typecheck)` and focused ESLint on the
+changed renderer, topbar, style, test, and action UX E2E files.

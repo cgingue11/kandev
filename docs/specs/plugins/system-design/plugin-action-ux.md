@@ -105,6 +105,8 @@ spacing when one contribution renders several standard actions. It accepts
 `children: HostNode` and an optional localized `label` for a semantic group.
 It accepts no styling or location overrides. The surface chooses inline layout,
 gap, and mobile wrapping. Status-drawer groups stack full-width action rows.
+Status-bar groups stay on one row, cap at 18rem, and allow their actions to
+shrink so long values truncate instead of extending into neighboring items.
 Authors return null for an absent contribution, including an empty action group.
 ActionGroup returns null for null or empty direct children. Conditional child
 components remain the author's responsibility, as in existing slots.

@@ -129,3 +129,14 @@ Review remediation (2026-09-25): browser checks now measure the SVG itself at
 suite passed again as part of the 5/5 mobile action/status run. The permanent
 container-specific screenshot path was removed, and the neighboring drawer
 spec now restores and verifies the complete prior system-metrics setting.
+
+PR review remediation (2026-09-25): inline status groups now cap at 18rem and
+keep all actions on the 24px row. Flex children can shrink so long values
+truncate within the group rather than expanding into adjacent status items.
+The style regression passed in the combined renderer suite (3 files, 19
+tests):
+`(cd apps/web && pnpm exec vitest run components/plugins/plugin-action.test.tsx components/kanban/main-top-bar-plugin-actions.test.tsx components/actions/surface-action-styles.test.ts)`.
+Managed Chromium action UX E2E passed 3/3:
+`(cd apps/web && pnpm e2e:run --project chromium --workers=1 --retries=0 e2e/tests/plugins/plugin-action-ux.spec.ts)`.
+Its status case injects long values into both controls and checks their bounds
+remain on the 24px row.

@@ -1,11 +1,13 @@
 "use client";
 
-import { useMemo } from "react";
+import { memo, useMemo } from "react";
 import { PluginSlot } from "@/components/plugins/plugin-slot";
 import type { MainTopBarSlotProps } from "@/lib/plugins/types";
 import type { TaskListingPage } from "@/lib/task-listing/view-navigation";
 
 export type { MainTopBarSlotProps } from "@/lib/plugins/types";
+
+const MemoizedPluginSlot = memo(PluginSlot);
 
 /**
  * The plugin contract predates Threads and names only the two surfaces that
@@ -61,13 +63,17 @@ export function MainTopBarPluginActions(props: {
     }),
     [workspaceId, workspaceLabel, currentPage, presentation],
   );
+  const actionSurface = useMemo(
+    () => ({ surface: "topbar" as const, presentation }),
+    [presentation],
+  );
 
   const content = (
-    <PluginSlot
+    <MemoizedPluginSlot
       name="main-top-bar"
       slotProps={slotProps}
       excludePluginIds={excludePluginIds}
-      actionSurface={{ surface: "topbar", presentation }}
+      actionSurface={actionSurface}
     />
   );
   if (presentation === "desktop") return content;

@@ -10,7 +10,7 @@ export function surfaceActionClassName(
   iconOnly: boolean,
 ): string {
   if (surface === "status-bar") {
-    return "h-6 [@media(pointer:coarse)]:h-6 max-w-72 gap-1 px-1 text-[11px]";
+    return "h-6 max-w-72 gap-1 px-1 text-[11px]";
   }
   if (surface === "status-drawer") {
     return "min-h-11 w-full justify-start gap-2 px-3 text-left";
@@ -46,6 +46,9 @@ export function surfaceActionGroupClassName(
   surface: PluginActionSurfaceName,
   presentation: PluginActionPresentation | undefined,
 ): string {
+  if (surface === "status-bar") {
+    return "inline-flex min-w-0 max-w-72 flex-nowrap items-center gap-0.5 [&>[data-slot=surface-action]]:min-w-0 [&>[data-slot=surface-action]]:shrink";
+  }
   if (surface === "status-drawer") return "flex w-full flex-col gap-1";
   if (presentation === "mobile") {
     return "inline-flex min-w-0 max-w-full flex-wrap items-center gap-2";

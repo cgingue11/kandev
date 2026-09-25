@@ -208,7 +208,9 @@ test.describe("Plugin action UX, composer", () => {
     const leftId = `plugin:kandev-plugin-e2e:app-status-bar-left:0`;
     const leftContribution = bar.locator(`[data-status-item-id="${leftId}"]`);
     const actions = leftContribution.locator('[data-slot="surface-action"]');
+    const group = leftContribution.locator('[data-slot="surface-action-group"]');
     await expect(actions).toHaveCount(2);
+    await expect(group).toHaveCount(1);
     const action = leftContribution.getByTestId("e2e-status-bar-action");
     await expect(action).toHaveAttribute("data-surface", "status-bar");
     await expect(action).toHaveAccessibleName("Fixture service status");
@@ -228,6 +230,49 @@ test.describe("Plugin action UX, composer", () => {
     expect(glyphBox!.height).toBe(12);
     await assertGlyphSize(action, 12);
     expect(groupGap).toBe("2px");
+
+    await actions.locator('[data-slot="surface-action-text"]').evaluateAll((elements) => {
+      elements.forEach((element) => {
+        element.textContent = "A deliberately long status value ".repeat(8);
+      });
+    });
+    const groupLayout = await group.evaluate((element) => {
+      const bounds = element.getBoundingClientRect();
+      const style = getComputedStyle(element);
+      const actionBounds = Array.from(element.children, (child) => {
+        const rect = child.getBoundingClientRect();
+        return {
+          x: rect.x,
+          right: rect.right,
+          y: rect.y,
+          bottom: rect.bottom,
+          height: rect.height,
+        };
+      });
+      return {
+        x: bounds.x,
+        right: bounds.right,
+        y: bounds.y,
+        bottom: bounds.bottom,
+        maxWidth: style.maxWidth,
+        flexWrap: style.flexWrap,
+        actionFlexShrink: Array.from(
+          element.children,
+          (child) => getComputedStyle(child).flexShrink,
+        ),
+        actionBounds,
+      };
+    });
+    expect(groupLayout.maxWidth).toBe("288px");
+    expect(groupLayout.flexWrap).toBe("nowrap");
+    expect(groupLayout.actionFlexShrink).toEqual(["1", "1"]);
+    for (const box of groupLayout.actionBounds) {
+      expect(box.x).toBeGreaterThanOrEqual(groupLayout.x - 1);
+      expect(box.right).toBeLessThanOrEqual(groupLayout.right + 1);
+      expect(box.y).toBeGreaterThanOrEqual(groupLayout.y - 1);
+      expect(box.bottom).toBeLessThanOrEqual(groupLayout.bottom + 1);
+      expect(box.height).toBeCloseTo(24, 0);
+    }
     await action.click();
     await expect(action).toHaveAttribute("aria-pressed", "true");
 

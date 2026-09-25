@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@kandev/ui/tooltip";
 import type { PluginActionGroupProps, PluginActionProps } from "@kandev/plugin-sdk";
+import * as pluginActionSurface from "./plugin-action-surface";
 import { PluginSlot } from "./plugin-slot";
 import { pluginRegistry } from "@/lib/plugins/registry";
 import { createAppStore } from "@/lib/state/store";
@@ -62,6 +63,19 @@ describe("host.ui.Action rendering", () => {
       button.querySelector('[data-slot="surface-action-badge"]')?.getAttribute("aria-hidden"),
     ).toBe("true");
   });
+
+  it("shows the accessible label when a standard action has no other visible content", () => {
+    const action = makeAction({
+      label: "Refresh provider data",
+      tooltip: "",
+      "data-testid": "label-fallback-action",
+    });
+    register(() => action);
+
+    renderSlot();
+
+    expect(screen.getByTestId("label-fallback-action").textContent).toBe("Refresh provider data");
+  });
 });
 
 describe("host.ui.Action interaction", () => {
@@ -95,6 +109,26 @@ describe("host.ui.Action interaction", () => {
     expect(pointerDown).toHaveBeenCalledOnce();
     expect(click).toHaveBeenCalledOnce();
   });
+
+  it("keeps a disabled action's tooltip reachable through a focusable trigger", async () => {
+    const action = makeAction({
+      label: "Unavailable action",
+      disabled: true,
+      tooltip: "Connect an account to continue",
+      "data-testid": "disabled-tooltip-action",
+    });
+    register(() => action);
+
+    renderSlot();
+
+    const button = screen.getByTestId("disabled-tooltip-action");
+    const trigger = button.parentElement;
+    expect(trigger).not.toBeNull();
+    expect(trigger?.getAttribute("tabindex")).toBe("0");
+    fireEvent.focus(trigger!);
+
+    expect((await screen.findByRole("tooltip")).textContent).toBe("Connect an account to continue");
+  });
 });
 
 describe("host.ui.Action prop contract", () => {
@@ -118,7 +152,7 @@ describe("host.ui.Action prop contract", () => {
     const button = screen.getByTestId("fixed-action");
     expect(button.getAttribute("type")).toBe("button");
     expect(button.getAttribute("style")).toBeNull();
-    expect(button.className).not.toContain("h-1");
+    expect(button.className.split(/\s+/)).not.toContain("h-1");
     expect(button.className).not.toContain("bg-red-500");
     expect(button.getAttribute("data-slot")).toBe("surface-action");
   });
@@ -252,5 +286,36 @@ describe("host.ui.ActionGroup", () => {
     );
     expect(screen.getAllByRole("button")).toHaveLength(2);
     expect(document.querySelectorAll('[data-slot="surface-action-group"]')).toHaveLength(1);
+  });
+
+  it("keeps the plugin slot mounted when conditional actions become empty", () => {
+    const host = buildHostApi(PLUGIN_ID, createAppStore());
+    const ActionGroup = host.ui.ActionGroup as React.ComponentType<PluginActionGroupProps>;
+    const Action = host.ui.Action as React.ComponentType<PluginActionProps>;
+    const readSurface = vi.spyOn(pluginActionSurface, "usePluginActionSurface");
+    function ConditionalGroup() {
+      const [showAction, setShowAction] = React.useState(true);
+      return (
+        <>
+          <button data-testid="toggle-conditional-action" onClick={() => setShowAction(false)}>
+            Hide action
+          </button>
+          <ActionGroup label="Conditional actions">
+            {showAction ? <Action label="Refresh" data-testid="conditional-action" /> : null}
+          </ActionGroup>
+        </>
+      );
+    }
+    register(ConditionalGroup);
+
+    renderSlot();
+    const callsBeforeEmptyGroup = readSurface.mock.calls.length;
+    expect(readSurface).toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId("toggle-conditional-action"));
+
+    expect(screen.getByTestId("toggle-conditional-action")).toBeTruthy();
+    expect(screen.queryByTestId("conditional-action")).toBeNull();
+    expect(screen.queryByRole("group", { name: "Conditional actions" })).toBeNull();
+    expect(readSurface.mock.calls.length).toBeGreaterThan(callsBeforeEmptyGroup);
   });
 });

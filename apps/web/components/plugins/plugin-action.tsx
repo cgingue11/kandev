@@ -8,6 +8,33 @@ import { surfaceActionGroupClassName } from "@/components/actions/surface-action
 import { useResponsiveBreakpoint } from "@/hooks/use-responsive-breakpoint";
 import { usePluginActionSurface } from "./plugin-action-surface";
 
+function visibleActionText(
+  label: string,
+  text: unknown,
+  icon: React.ReactNode,
+): string | undefined {
+  if (typeof text === "string" && text.length > 0) return text;
+  return React.Children.toArray(icon).length === 0 ? label : undefined;
+}
+
+function actionTooltip(tooltip: string | undefined, label: string, iconOnly: boolean) {
+  if (tooltip !== undefined) return tooltip || undefined;
+  return iconOnly ? label : undefined;
+}
+
+function tooltipTrigger(action: React.ReactElement, disabled?: boolean): React.ReactElement {
+  if (!disabled) return action;
+  return (
+    <span
+      aria-disabled="true"
+      className="inline-flex rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      tabIndex={0}
+    >
+      {action}
+    </span>
+  );
+}
+
 export function PluginAction(props: PluginActionProps) {
   const surface = usePluginActionSurface();
   const { isFinePointer } = useResponsiveBreakpoint();
@@ -17,11 +44,11 @@ export function PluginAction(props: PluginActionProps) {
   }
 
   const label = typeof props.label === "string" ? props.label : "";
-  const text = typeof props.text === "string" ? props.text : undefined;
+  const icon = props.icon as React.ReactNode;
+  const visibleText = visibleActionText(label, props.text, icon);
   const badge = typeof props.badge === "string" ? props.badge : undefined;
-  const iconOnly = !text;
-  let tooltip = props.tooltip || undefined;
-  if (props.tooltip === undefined && iconOnly) tooltip = label;
+  const iconOnly = !visibleText;
+  const tooltip = actionTooltip(props.tooltip, label, iconOnly);
   const showTooltip = isFinePointer && surface.presentation !== "mobile";
 
   const action = (
@@ -29,8 +56,8 @@ export function PluginAction(props: PluginActionProps) {
       surface={surface.surface}
       presentation={surface.presentation}
       label={label}
-      icon={props.icon as React.ReactNode}
-      text={text}
+      icon={icon}
+      text={visibleText}
       badge={badge}
       tone={props.tone}
       pressed={props.pressed}
@@ -77,7 +104,7 @@ export function PluginAction(props: PluginActionProps) {
 
   return tooltip && showTooltip ? (
     <Tooltip>
-      <TooltipTrigger asChild>{action}</TooltipTrigger>
+      <TooltipTrigger asChild>{tooltipTrigger(action, props.disabled)}</TooltipTrigger>
       <TooltipContent>{tooltip}</TooltipContent>
     </Tooltip>
   ) : (
@@ -86,10 +113,10 @@ export function PluginAction(props: PluginActionProps) {
 }
 
 export function PluginActionGroup(props: PluginActionGroupProps) {
+  const surface = usePluginActionSurface();
   const children = React.Children.toArray(props.children as React.ReactNode);
   if (children.length === 0) return null;
 
-  const surface = usePluginActionSurface();
   if (!surface) {
     // i18n-exempt: developer misuse error, not user-facing copy.
     throw new Error("host.ui.ActionGroup must be rendered inside a supported plugin slot.");

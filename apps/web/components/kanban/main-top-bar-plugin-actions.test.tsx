@@ -45,6 +45,20 @@ describe("MainTopBarPluginActions", () => {
     expect(screen.getByTestId("plugin-app-bar").textContent).toBe("null");
   });
 
+  it("preserves the action slot subtree when topbar props do not change", () => {
+    let pluginRenders = 0;
+    pluginRegistry.forPlugin("plugin-a").registerComponent(SLOT, () => {
+      pluginRenders += 1;
+      return <div data-testid="stable-plugin-slot" />;
+    });
+
+    const { rerender } = render(<MainTopBarPluginActions currentPage="kanban" />);
+    rerender(<MainTopBarPluginActions currentPage="kanban" />);
+
+    expect(screen.getByTestId("stable-plugin-slot")).toBeTruthy();
+    expect(pluginRenders).toBe(1);
+  });
+
   it("passes mobile presentation and preserves touch targets for labeled controls", () => {
     pluginRegistry.forPlugin("plugin-a").registerComponent(SLOT, ({ slotProps }) => {
       const ctx = slotProps as MainTopBarSlotProps;

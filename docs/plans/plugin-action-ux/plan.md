@@ -269,6 +269,26 @@ Review verification passed:
   an Action extended to x=536 while its Plugins section ended at x=370, and
   nominally 16px SVGs measured 14px.
 
+## PR review remediation results (2026-09-25)
+
+Addressed all seven current-head review threads. Inline status groups are capped
+at 18rem, remain on one compact row, and let actions shrink so long values do
+not expand over neighboring status items. Disabled action tooltips use a
+focusable host wrapper; label-only actions render their label visibly;
+ActionGroup reads its context before its empty-child return; and the main
+topbar memoizes both its action-surface value and PluginSlot subtree. Removed
+the redundant status-bar media-query height class.
+
+Verification passed: focused Action, ActionGroup, status-style, and main-topbar
+Vitest (3 files, 19 tests):
+`(cd apps/web && pnpm exec vitest run components/plugins/plugin-action.test.tsx components/kanban/main-top-bar-plugin-actions.test.tsx components/actions/surface-action-styles.test.ts)`;
+web typecheck `(cd apps/web && pnpm run typecheck)`; focused ESLint and Prettier
+on the changed web files; managed Chromium E2E
+`(cd apps/web && pnpm e2e:run --project chromium --workers=1 --retries=0 e2e/tests/plugins/plugin-action-ux.spec.ts)` (3/3); `python3 scripts/list-docs.py validate`;
+`python3 scripts/lint-spec-files.py --all`; and `git diff --check`. The PR-head
+CI waiter remains active while original checks finish so all prior failures can
+be inspected before push.
+
 ## Risks
 
 - Legacy plugins retain visual differences until their authors adopt Action.

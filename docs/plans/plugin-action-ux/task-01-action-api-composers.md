@@ -138,3 +138,12 @@ Review remediation (2026-09-25): desktop and phone composer browser checks now
 measure the SVG itself at the intended 16px, so a correctly sized wrapper can
 no longer hide a 14px glyph. The updated mobile composer/action suite passed
 as part of the 5/5 mobile action and Status drawer run.
+
+PR review remediation (2026-09-25): Action now displays its label when no icon
+or non-empty text is present. A disabled Action with a tooltip exposes a
+focusable host trigger, and ActionGroup reads its surface context before its
+empty-child return to keep hook ordering unconditional. The combined focused
+renderer suite passed (3 files, 19 tests):
+`(cd apps/web && pnpm exec vitest run components/plugins/plugin-action.test.tsx components/kanban/main-top-bar-plugin-actions.test.tsx components/actions/surface-action-styles.test.ts)`.
+Also passed: `(cd apps/web && pnpm run typecheck)` and focused ESLint on the
+changed renderer, topbar, style, test, and action UX E2E files.
