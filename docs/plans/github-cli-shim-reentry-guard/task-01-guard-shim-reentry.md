@@ -24,10 +24,11 @@ command instead of exhausting the host.
 
 ## In scope
 
-- Add `lookPathSkippingExecutable`, which rejects any `PATH` candidate that is
-  the same file as the running `agentctl`, and use it from `main.go`.
-- Add the `KANDEV_GITHUB_CLI_SHIM_ACTIVE` marker: refuse to run when it is set,
-  set it on the child environment otherwise.
+- Add `lookPathSkippingShims`, which rejects any `PATH` candidate inside a
+  `kandev-github-cli-*` directory or the same file as the running `agentctl`,
+  and use it from `main.go`.
+- Add the `KANDEV_GITHUB_CLI_SHIM_DEPTH` counter: refuse to run at the bound,
+  pass depth+1 to the launched CLI otherwise.
 
 ## Out of scope
 
@@ -36,16 +37,17 @@ command instead of exhausting the host.
 
 ## Acceptance
 
-- A symlink to `agentctl` ahead of the real `gh` on `PATH` is skipped and the
-  real `gh` is launched.
-- A shim started with the marker set returns an error naming the re-entry and
+- A symlink to `agentctl`, or a shim directory holding a different binary,
+  ahead of the real `gh` on `PATH` is skipped and the real `gh` is launched.
+- A shim started below the depth bound launches `gh` with the depth
+  incremented; one at the bound returns an error naming the nesting and
   launches nothing.
 - Existing shim behavior for a valid real CLI is unchanged.
 
 ## Verification
 
 ```bash
-(cd apps/backend && go test ./cmd/agentctl -run 'TestGitHubCLIShim|TestLookPathSkippingExecutable' -count=1)
+(cd apps/backend && go test ./cmd/agentctl -run 'TestGitHubCLIShim|TestLookPathSkippingShims' -count=1)
 (cd apps/backend && go test ./cmd/agentctl -count=1)
 ```
 
@@ -64,8 +66,9 @@ None.
 
 ## Risks
 
-- A real `gh` that is a hard link to `agentctl` cannot exist, so the identity
-  check cannot reject a legitimate CLI.
+- A real `gh` never lives in a `kandev-github-cli-*` directory and is never
+  the same file as `agentctl`, so neither lookup rule can reject a legitimate
+  CLI. The depth bound of 8 leaves room for nested extension calls.
 
 ## Parallelism
 
@@ -77,8 +80,11 @@ None.
 
 ## Results
 
-Implemented both guards. The self-skipping lookup reuses `lookPathIn`'s search
-order through a shared `lookPathMatching` helper. Verification passed:
+Implemented both guards. The shim-skipping lookup reuses `lookPathIn`'s search
+order through a shared `lookPathMatching` helper. Review found two gaps in the
+first version, a stale directory linking to an older binary and nested `gh`
+calls through `BASH_ENV`; the directory-prefix rule and the depth bound
+replace the identity-only check and the blanket re-entry refusal. Verification passed:
 
 ```bash
 (cd apps/backend && go test ./cmd/agentctl -count=1)

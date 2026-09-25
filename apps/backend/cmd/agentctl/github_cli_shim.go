@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 
 	"github.com/kandev/kandev/internal/common/subproc"
@@ -19,11 +20,21 @@ import (
 
 const envGitHubCLIShimDir = githubauth.CredentialCLIShimDirEnv
 
-// envGitHubCLIShimActive marks the environment of the gh the shim launches. The
-// shim refuses to run when it is already set: that only happens when "real gh"
-// resolved back to a shim (a stale or mismatched shim directory on PATH), which
-// would otherwise re-exec itself without bound and exhaust the host.
-const envGitHubCLIShimActive = "KANDEV_GITHUB_CLI_SHIM_ACTIVE"
+// githubCLIShimDirPrefix names every directory installGitHubCLIShim creates.
+// The real-gh lookup skips any gh found in such a directory, whichever agentctl
+// binary it links to or copies, so a stale shim directory left on PATH by an
+// earlier agentctl can never be mistaken for the real CLI.
+const githubCLIShimDirPrefix = "kandev-github-cli-"
+
+// envGitHubCLIShimDepth counts the shims on the current process ancestry. The
+// shim sets depth+1 on the gh it launches. Legitimate nesting exists: the real
+// gh can run a Bash extension whose BASH_ENV restores the shim directory, and
+// that extension can call gh again. A shim resolving back to another shim is
+// not legitimate and would otherwise re-exec without bound and exhaust the
+// host, so the shim refuses once the depth reaches maxGitHubCLIShimDepth.
+const envGitHubCLIShimDepth = "KANDEV_GITHUB_CLI_SHIM_DEPTH"
+
+const maxGitHubCLIShimDepth = 8
 
 const windowsOS = "windows"
 
@@ -50,8 +61,9 @@ func runGitHubCLIShim(
 	lookPath githubCLILookPath,
 	runner githubCLICommandRunner,
 ) error {
-	if getenv(envGitHubCLIShimActive) != "" {
-		return fmt.Errorf("gh shim re-entered itself: the gh found on PATH is a Kandev shim, not the GitHub CLI")
+	depth, err := githubCLIShimDepth(getenv(envGitHubCLIShimDepth))
+	if err != nil {
+		return err
 	}
 	client, err := newGitHubCLIShimCredentialBrokerClient(ctx, args, getenv, httpClient)
 	if err != nil {
@@ -72,12 +84,32 @@ func runGitHubCLIShim(
 	}
 	defer func() { _ = os.RemoveAll(configDir) }()
 	childEnv := replaceEnvironment(environ(), map[string]string{
-		"GH_TOKEN":             credential.Password,
-		"GH_CONFIG_DIR":        configDir,
-		"PATH":                 realPath,
-		envGitHubCLIShimActive: "1",
+		"GH_TOKEN":            credential.Password,
+		"GH_CONFIG_DIR":       configDir,
+		"PATH":                realPath,
+		envGitHubCLIShimDepth: strconv.Itoa(depth + 1),
 	}, "GITHUB_TOKEN")
 	return runner(ctx, executable, args, childEnv, stdin, stdout, stderr)
+}
+
+// githubCLIShimDepth parses the inherited shim depth and refuses to run once
+// it reaches the bound.
+func githubCLIShimDepth(raw string) (int, error) {
+	depth := 0
+	if raw = strings.TrimSpace(raw); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed < 0 {
+			return 0, fmt.Errorf("invalid %s %q", envGitHubCLIShimDepth, raw)
+		}
+		depth = parsed
+	}
+	if depth >= maxGitHubCLIShimDepth {
+		return 0, fmt.Errorf(
+			"gh shim nested %d times: the gh found on PATH is a Kandev shim, not the GitHub CLI",
+			depth,
+		)
+	}
+	return depth, nil
 }
 
 type githubCLIRepository struct {
@@ -268,7 +300,7 @@ func isGitHubCLIShimInvocation(argv0 string) bool {
 }
 
 func installGitHubCLIShim(agentctlExecutable, tempRoot string) (string, func(), error) {
-	dir, err := os.MkdirTemp(tempRoot, "kandev-github-cli-")
+	dir, err := os.MkdirTemp(tempRoot, githubCLIShimDirPrefix)
 	if err != nil {
 		return "", nil, fmt.Errorf("create gh shim directory: %w", err)
 	}
@@ -330,25 +362,37 @@ func linkOrCopyExecutable(source, target string) error {
 	return closeErr
 }
 
-// lookPathSkippingExecutable is lookPathIn, except that it never returns the
-// given executable (compared by file identity, so symlinks and hard links to it
-// are skipped too). The shim passes its own agentctl binary, so a shim directory
-// left on PATH can never be mistaken for the real gh.
-func lookPathSkippingExecutable(self string) githubCLILookPath {
-	selfInfo, err := os.Stat(self)
-	if err != nil {
-		return lookPathIn
+// lookPathSkippingShims is lookPathIn, except that it never returns a Kandev gh
+// shim: neither a candidate inside a githubCLIShimDirPrefix directory (whichever
+// agentctl it links to or copies) nor the given executable itself (compared by
+// file identity, so a link to it placed elsewhere is skipped too). self may be
+// empty when the running executable is unknown.
+func lookPathSkippingShims(self string) githubCLILookPath {
+	var selfInfo os.FileInfo
+	if self != "" {
+		if info, err := os.Stat(self); err == nil {
+			selfInfo = info
+		}
 	}
 	return func(file, path string) (string, error) {
-		return lookPathMatching(file, path, func(info os.FileInfo) bool { return !os.SameFile(info, selfInfo) })
+		return lookPathMatching(file, path, func(candidate string, info os.FileInfo) bool {
+			if isGitHubCLIShimDir(filepath.Dir(candidate)) {
+				return false
+			}
+			return selfInfo == nil || !os.SameFile(info, selfInfo)
+		})
 	}
+}
+
+func isGitHubCLIShimDir(dir string) bool {
+	return strings.HasPrefix(filepath.Base(dir), githubCLIShimDirPrefix)
 }
 
 func lookPathIn(file, path string) (string, error) {
-	return lookPathMatching(file, path, func(os.FileInfo) bool { return true })
+	return lookPathMatching(file, path, func(string, os.FileInfo) bool { return true })
 }
 
-func lookPathMatching(file, path string, accept func(os.FileInfo) bool) (string, error) {
+func lookPathMatching(file, path string, accept func(string, os.FileInfo) bool) (string, error) {
 	names := []string{file}
 	if runtime.GOOS == windowsOS && filepath.Ext(file) == "" {
 		names = []string{file + ".exe", file + ".cmd", file + ".bat", file}
@@ -357,7 +401,7 @@ func lookPathMatching(file, path string, accept func(os.FileInfo) bool) (string,
 		for _, name := range names {
 			candidate := filepath.Join(directory, name)
 			info, err := os.Stat(candidate)
-			if err == nil && !info.IsDir() && (runtime.GOOS == windowsOS || info.Mode()&0o111 != 0) && accept(info) {
+			if err == nil && !info.IsDir() && (runtime.GOOS == windowsOS || info.Mode()&0o111 != 0) && accept(candidate, info) {
 				return candidate, nil
 			}
 		}

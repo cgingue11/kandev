@@ -10,6 +10,7 @@ import (
 	osExec "os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -404,46 +405,72 @@ func envValue(env []string, key string) string {
 	return ""
 }
 
-func TestGitHubCLIShimRefusesToReenterItself(t *testing.T) {
-	env := map[string]string{envGitHubCLIShimActive: "1", "PATH": "/stale-shim:/usr/bin"}
+func TestGitHubCLIShimRefusesAtDepthBound(t *testing.T) {
+	env := map[string]string{envGitHubCLIShimDepth: strconv.Itoa(maxGitHubCLIShimDepth), "PATH": "/stale-shim:/usr/bin"}
 	runner := func(context.Context, string, []string, []string, io.Reader, io.Writer, io.Writer) error {
-		t.Fatal("re-entered shim must not launch gh")
+		t.Fatal("shim at the depth bound must not launch gh")
 		return nil
 	}
 	err := runGitHubCLIShim(
 		context.Background(), []string{"pr", "view"}, strings.NewReader(""), io.Discard, io.Discard,
 		lookupEnv(env), func() []string { return envMap(env) }, nil, "/current-shim", lookPathIn, runner,
 	)
-	if err == nil || !strings.Contains(err.Error(), "re-entered") {
-		t.Fatalf("runGitHubCLIShim() error = %v, want re-entry refusal", err)
+	if err == nil || !strings.Contains(err.Error(), "nested") {
+		t.Fatalf("runGitHubCLIShim() error = %v, want depth refusal", err)
 	}
 }
 
-func TestGitHubCLIShimMarksChildEnvironment(t *testing.T) {
+func TestGitHubCLIShimRejectsMalformedDepth(t *testing.T) {
+	env := map[string]string{envGitHubCLIShimDepth: "many", "PATH": "/usr/bin"}
+	runner := func(context.Context, string, []string, []string, io.Reader, io.Writer, io.Writer) error {
+		t.Fatal("shim with a malformed depth must not launch gh")
+		return nil
+	}
+	err := runGitHubCLIShim(
+		context.Background(), []string{"pr", "view"}, strings.NewReader(""), io.Discard, io.Discard,
+		lookupEnv(env), func() []string { return envMap(env) }, nil, "/current-shim", lookPathIn, runner,
+	)
+	if err == nil || !strings.Contains(err.Error(), envGitHubCLIShimDepth) {
+		t.Fatalf("runGitHubCLIShim() error = %v, want malformed depth error", err)
+	}
+}
+
+// A nested invocation below the bound still launches gh: the real gh may run a
+// Bash extension whose BASH_ENV restores the shim directory and calls gh again.
+func TestGitHubCLIShimIncrementsChildDepth(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]string{"username": "x-access-token", "password": "token"})
 	}))
 	t.Cleanup(server.Close)
-	env := githubCredentialTestEnv(server.URL)
-	env["PATH"] = "/shim:/usr/bin"
-	var marker string
-	runner := func(_ context.Context, _ string, _ []string, childEnv []string, _ io.Reader, _, _ io.Writer) error {
-		marker = envValue(childEnv, envGitHubCLIShimActive)
-		return nil
-	}
-	lookPath := func(string, string) (string, error) { return "/usr/bin/gh", nil }
-	if err := runGitHubCLIShim(
-		context.Background(), []string{"pr", "list"}, strings.NewReader(""), io.Discard, io.Discard,
-		lookupEnv(env), func() []string { return envMap(env) }, server.Client(), "/shim", lookPath, runner,
-	); err != nil {
-		t.Fatalf("runGitHubCLIShim() error = %v", err)
-	}
-	if marker != "1" {
-		t.Fatalf("child %s = %q, want 1", envGitHubCLIShimActive, marker)
+	for _, inherited := range []string{"", "2"} {
+		env := githubCredentialTestEnv(server.URL)
+		env["PATH"] = "/shim:/usr/bin"
+		if inherited != "" {
+			env[envGitHubCLIShimDepth] = inherited
+		}
+		var depth string
+		runner := func(_ context.Context, _ string, _ []string, childEnv []string, _ io.Reader, _, _ io.Writer) error {
+			depth = envValue(childEnv, envGitHubCLIShimDepth)
+			return nil
+		}
+		lookPath := func(string, string) (string, error) { return "/usr/bin/gh", nil }
+		if err := runGitHubCLIShim(
+			context.Background(), []string{"pr", "list"}, strings.NewReader(""), io.Discard, io.Discard,
+			lookupEnv(env), func() []string { return envMap(env) }, server.Client(), "/shim", lookPath, runner,
+		); err != nil {
+			t.Fatalf("inherited depth %q: runGitHubCLIShim() error = %v", inherited, err)
+		}
+		want := "1"
+		if inherited != "" {
+			want = "3"
+		}
+		if depth != want {
+			t.Fatalf("inherited depth %q: child %s = %q, want %s", inherited, envGitHubCLIShimDepth, depth, want)
+		}
 	}
 }
 
-func TestLookPathSkippingExecutableIgnoresLinksToSelf(t *testing.T) {
+func TestLookPathSkippingShimsIgnoresLinksToSelf(t *testing.T) {
 	if runtime.GOOS == windowsOS {
 		t.Skip("symlink layout is unix-specific")
 	}
@@ -471,11 +498,41 @@ func TestLookPathSkippingExecutableIgnoresLinksToSelf(t *testing.T) {
 	if got, err := lookPathIn("gh", path); err != nil || got != filepath.Join(staleShim, "gh") {
 		t.Fatalf("lookPathIn = %q, %v; want the stale shim (the bug this guards against)", got, err)
 	}
-	got, err := lookPathSkippingExecutable(self)("gh", path)
+	got, err := lookPathSkippingShims(self)("gh", path)
 	if err != nil || got != realGH {
-		t.Fatalf("lookPathSkippingExecutable = %q, %v; want %q", got, err, realGH)
+		t.Fatalf("lookPathSkippingShims = %q, %v; want %q", got, err, realGH)
 	}
-	if _, err := lookPathSkippingExecutable(self)("gh", staleShim); err == nil {
-		t.Fatal("lookPathSkippingExecutable found gh although only the shim is on PATH")
+	if _, err := lookPathSkippingShims(self)("gh", staleShim); err == nil {
+		t.Fatal("lookPathSkippingShims found gh although only the shim is on PATH")
+	}
+}
+
+// A stale shim directory from an earlier agentctl links to a different binary,
+// and on Windows the shim is a copy; neither is the running executable, so the
+// directory name is what identifies them.
+func TestLookPathSkippingShimsIgnoresShimDirectories(t *testing.T) {
+	root := t.TempDir()
+	staleShim, err := os.MkdirTemp(root, githubCLIShimDirPrefix)
+	if err != nil {
+		t.Fatal(err)
+	}
+	realDir := filepath.Join(root, "real")
+	if err := os.Mkdir(realDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	name := githubCLIShimName()
+	for _, executable := range []string{filepath.Join(staleShim, name), filepath.Join(realDir, name)} {
+		if err := os.WriteFile(executable, []byte("#!/bin/sh\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	path := strings.Join([]string{staleShim, realDir}, string(os.PathListSeparator))
+
+	got, err := lookPathSkippingShims("")("gh", path)
+	if err != nil || got != filepath.Join(realDir, name) {
+		t.Fatalf("lookPathSkippingShims = %q, %v; want the real gh", got, err)
+	}
+	if _, err := lookPathSkippingShims("")("gh", staleShim); err == nil {
+		t.Fatal("lookPathSkippingShims found gh although only a shim directory is on PATH")
 	}
 }

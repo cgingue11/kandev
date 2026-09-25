@@ -24,9 +24,11 @@ processes, filled RAM and swap, and took Kandev down.
 
 ### In scope
 
-- Skip the running `agentctl` binary, and links to it, during the real-CLI
-  lookup.
-- Mark the child environment and refuse to run when the marker is already set.
+- Skip every `gh` inside a `kandev-github-cli-*` directory, and the running
+  `agentctl` binary itself, during the real-CLI lookup.
+- Pass a shim depth to the launched CLI and refuse to run at the bound, so a
+  shim that still resolves to a shim fails after a handful of levels while a
+  `gh` extension calling `gh` keeps working.
 - Record the guard in the managed-routing design and scenarios.
 
 ### Out of scope
@@ -37,14 +39,18 @@ processes, filled RAM and swap, and took Kandev down.
 ## Technical approach
 
 Both guards live in `apps/backend/cmd/agentctl`. `main.go` builds the
-self-skipping lookup from `os.Executable`. `github_cli_shim.go` checks the
-marker before any other work and sets it on the child it launches.
+shim-skipping lookup from `os.Executable`. `github_cli_shim.go` parses the
+inherited depth before any other work and sets depth+1 on the child it
+launches. Identity alone was not enough: a stale shim directory can link to
+an older `agentctl`, and a Windows shim is a copy, so the directory prefix
+`installGitHubCLIShim` uses is the durable signal. A blanket re-entry refusal
+broke nested calls through `BASH_ENV`, hence the bound instead.
 
 ## Tests
 
 | Acceptance criterion | Evidence |
 | --- | --- |
-| `AC-INTEGRATIONS-GITHUB-AUTHENTICATION-001.14` | `TestLookPathSkippingExecutableIgnoresLinksToSelf`, `TestGitHubCLIShimMarksChildEnvironment`, and `TestGitHubCLIShimRefusesToReenterItself` in `github_cli_shim_test.go`; existing `TestGitHubCLIShim*` cases keep passing for a real CLI. |
+| `AC-INTEGRATIONS-GITHUB-AUTHENTICATION-001.14` | `TestLookPathSkippingShimsIgnoresLinksToSelf`, `TestLookPathSkippingShimsIgnoresShimDirectories`, `TestGitHubCLIShimIncrementsChildDepth`, `TestGitHubCLIShimRefusesAtDepthBound`, and `TestGitHubCLIShimRejectsMalformedDepth` in `github_cli_shim_test.go`; existing `TestGitHubCLIShim*` cases keep passing for a real CLI. |
 
 ## Work orders
 

@@ -134,10 +134,8 @@ func runMain() int {
 
 func runGitHubUtilityCommand() (int, bool) {
 	if isGitHubCLIShimInvocation(os.Args[0]) {
-		lookPath := lookPathIn
-		if self, err := os.Executable(); err == nil {
-			lookPath = lookPathSkippingExecutable(self)
-		}
+		self, _ := os.Executable()
+		lookPath := lookPathSkippingShims(self)
 		err := runGitHubCLIShim(
 			context.Background(), os.Args[1:], os.Stdin, os.Stdout, os.Stderr,
 			os.Getenv, os.Environ, nil, os.Getenv(envGitHubCLIShimDir), lookPath, executeGitHubCLI,
