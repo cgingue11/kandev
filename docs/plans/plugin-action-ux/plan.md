@@ -285,16 +285,35 @@ Vitest (3 files, 19 tests):
 web typecheck `(cd apps/web && pnpm run typecheck)`; focused ESLint and Prettier
 on the changed web files; managed Chromium E2E
 `(cd apps/web && pnpm e2e:run --project chromium --workers=1 --retries=0 e2e/tests/plugins/plugin-action-ux.spec.ts)` (3/3); `python3 scripts/list-docs.py validate`;
-`python3 scripts/lint-spec-files.py --all`; and `git diff --check`. The PR-head
-CI waiter remains active while original checks finish so all prior failures can
-be inspected before push.
+`python3 scripts/lint-spec-files.py --all`; and `git diff --check`.
 
-CI exposed stale assertions in `chat-input-toolbar.test.tsx`, which still
-required old `h-7`/`min-h-11` classes after the shared renderer introduced
-square `size-7`/`size-11` controls. The focused toolbar suite now passes all 27
-tests with assertions matching both shared square controls and existing
-minimum-size toolbar buttons. This test is included in the fixup while the
-original-head CI run remains in progress.
+## Original PR-head CI triage (2026-09-25)
+
+The original PR-head checks reached terminal with 50 passed and 12 failed,
+including aggregate checks. Reproduced and corrected the PR-related test
+assertion failures; the unrelated timeout and infrastructure failures are
+triaged separately below:
+
+- The composer toolbar test expected old `h-7`/`min-h-11` classes on every
+  action. Updated it to accept `size-7`/`size-11` square controls or existing
+  minimum-size buttons; its focused Vitest suite passed 27/27.
+- The sidebar Quick Chat action now renders a visible focus ring. Its older
+  E2E test required an outline only; the test now accepts a changed focus ring
+  shadow while preserving its silent-focus checks. Managed Chromium passed 1/1.
+- Two mobile navigation tests used a substring match for `Files`, which also
+  matched the composer action named `Attach files`. Both use exact accessible
+  names now. The mobile terminal and HTML preview checks each passed 1/1 in the
+  managed runner.
+- The unchanged file-tree download test timed out while waiting for a seeded
+  worktree file in CI. Its targeted managed Chromium rerun passed 1/1. The test
+  has no diff from the PR base.
+
+The backend SQLite retry test failed once in CI, with no backend diff in this
+PR. It passed 20 consecutive race-enabled exact-test runs and the full package
+race suite passed three times. The PR documentation coverage job failed when
+GitHub code search returned HTTP 429. Backend and documentation failed-job
+reruns are underway to confirm those two as transient. The E2E aggregate is
+expected to remain red until the updated tests run on the next PR head.
 
 ## Risks
 

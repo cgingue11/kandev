@@ -153,3 +153,10 @@ The original PR-head frontend job still expected the pre-migration `h-7` and
 test to accept the shared square `size-7`/`size-11` contract or existing
 minimum-size controls. The focused toolbar suite passed all 27 tests:
 `(cd apps/web && pnpm exec vitest run components/task/chat/chat-input-toolbar.test.tsx)`.
+
+Original PR-head CI also showed the mobile HTML preview's `Files` locator
+matching both the navigation button and the newly labeled `Attach files`
+composer action. The locator now uses an exact accessible name. Its focused
+managed mobile E2E passed 1/1. The unchanged file-tree download test had a
+worktree-materialization timeout in the original CI shard; its targeted managed
+Chromium rerun passed 1/1.

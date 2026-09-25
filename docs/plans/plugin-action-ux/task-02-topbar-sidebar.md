@@ -139,6 +139,11 @@ Validation passed:
 The touch Actions keep their accessible names without opening an overlay
 tooltip on tap, so the phone Plugins sheet stays readable after activation.
 
+Original PR-head CI found that the Quick Chat focus E2E assumed keyboard focus
+always uses an outline. The migrated sidebar action uses a visible focus ring,
+so the test now accepts either a changed outline or ring shadow while still
+checking silent focus. Its focused managed Chromium check passed 1/1.
+
 Review remediation (2026-09-25): `ActionGroup` now bounds and wraps its
 topbar children for mobile presentation and coarse-pointer topbars while
 preserving the fine-pointer desktop gap. The phone fixture includes four
