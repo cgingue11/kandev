@@ -18,7 +18,6 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	"golang.org/x/sync/singleflight"
 
 	"github.com/kandev/kandev/internal/common/logger"
 )
@@ -48,12 +47,24 @@ type AgentctlResolverOptions struct {
 type AgentctlResolver struct {
 	logger  *logger.Logger
 	options AgentctlResolverOptions
-	group   singleflight.Group
+
+	downloadMu sync.Mutex
+	downloads  map[string]*remoteHelperDownload
 
 	cacheInventoryMu sync.RWMutex
 	cacheInventory   RemoteHelperCacheMountInventory
 	cachePruneMu     sync.Mutex
 	lastCachePrune   time.Time
+}
+
+type remoteHelperDownload struct {
+	ctx       context.Context
+	cancel    context.CancelFunc
+	done      chan struct{}
+	waiters   int
+	canceled  bool
+	completed bool
+	err       error
 }
 
 // RemoteHelperCacheMountInventory returns every host path mounted by a managed
@@ -243,15 +254,32 @@ func (r *AgentctlResolver) resolveStandardManifestHelper(ctx context.Context, ma
 	if err != nil {
 		return "", err
 	}
+	cacheRoot := filepath.Join(r.options.HomeDir, "cache", remoteHelperCacheDir)
+	lease, err := pinRemoteHelperCachePath(cacheRoot, cachePath, ctx)
+	if err != nil {
+		return "", err
+	}
+	keepLease := false
+	defer func() {
+		if !keepLease {
+			if err := lease.Release(); err != nil {
+				r.logger.Warn("failed to release remote helper cache lease", zap.Error(err))
+			}
+		}
+	}()
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	if valid, err := validateCachedRemoteHelper(cachePath, record); err != nil {
 		return "", err
 	} else if valid {
 		r.logger.Debug("using verified remote helper cache", zap.String("path", cachePath), zap.String("remote_platform", platform.String()))
 		r.pruneCacheAfterResolution(ctx)
+		keepLease = r.retainRemoteHelperCacheLease(ctx, lease)
+		if !keepLease {
+			return "", ctx.Err()
+		}
 		return cachePath, nil
-	}
-	if err := ctx.Err(); err != nil {
-		return "", err
 	}
 	started := time.Now().UTC()
 	emitRemoteHelperProgress(onProgress, platform, PrepareStepRunning, started, nil)
@@ -266,28 +294,100 @@ func (r *AgentctlResolver) resolveStandardManifestHelper(ctx context.Context, ma
 	}
 	emitRemoteHelperProgress(onProgress, platform, PrepareStepCompleted, started, nil)
 	r.pruneCacheAfterResolution(ctx)
+	keepLease = r.retainRemoteHelperCacheLease(ctx, lease)
+	if !keepLease {
+		return "", ctx.Err()
+	}
 	return cachePath, nil
 }
 
 func (r *AgentctlResolver) awaitRemoteHelperDownload(ctx context.Context, manifest *RemoteHelperManifest, record RemoteHelperRecord, cachePath string) error {
-	result := r.group.DoChan(cachePath, func() (any, error) {
-		// A shared transfer must not inherit cancellation from its first waiter.
-		// Each waiter still stops waiting on its own context, and the transfer has
-		// its own 90-second timeout.
-		return cachePath, r.downloadRemoteHelper(context.WithoutCancel(ctx), manifest, record, cachePath)
-	})
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	flight, start := r.joinRemoteHelperDownload(cachePath)
+	if start {
+		go r.runRemoteHelperDownload(cachePath, flight, manifest, record)
+	}
 	select {
 	case <-ctx.Done():
+		r.leaveRemoteHelperDownload(cachePath, flight)
 		return ctx.Err()
-	case result := <-result:
-		if result.Err != nil {
-			return result.Err
+	case <-flight.done:
+		r.leaveRemoteHelperDownload(cachePath, flight)
+		if err := ctx.Err(); err != nil {
+			return err
 		}
-		if _, ok := result.Val.(string); !ok {
-			return errors.New("remote helper download returned an invalid result")
-		}
-		return nil
+		return flight.err
 	}
+}
+
+func (r *AgentctlResolver) joinRemoteHelperDownload(key string) (*remoteHelperDownload, bool) {
+	r.downloadMu.Lock()
+	defer r.downloadMu.Unlock()
+	if r.downloads == nil {
+		r.downloads = make(map[string]*remoteHelperDownload)
+	}
+	flight := r.downloads[key]
+	if flight != nil && flight.canceled {
+		delete(r.downloads, key)
+		flight = nil
+	}
+	start := flight == nil
+	if start {
+		transferCtx, cancel := context.WithTimeout(context.Background(), r.downloadTimeout())
+		flight = &remoteHelperDownload{ctx: transferCtx, cancel: cancel, done: make(chan struct{})}
+		r.downloads[key] = flight
+	}
+	flight.waiters++
+	return flight, start
+}
+
+func (r *AgentctlResolver) runRemoteHelperDownload(key string, flight *remoteHelperDownload, manifest *RemoteHelperManifest, record RemoteHelperRecord) {
+	err := r.downloadRemoteHelper(flight.ctx, manifest, record, key)
+	flight.cancel()
+	r.downloadMu.Lock()
+	flight.err = err
+	flight.completed = true
+	if r.downloads[key] == flight {
+		delete(r.downloads, key)
+	}
+	close(flight.done)
+	r.downloadMu.Unlock()
+}
+
+func (r *AgentctlResolver) leaveRemoteHelperDownload(key string, flight *remoteHelperDownload) {
+	r.downloadMu.Lock()
+	if flight.waiters > 0 {
+		flight.waiters--
+	}
+	if flight.waiters == 0 && !flight.completed {
+		flight.canceled = true
+		if r.downloads[key] == flight {
+			delete(r.downloads, key)
+		}
+		flight.cancel()
+	}
+	r.downloadMu.Unlock()
+}
+
+func (r *AgentctlResolver) downloadTimeout() time.Duration {
+	if r.options.DownloadTimeout <= 0 || r.options.DownloadTimeout > remoteHelperDownloadTimeout {
+		return remoteHelperDownloadTimeout
+	}
+	return r.options.DownloadTimeout
+}
+
+func (r *AgentctlResolver) retainRemoteHelperCacheLease(ctx context.Context, lease *remoteHelperCacheLease) bool {
+	if err := ctx.Err(); err != nil {
+		return false
+	}
+	context.AfterFunc(ctx, func() {
+		if err := lease.Release(); err != nil {
+			r.logger.Warn("failed to release remote helper cache lease", zap.Error(err))
+		}
+	})
+	return ctx.Err() == nil
 }
 
 func validateDownloadedRemoteHelper(cachePath string, record RemoteHelperRecord) error {

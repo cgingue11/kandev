@@ -1,13 +1,119 @@
 package lifecycle
 
 import (
+	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 )
+
+const (
+	remoteHelperCacheActiveDir     = ".active"
+	remoteHelperCacheLockFile      = ".cache.lock"
+	remoteHelperCacheLeaseGrace    = 15 * time.Second
+	remoteHelperCacheLeaseFallback = time.Hour
+)
+
+type remoteHelperCacheLeaseRecord struct {
+	Path      string    `json:"path"`
+	ExpiresAt time.Time `json:"expires_at"`
+}
+
+type remoteHelperCacheLease struct {
+	cacheRoot string
+	marker    string
+	once      sync.Once
+	err       error
+}
+
+func pinRemoteHelperCachePath(cacheRoot, helperPath string, ctx context.Context) (*remoteHelperCacheLease, error) {
+	cacheRoot, err := filepath.Abs(cacheRoot)
+	if err != nil {
+		return nil, fmt.Errorf("resolve remote helper cache root: %w", err)
+	}
+	helperPath, err = filepath.Abs(helperPath)
+	if err != nil {
+		return nil, fmt.Errorf("resolve pinned remote helper path: %w", err)
+	}
+	if !remoteHelperCachePathWithin(cacheRoot, helperPath) {
+		return nil, errors.New("pinned remote helper path is outside the cache")
+	}
+
+	lock, err := lockRemoteHelperCache(cacheRoot)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = unlockRemoteHelperCache(lock) }()
+
+	activeDir := filepath.Join(cacheRoot, remoteHelperCacheActiveDir)
+	if err := os.MkdirAll(activeDir, 0o700); err != nil {
+		return nil, fmt.Errorf("create remote helper cache lease directory: %w", err)
+	}
+	temporary, err := os.CreateTemp(activeDir, "lease-*.tmp")
+	if err != nil {
+		return nil, fmt.Errorf("create remote helper cache lease: %w", err)
+	}
+	temporaryPath := temporary.Name()
+	defer func() { _ = os.Remove(temporaryPath) }()
+
+	expiresAt := time.Now().Add(remoteHelperCacheLeaseFallback)
+	if ctx != nil {
+		if deadline, ok := ctx.Deadline(); ok {
+			expiresAt = deadline.Add(remoteHelperCacheLeaseGrace)
+		}
+	}
+	data, err := json.Marshal(remoteHelperCacheLeaseRecord{Path: helperPath, ExpiresAt: expiresAt})
+	if err != nil {
+		_ = temporary.Close()
+		return nil, fmt.Errorf("encode remote helper cache lease: %w", err)
+	}
+	if _, err := temporary.Write(data); err != nil {
+		_ = temporary.Close()
+		return nil, fmt.Errorf("write remote helper cache lease: %w", err)
+	}
+	if err := temporary.Sync(); err != nil {
+		_ = temporary.Close()
+		return nil, fmt.Errorf("sync remote helper cache lease: %w", err)
+	}
+	if err := temporary.Close(); err != nil {
+		return nil, fmt.Errorf("close remote helper cache lease: %w", err)
+	}
+	markerPath := strings.TrimSuffix(temporaryPath, ".tmp") + ".json"
+	if err := os.Rename(temporaryPath, markerPath); err != nil {
+		return nil, fmt.Errorf("publish remote helper cache lease: %w", err)
+	}
+	return &remoteHelperCacheLease{cacheRoot: cacheRoot, marker: markerPath}, nil
+}
+
+func (lease *remoteHelperCacheLease) Release() error {
+	lease.once.Do(func() {
+		lock, err := lockRemoteHelperCache(lease.cacheRoot)
+		if err != nil {
+			lease.err = err
+			return
+		}
+		if err := os.Remove(lease.marker); err != nil && !errors.Is(err, os.ErrNotExist) {
+			lease.err = fmt.Errorf("remove remote helper cache lease: %w", err)
+		}
+		if err := unlockRemoteHelperCache(lock); err != nil {
+			lease.err = errors.Join(lease.err, err)
+		}
+	})
+	return lease.err
+}
+
+func remoteHelperCachePathWithin(cacheRoot, path string) bool {
+	rel, err := filepath.Rel(cacheRoot, path)
+	return err == nil && rel != "." && rel != ".." &&
+		!strings.HasPrefix(rel, ".."+string(filepath.Separator)) && !filepath.IsAbs(rel)
+}
 
 // PruneRemoteHelperCache retains the running release and its two previous
 // versions. Cleanup is skipped unless the caller has positively inventoried
@@ -19,6 +125,24 @@ func PruneRemoteHelperCache(cacheRoot, currentVersion string, pinnedPaths []stri
 	if _, err := parseRemoteHelperVersion(currentVersion); err != nil {
 		return nil, fmt.Errorf("invalid current remote helper version: %w", err)
 	}
+	cacheRoot, err := filepath.Abs(cacheRoot)
+	if err != nil {
+		return nil, fmt.Errorf("resolve remote helper cache root: %w", err)
+	}
+	lock, err := lockRemoteHelperCache(cacheRoot)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = unlockRemoteHelperCache(lock) }()
+	activePaths, err := readActiveRemoteHelperCacheLeases(cacheRoot, time.Now())
+	if err != nil {
+		return nil, err
+	}
+	pinnedPaths = append(pinnedPaths, activePaths...)
+	return pruneRemoteHelperCacheUnlocked(cacheRoot, currentVersion, pinnedPaths)
+}
+
+func pruneRemoteHelperCacheUnlocked(cacheRoot, currentVersion string, pinnedPaths []string) ([]string, error) {
 	versions, err := readRemoteHelperCacheVersions(cacheRoot)
 	if os.IsNotExist(err) {
 		return nil, nil
@@ -32,6 +156,62 @@ func PruneRemoteHelperCache(cacheRoot, currentVersion string, pinnedPaths []stri
 		return nil, err
 	}
 	return removeUnusedRemoteHelperVersions(cacheRoot, versions, keep, protected)
+}
+
+func readActiveRemoteHelperCacheLeases(cacheRoot string, now time.Time) ([]string, error) {
+	activeDir := filepath.Join(cacheRoot, remoteHelperCacheActiveDir)
+	entries, err := os.ReadDir(activeDir)
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("read remote helper cache leases: %w", err)
+	}
+	paths := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		path, active, err := readRemoteHelperCacheLease(cacheRoot, activeDir, entry, now)
+		if err != nil {
+			return nil, err
+		}
+		if active {
+			paths = append(paths, path)
+		}
+	}
+	return paths, nil
+}
+
+func readRemoteHelperCacheLease(cacheRoot, activeDir string, entry os.DirEntry, now time.Time) (string, bool, error) {
+	name := entry.Name()
+	if strings.HasSuffix(name, ".tmp") {
+		return "", false, nil
+	}
+	info, err := entry.Info()
+	if err != nil {
+		return "", false, fmt.Errorf("inspect remote helper cache lease %s: %w", name, err)
+	}
+	if !strings.HasSuffix(name, ".json") || !info.Mode().IsRegular() {
+		return "", false, fmt.Errorf("unexpected remote helper cache lease entry %q", name)
+	}
+	marker := filepath.Join(activeDir, name)
+	data, err := os.ReadFile(marker)
+	if err != nil {
+		return "", false, fmt.Errorf("read remote helper cache lease %s: %w", name, err)
+	}
+	var record remoteHelperCacheLeaseRecord
+	if err := json.Unmarshal(data, &record); err != nil || record.Path == "" || record.ExpiresAt.IsZero() {
+		return "", false, fmt.Errorf("decode remote helper cache lease %s: invalid lease record", name)
+	}
+	path, err := filepath.Abs(record.Path)
+	if err != nil || !remoteHelperCachePathWithin(cacheRoot, path) {
+		return "", false, fmt.Errorf("decode remote helper cache lease %s: path is outside the cache", name)
+	}
+	if now.Before(record.ExpiresAt) {
+		return path, true, nil
+	}
+	if err := os.Remove(marker); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return "", false, fmt.Errorf("remove expired remote helper cache lease %s: %w", name, err)
+	}
+	return "", false, nil
 }
 
 func readRemoteHelperCacheVersions(cacheRoot string) ([]string, error) {
