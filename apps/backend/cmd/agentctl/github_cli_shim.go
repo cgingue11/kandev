@@ -21,17 +21,14 @@ import (
 const envGitHubCLIShimDir = githubauth.CredentialCLIShimDirEnv
 
 // githubCLIShimDirPrefix names every directory installGitHubCLIShim creates.
-// The real-gh lookup skips any gh found in such a directory, whichever agentctl
-// binary it links to or copies, so a stale shim directory left on PATH by an
-// earlier agentctl can never be mistaken for the real CLI.
+// The real-gh lookup never returns a gh inside such a directory, whichever
+// agentctl it links to or copies.
 const githubCLIShimDirPrefix = "kandev-github-cli-"
 
-// envGitHubCLIShimDepth counts the shims on the current process ancestry. The
-// shim sets depth+1 on the gh it launches. Legitimate nesting exists: the real
-// gh can run a Bash extension whose BASH_ENV restores the shim directory, and
-// that extension can call gh again. A shim resolving back to another shim is
-// not legitimate and would otherwise re-exec without bound and exhaust the
-// host, so the shim refuses once the depth reaches maxGitHubCLIShimDepth.
+// envGitHubCLIShimDepth is the number of shims above the current process. The
+// shim passes depth+1 to the gh it launches and refuses to run at
+// maxGitHubCLIShimDepth. Nesting below the bound is valid: a gh extension may
+// call gh through a Bash whose BASH_ENV restores the shim directory.
 const envGitHubCLIShimDepth = "KANDEV_GITHUB_CLI_SHIM_DEPTH"
 
 const maxGitHubCLIShimDepth = 8
@@ -92,8 +89,7 @@ func runGitHubCLIShim(
 	return runner(ctx, executable, args, childEnv, stdin, stdout, stderr)
 }
 
-// githubCLIShimDepth parses the inherited shim depth and refuses to run once
-// it reaches the bound.
+// githubCLIShimDepth parses the inherited shim depth; the bound is exclusive.
 func githubCLIShimDepth(raw string) (int, error) {
 	depth := 0
 	if raw = strings.TrimSpace(raw); raw != "" {
@@ -363,10 +359,9 @@ func linkOrCopyExecutable(source, target string) error {
 }
 
 // lookPathSkippingShims is lookPathIn, except that it never returns a Kandev gh
-// shim: neither a candidate inside a githubCLIShimDirPrefix directory (whichever
-// agentctl it links to or copies) nor the given executable itself (compared by
-// file identity, so a link to it placed elsewhere is skipped too). self may be
-// empty when the running executable is unknown.
+// shim: neither a candidate inside a githubCLIShimDirPrefix directory nor the
+// given executable itself, compared by file identity so links to it are skipped
+// too. self may be empty when the running executable is unknown.
 func lookPathSkippingShims(self string) githubCLILookPath {
 	var selfInfo os.FileInfo
 	if self != "" {

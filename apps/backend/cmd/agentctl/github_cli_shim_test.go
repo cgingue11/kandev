@@ -435,8 +435,7 @@ func TestGitHubCLIShimRejectsMalformedDepth(t *testing.T) {
 	}
 }
 
-// A nested invocation below the bound still launches gh: the real gh may run a
-// Bash extension whose BASH_ENV restores the shim directory and calls gh again.
+// A nested invocation below the bound launches gh with the depth incremented.
 func TestGitHubCLIShimIncrementsChildDepth(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]string{"username": "x-access-token", "password": "token"})
@@ -507,9 +506,8 @@ func TestLookPathSkippingShimsIgnoresLinksToSelf(t *testing.T) {
 	}
 }
 
-// A stale shim directory from an earlier agentctl links to a different binary,
-// and on Windows the shim is a copy; neither is the running executable, so the
-// directory name is what identifies them.
+// A shim directory is skipped by name: its gh need not be the running
+// executable (an older agentctl, or a copy on Windows).
 func TestLookPathSkippingShimsIgnoresShimDirectories(t *testing.T) {
 	root := t.TempDir()
 	staleShim, err := os.MkdirTemp(root, githubCLIShimDirPrefix)
