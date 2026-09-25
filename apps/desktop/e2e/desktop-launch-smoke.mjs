@@ -155,6 +155,8 @@ async function runReleaseShapedSmoke(appBinary) {
     commit,
   });
 
+  await runPackagedLauncherSmoke(runtimeDir, homeDir);
+
   const launchedViaXvfb = !process.env.DISPLAY && commandExists("xvfb-run");
   const command = launchedViaXvfb ? "xvfb-run" : appBinary;
   const args = launchedViaXvfb ? ["-a", appBinary] : [];
@@ -242,6 +244,56 @@ async function runReleaseShapedSmoke(appBinary) {
   console.log(
     `Release-shaped Desktop smoke passed: the actual launcher served / from a standard bundle and the resolver selected the verified cached helper at ${runtime.cachePath}.`,
   );
+}
+
+async function runPackagedLauncherSmoke(runtimeDir, homeDir) {
+  const launcherBinary = join(runtimeDir, "bin", "kandev");
+  const launcherPort = await findAvailablePort();
+  const child = spawn(launcherBinary, ["--headless", "--port", String(launcherPort)], {
+    cwd: repoRoot,
+    detached: true,
+    env: {
+      ...process.env,
+      KANDEV_BUNDLE_DIR: runtimeDir,
+      KANDEV_HOME_DIR: homeDir,
+      KANDEV_E2E_MOCK: "true",
+      KANDEV_INTERNAL_CONFIG_FILE: "",
+      KANDEV_AGENTCTL_LINUX_AMD64_BINARY: "",
+      KANDEV_AGENTCTL_LINUX_BINARY: "",
+    },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  let stdout = "";
+  let stderr = "";
+  child.stdout?.on("data", (chunk) => {
+    stdout += chunk;
+  });
+  child.stderr?.on("data", (chunk) => {
+    stderr += chunk;
+  });
+  const failIfExited = () => {
+    if (child.exitCode !== null) {
+      throw new Error(`release bundle launcher exited early with code ${child.exitCode}\n${stdout}\n${stderr}`);
+    }
+  };
+  const describeChild = () => `[stdout]\n${stdout}\n[stderr]\n${stderr}`;
+
+  try {
+    await waitForHttp(
+      `http://127.0.0.1:${launcherPort}/ready`,
+      RELEASE_DESKTOP_STARTUP_TIMEOUT_MS,
+      failIfExited,
+      describeChild,
+    );
+    await waitForHttp(
+      `http://127.0.0.1:${launcherPort}/`,
+      RELEASE_DESKTOP_STARTUP_TIMEOUT_MS,
+      failIfExited,
+      describeChild,
+    );
+  } finally {
+    await stopProcess(child);
+  }
 }
 
 export async function writeReleaseShapedRuntime({

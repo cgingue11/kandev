@@ -61,6 +61,26 @@ def job_condition(name: str) -> str:
 
 
 class ReleaseWorkflowContractTest(unittest.TestCase):
+    def test_agentctl_dependency_guard_covers_release_target_build_modes(self) -> None:
+        guard = (REPO_ROOT / "scripts" / "check-agentctl-deps.sh").read_text()
+        for target in (
+            "linux/amd64/0",
+            "linux/arm64/0",
+            "darwin/amd64/0",
+            "darwin/arm64/0",
+            "linux/amd64/1",
+            "linux/arm64/1",
+            "darwin/amd64/1",
+            "darwin/arm64/1",
+            "windows/amd64/1",
+        ):
+            with self.subTest(target=target):
+                self.assertIn(f'"{target}"', guard)
+        self.assertIn("GOOS=\"$target_os\"", guard)
+        self.assertIn("GOARCH=\"$target_arch\"", guard)
+        self.assertIn("CGO_ENABLED=\"$target_cgo\"", guard)
+        self.assertIn("go list -deps ./cmd/agentctl", guard)
+
     def test_nightly_runs_on_schedule_or_manual_channel_and_delegates_metadata_resolution(
         self,
     ) -> None:
@@ -226,19 +246,21 @@ class ReleaseWorkflowContractTest(unittest.TestCase):
         self.assertIn("dist/runtime-candidates", candidate_upload)
 
         publisher = job_block("publish-release")
-        self.assertIn("pattern: runtime-candidates-*", publisher)
-        self.assertIn("dist/runtime-candidates", publisher)
-        self.assertIn('candidate="kandev-${platform}-${variant}.tar.gz"', publisher)
-        self.assertIn('published="kandev-${platform}.tar.gz"', publisher)
-        self.assertIn('published="kandev-${platform}-full.tar.gz"', publisher)
-        self.assertIn("name: canonical-remote-helpers", publisher)
+        self.assertIn("name: verified-release-assets", publisher)
+        self.assertNotIn("pattern: runtime-candidates-*", publisher)
+        gate = job_block("verify-release-assets")
+        self.assertIn('candidate="kandev-${platform}-${variant}.tar.gz"', gate)
+        self.assertIn('published="kandev-${platform}.tar.gz"', gate)
+        self.assertIn('published="kandev-${platform}-full.tar.gz"', gate)
         self.assertIn("agentctl-*.gz", step_block("Publish release").replace("dist/release-assets/", ""))
         self.assertIn("agentctl-*.gz.sha256", step_block("Publish release"))
 
     def test_stable_consumers_switch_to_slim_desktop_and_full_docker_inputs(self) -> None:
         desktop = job_block("build-desktop")
         self.assertIn("name: runtime-candidates-${{ matrix.platform }}", desktop)
-        self.assertIn('kandev-${{ matrix.platform }}-slim.tar.gz', desktop)
+        self.assertIn("RUNTIME_VARIANT=full", desktop)
+        self.assertIn("RUNTIME_VARIANT=slim", desktop)
+        self.assertIn('kandev-${{ matrix.platform }}-${RUNTIME_VARIANT}.tar.gz', desktop)
         self.assertIn("prepare-desktop-runtime.sh", desktop)
         macos_signing = step_block("Sign macOS desktop runtime binaries")
         self.assertIn('for binary in kandev agentctl; do', macos_signing)
@@ -254,8 +276,8 @@ class ReleaseWorkflowContractTest(unittest.TestCase):
                 self.assertIn(f"kandev-{platform}-full.tar.gz", docker)
 
         publisher = job_block("publish-release")
-        self.assertIn("pattern: runtime-candidates-*", publisher)
-        verify = step_block("Verify release assets")
+        self.assertIn("name: verified-release-assets", publisher)
+        verify = step_block("Verify staged release assets")
         self.assertIn('"dist/release-assets/kandev-${platform}-full.tar.gz"', verify)
         self.assertIn("kandev-windows-x64-full.zip", verify)
         publish = step_block("Publish release")
@@ -277,6 +299,7 @@ class ReleaseWorkflowContractTest(unittest.TestCase):
         self.assertIn("name: canonical-remote-helpers", gate)
         self.assertIn("verify-existing-release", gate)
         self.assertIn("Verify staged release assets", gate)
+        self.assertIn("Upload verified release assets", gate)
         for job_name in ("docker-manifest", "docker-universal-manifest", "publish-release"):
             with self.subTest(job=job_name):
                 job = job_block(job_name)
@@ -338,10 +361,10 @@ class ReleaseWorkflowContractTest(unittest.TestCase):
         )
 
     def test_existing_helper_asset_names_are_immutable_and_release_gate_checks_every_target(self) -> None:
-        check = step_block("Verify existing helper assets")
+        check = step_block("Verify staged release assets")
         self.assertIn("releases/tags/${TAG}", check)
         self.assertIn("remote-helper-assets.mjs verify-existing-release", check)
-        verify = step_block("Verify release assets")
+        verify = step_block("Verify staged release assets")
         for name in (
             "agentctl-linux-amd64.gz",
             "agentctl-linux-arm64.gz",
@@ -350,6 +373,20 @@ class ReleaseWorkflowContractTest(unittest.TestCase):
         ):
             self.assertIn(name, verify)
         self.assertIn('sidecar="dist/release-assets/$asset.sha256"', verify)
+
+    def test_publish_release_uses_integrity_gate_before_container_tag_promotion(self) -> None:
+        gate = job_block("verify-release-assets")
+        self.assertIn("remote-helper-assets.mjs verify-existing-release", gate)
+        for promotion_job in ("docker-manifest", "docker-universal-manifest"):
+            block = job_block(promotion_job)
+            self.assertIn("needs.verify-release-assets.result == 'success'", block)
+        publisher = job_block("publish-release")
+        self.assertNotIn("remote-helper-assets.mjs verify-existing-release", publisher)
+        self.assertNotIn("- name: Verify existing helper assets", publisher)
+        self.assertIn("name: verified-release-assets", publisher)
+        self.assertNotIn("pattern: runtime-candidates-*", publisher)
+        self.assertNotIn("- name: Verify release assets", publisher)
+        self.assert_required_artifact_upload_retries("verify-release-assets", "upload_verified_release_assets")
 
     def assert_required_artifact_upload_retries(
         self, job_name: str, step_prefix: str
@@ -385,6 +422,9 @@ class ReleaseWorkflowContractTest(unittest.TestCase):
         )
         self.assert_required_artifact_upload_retries(
             "build-desktop", "upload_desktop_artifacts"
+        )
+        self.assert_required_artifact_upload_retries(
+            "verify-release-assets", "upload_verified_release_assets"
         )
 
         desktop = job_block("build-desktop")
@@ -883,6 +923,32 @@ class ReleaseWorkflowContractTest(unittest.TestCase):
             )
             self.assertNotIn("inputs.backfill_tag == ''", block)
 
+    def test_legacy_backfill_uses_full_bundle_without_compact_release_tools(self) -> None:
+        prepare = job_block("prepare")
+        self.assertIn("compact_runtime_contract:", prepare)
+        compute = step_block("Compute next version")
+        self.assertIn('git cat-file -e "${BACKFILL_REF}:scripts/check-agentctl-deps.sh"', compute)
+        self.assertIn('echo "compact_runtime_contract=$COMPACT_RUNTIME_CONTRACT"', compute)
+
+        helper_build = step_block("Build and verify canonical remote helpers")
+        self.assertIn('if [ "$COMPACT_RUNTIME_CONTRACT" = "true" ] && [ -f scripts/release/remote-helper-assets.mjs ]', helper_build)
+        self.assertIn("dist/remote-helper-artifact/bin", helper_build)
+
+        package = step_block("Package bundle")
+        self.assertIn("COMPACT_RUNTIME_CONTRACT", package)
+        self.assertIn('if [ "$COMPACT_RUNTIME_CONTRACT" = "true" ]', package)
+        self.assertIn('kandev-${{ matrix.platform }}-full.tar.gz', package)
+
+        desktop = step_block("Prepare desktop runtime resources")
+        self.assertIn("COMPACT_RUNTIME_CONTRACT", desktop)
+        self.assertIn('kandev-${{ matrix.platform }}-${RUNTIME_VARIANT}.tar.gz', desktop)
+        self.assertIn("prepare-desktop-runtime.sh", desktop)
+        self.assertIn("apps/desktop/src-tauri/resources/kandev", desktop)
+
+        publisher = job_block("publish-release")
+        self.assertNotIn("- name: Verify existing helper assets", publisher)
+        self.assertIn("needs.verify-release-assets.result == 'success'", publisher)
+
     def test_updater_signing_validation_uses_workflow_control_revision(self) -> None:
         build_desktop = job_block("build-desktop")
         self.assertIn("ref: ${{ needs.prepare.outputs.ref }}", build_desktop)
@@ -904,7 +970,7 @@ class ReleaseWorkflowContractTest(unittest.TestCase):
         self.assertNotIn("bash scripts/release/updater-signing-ready.sh", detect)
 
     def test_desktop_asset_validation_uses_workflow_control_revision(self) -> None:
-        for job in ("build-desktop", "publish-release"):
+        for job in ("build-desktop", "verify-release-assets"):
             block = job_block(job)
             self.assertIn("ref: ${{ needs.prepare.outputs.ref }}", block)
             self.assertIn("GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}", block)

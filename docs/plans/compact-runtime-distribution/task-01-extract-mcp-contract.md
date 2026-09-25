@@ -1,7 +1,7 @@
 ---
 id: "01-extract-mcp-contract"
 title: "Extract the shared MCP contract"
-status: in_progress
+status: complete
 wave: 1
 depends_on: []
 plan: "plan.md"

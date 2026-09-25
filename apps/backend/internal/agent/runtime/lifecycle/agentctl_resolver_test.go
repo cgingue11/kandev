@@ -341,7 +341,9 @@ func TestAgentctlResolverPackagedDesktopBundleUsesPreseededCache(t *testing.T) {
 	if bundle == "" || home == "" || version == "" || commit == "" {
 		t.Fatal("release-shaped Desktop smoke environment is incomplete")
 	}
-	t.Setenv("KANDEV_BUNDLE_DIR", bundle)
+	if got := os.Getenv("KANDEV_BUNDLE_DIR"); got != bundle {
+		t.Fatalf("KANDEV_BUNDLE_DIR = %q, want release-shaped Desktop bundle %q", got, bundle)
+	}
 	t.Setenv("KANDEV_HOME_DIR", home)
 	platform := SSHRemotePlatform{GOOS: "linux", GOARCH: "amd64"}
 	for _, envName := range agentctlBinaryEnvNames(platform) {
@@ -544,15 +546,104 @@ func TestAgentctlResolverDefersPruningWhenMountInventoryIsUncertain(t *testing.T
 	}
 }
 
+func TestAgentctlResolverKeepsHelperSelectedByPendingOlderLaunch(t *testing.T) {
+	const commit = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	platform := SSHRemotePlatform{GOOS: "linux", GOARCH: "amd64"}
+	home := t.TempDir()
+	for _, version := range []string{"1.1.0", "1.2.0"} {
+		if err := os.MkdirAll(filepath.Join(home, "cache", remoteHelperCacheDir, version), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	oldBundle := t.TempDir()
+	oldPayload := []byte("helper selected before its Docker mount exists")
+	writeResolverManifest(t, oldBundle, "1.0.0", commit, "standard", platform.String(), oldPayload)
+	oldResolver := NewAgentctlResolverWithOptions(newResolverTestLogger(t), AgentctlResolverOptions{
+		Version: "1.0.0", Commit: commit, BundleDir: oldBundle, HomeDir: home,
+	})
+	oldManifest, _, err := ReadRemoteHelperManifest(oldBundle, "1.0.0", commit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldRecord, ok := remoteHelperForPlatform(oldManifest, platform)
+	if !ok {
+		t.Fatal("old manifest has no Linux helper")
+	}
+	oldPath, err := oldResolver.cachePath(oldManifest, oldRecord)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(oldPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(oldPath, oldPayload, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	oldCtx, cancelOld := context.WithCancel(context.Background())
+	defer cancelOld()
+	if got, err := oldResolver.ResolveRemoteBinaryContext(oldCtx, platform, nil); err != nil || got != oldPath {
+		t.Fatalf("old launch helper = %q, err=%v; want %q", got, err, oldPath)
+	}
+
+	newBundle := t.TempDir()
+	newPayload := []byte("current helper")
+	writeResolverManifest(t, newBundle, "1.3.0", commit, "standard", platform.String(), newPayload)
+	newResolver := NewAgentctlResolverWithOptions(newResolverTestLogger(t), AgentctlResolverOptions{
+		Version: "1.3.0", Commit: commit, BundleDir: newBundle, HomeDir: home,
+	})
+	newManifest, _, err := ReadRemoteHelperManifest(newBundle, "1.3.0", commit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	newRecord, ok := remoteHelperForPlatform(newManifest, platform)
+	if !ok {
+		t.Fatal("current manifest has no Linux helper")
+	}
+	newPath, err := newResolver.cachePath(newManifest, newRecord)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(newPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(newPath, newPayload, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	newResolver.SetCacheMountInventory(func(context.Context) ([]string, error) {
+		return nil, nil
+	})
+	if got, err := newResolver.ResolveRemoteBinaryContext(context.Background(), platform, nil); err != nil || got != newPath {
+		t.Fatalf("current launch helper = %q, err=%v; want %q", got, err, newPath)
+	}
+
+	if _, err := os.Stat(oldPath); err != nil {
+		t.Fatalf("pending older launch helper was pruned before container creation: %v", err)
+	}
+}
+
 func TestAgentctlResolverLaunchDeadlineBoundsDownload(t *testing.T) {
 	const version = "1.2.3"
 	const commit = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	bundle := t.TempDir()
-	writeResolverManifest(t, bundle, version, commit, "standard", "linux/amd64", []byte("helper"))
-	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) { <-r.Context().Done() }))
+	payload := []byte("helper")
+	writeResolverManifest(t, bundle, version, commit, "standard", "linux/amd64", payload)
+	var requests atomic.Int32
+	requestStarted := make(chan struct{})
+	requestCanceled := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if requests.Add(1) == 1 {
+			close(requestStarted)
+			<-r.Context().Done()
+			close(requestCanceled)
+			return
+		}
+		writeGzip(t, w, payload)
+	}))
 	defer server.Close()
 	resolver := NewAgentctlResolverWithOptions(newResolverTestLogger(t), AgentctlResolverOptions{
 		Version: version, Commit: commit, BundleDir: bundle, HomeDir: t.TempDir(), ReleaseBaseURL: server.URL,
+		DownloadTimeout: 250 * time.Millisecond,
 	})
 	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Millisecond)
 	defer cancel()
@@ -565,6 +656,22 @@ func TestAgentctlResolverLaunchDeadlineBoundsDownload(t *testing.T) {
 	}
 	if len(steps) != 2 || steps[1].FailureCode != "timeout" || steps[1].Status != PrepareStepFailed {
 		t.Fatalf("download progress = %#v, want timeout failure", steps)
+	}
+	select {
+	case <-requestStarted:
+	default:
+		t.Fatal("helper transfer did not start")
+	}
+	select {
+	case <-requestCanceled:
+	case <-time.After(150 * time.Millisecond):
+		t.Fatal("shared helper transfer continued after its only launch waiter expired")
+	}
+	if _, err := resolver.ResolveRemoteBinaryContext(context.Background(), SSHRemotePlatform{GOOS: "linux", GOARCH: "amd64"}, nil); err != nil {
+		t.Fatalf("retry after canceled transfer: %v", err)
+	}
+	if got := requests.Load(); got != 2 {
+		t.Fatalf("HTTP requests after retry = %d, want a fresh request", got)
 	}
 }
 

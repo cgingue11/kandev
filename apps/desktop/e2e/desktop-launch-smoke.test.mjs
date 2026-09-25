@@ -18,6 +18,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const backendRsPath = resolve(__dirname, "../src-tauri/src/backend.rs");
 const mainRsPath = resolve(__dirname, "../src-tauri/src/main.rs");
 const shellRsPath = resolve(__dirname, "../src-tauri/src/shell.rs");
+const smokeScriptPath = resolve(__dirname, "desktop-launch-smoke.mjs");
 
 async function withTempDir(run) {
   const dir = await mkdtemp(join(tmpdir(), "wait-for-file-"));
@@ -140,6 +141,16 @@ test("release-shaped Desktop runtime seeds the verified helper outside the stand
     assert.equal(cachedHelper.length, linuxHelper.size_bytes);
     assert.ok((await stat(runtime.cachePath)).mode & 0o111, "cached helper must be executable");
   });
+});
+
+test("release-shaped Desktop smoke launches the real Go launcher from KANDEV_BUNDLE_DIR", async () => {
+  const source = await readFile(smokeScriptPath, "utf8");
+
+  assert.match(source, /spawn\(launcherBinary, \["--headless", "--port", String\(launcherPort\)\]/);
+  assert.match(source, /KANDEV_BUNDLE_DIR: runtimeDir/);
+  assert.match(source, /KANDEV_AGENTCTL_LINUX_AMD64_BINARY: ""/);
+  assert.match(source, /KANDEV_DESKTOP_RUNTIME_DIR: runtimeDir/);
+  assert.match(source, /TestAgentctlResolverPackagedDesktopBundleUsesPreseededCache/);
 });
 
 test("health-requested timeout stays above the Rust backend's own HEALTH_TIMEOUT", async () => {

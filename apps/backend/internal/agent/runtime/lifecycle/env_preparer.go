@@ -331,6 +331,15 @@ func SerializePrepareResult(result *EnvPrepareResult) map[string]interface{} {
 			"name": step.Name, "status": string(step.Status),
 			"output": output, "command": step.Command,
 		}
+		if step.Kind != "" {
+			entry["kind"] = step.Kind
+		}
+		if step.RemotePlatform != "" {
+			entry["remote_platform"] = step.RemotePlatform
+		}
+		if step.FailureCode != "" {
+			entry["failure_code"] = step.FailureCode
+		}
 		if step.Error != "" {
 			entry["error"] = step.Error
 		}
