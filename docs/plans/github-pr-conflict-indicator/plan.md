@@ -72,10 +72,10 @@ multi-PR button, and individual multi-PR menu rows. Extend
 `ChangeRequestTopbarContent` with an optional glyph slot; its default icon
 remains for other providers. Remove the single-PR trailing status icon. Keep
 only the leading shared glyph and `#number`, with localized status in the
-button's accessible name. The multi-PR button keeps its chevron. Keep the
-existing button, menu, popover, and panel actions. Reconcile the companion
-[PR topbar badge plan](../pr-topbar-badge-simplification/plan.md) with this
-left-icon contract.
+button's accessible name. The multi-PR button keeps its count, aggregate color,
+and chevron. Keep the existing button, menu, popover, and panel actions. The
+GitHub integration requirement and design own this top-bar presentation along
+with the task-row glyph.
 
 ## ASCII UI preview
 
@@ -115,11 +115,11 @@ Menu:      PR(red)!   repo #3932
            PR(green)  repo #3933
 ```
 
-The corner placement, shared glyph, and simultaneous visibility are structural requirements.
-The text labels and spacing in the drawing are illustrative. Status color
-rules stay as they are. Previews map to AC-001.1 through AC-001.7; rendered
-checks are in Task 02. No new scrolling region, overlay, or touch action is
-introduced.
+The corner placement, shared glyph, simultaneous visibility, single-PR badge
+layout, and retained multi-PR arrow are structural requirements. The text
+labels and spacing in the drawing are illustrative. Status color rules stay as
+they are. Previews map to AC-001.1 through AC-001.7; rendered checks are in
+Task 02. No new scrolling region, overlay, or touch action is introduced.
 
 ## Tests
 

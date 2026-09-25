@@ -50,8 +50,10 @@ single-PR top bar uses only that leading glyph and its PR number.
   the independent conflict observation is true.
 - Warning, auto-fix, auto-merge, count, and glyph remain discernible together.
 - Failing CI color and conflict bubble appear together on the top bar's
-  leading icon, with no trailing status icon; multi-PR buttons show the
-  aggregate warning while menu rows identify individual conflicts.
+  leading icon, with no trailing status icon. The single-PR button keeps one
+  accessible name with localized PR status and detail activation; multi-PR
+  buttons retain count, color, and chevron while menu rows identify individual
+  conflicts.
 - The existing hover disclosures, top-bar actions, phone row action, and
   touch drawer work.
 

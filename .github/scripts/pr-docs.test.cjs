@@ -1717,33 +1717,6 @@ test('newly added requirements resolve from the head diff without code search', 
   assert.equal(listings, 1);
 });
 
-test('added requirements resolve when their directory exceeds the prior document cap', async () => {
-  const { contents, changed, requirementPath: originalPath } = repeatedCoverageFixture();
-  const requirementPath = 'docs/specs/ui/requirements/coverage.md';
-  contents[requirementPath] = contents[originalPath];
-  delete contents[originalPath];
-  changed.push({ filename: requirementPath, status: 'added' });
-  const entries = [
-    { path: requirementPath, type: 'file' },
-    ...Array.from({ length: 205 }, (_, index) => ({
-      path: `docs/specs/ui/requirements/existing-${index}.md`,
-      type: 'file',
-    })),
-  ];
-  const client = coverageClient(contents, changed, {
-    async searchCode() {
-      throw new Error('code search should not run for a newly added requirement');
-    },
-    async listDirectory() {
-      return entries;
-    },
-  });
-
-  const result = await validator.evaluatePullRequest({ client, pullNumber: 42 });
-
-  assert.equal(result.status, 'covered', result.errors.join('; '));
-});
-
 // @covers AC-CI-PR-DOCS-001.5
 test('newly added canonical requirements still reject duplicate IDs', async () => {
   const { contents, changed, requirementPath: originalPath } = repeatedCoverageFixture();

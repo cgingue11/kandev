@@ -129,5 +129,4 @@ sidebar, Home Kanban card, pipeline row, top bar, and phone task switcher.
 ## Related designs
 
 - [PR task status summary](../../ui/system-design/pr-task-status-summary.md)
-- [PR topbar status presentation](../../ui/system-design/pr-topbar-status-presentation.md)
 - [Bounded task status delivery](../../platform/system-design/bounded-task-status-delivery.md)
