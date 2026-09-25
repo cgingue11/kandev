@@ -67,7 +67,7 @@ export function SurfaceAction(props: SurfaceActionProps) {
     <Button
       type="button"
       variant={props.surface === "topbar" ? "outline" : "ghost"}
-      size="default"
+      size={props.surface === "status-bar" ? "sm" : "default"}
       ref={props.ref}
       id={props.id}
       aria-label={props.label || undefined}

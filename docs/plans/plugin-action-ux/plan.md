@@ -318,6 +318,28 @@ snapshot after reruns was 52 passed, 9 failed, and 0 pending; remaining failures
 are the original-head E2E/frontend assertions plus the backend download error
 and aggregate. The updated tests and checks will run on the next PR head.
 
+## PR follow-up CI remediation (2026-09-25)
+
+The first post-fixup head (`b0b8657ad4fb9f60843546cf757bdd1cd71e0376`) reached
+terminal with 55 checks passed and 5 failed. The failures were two backend
+gates, two E2E gates, and one E2E shard:
+
+- The E2E shard exposed a real compact-bar sizing defect. A Status-bar Action
+  inherited the default Button's coarse-pointer 44px height despite the
+  surface's 24px contract. `SurfaceAction` now selects the compact Button size
+  for `status-bar`; the managed mobile Status drawer spec passed 2/2.
+- The backend shard failed during temporary-directory cleanup in
+  `TestManager_SetWorkspacePollMode_PropagatesToPerRepoTrackers`. This test
+  starts an asynchronous status refresh and had not stopped its trackers before
+  `t.TempDir` removed the repositories. It now registers tracker cleanup before
+  teardown. The exact test passed 50 race-enabled repetitions.
+- The same E2E shard recorded retry-only failures in file-tree context loading
+  and mobile merge-queue recovery. Both focused tests passed locally once with
+  retries disabled (1/1 each); the next-head CI run will confirm their status.
+
+The backend and E2E aggregate failures were downstream of the named leaf
+failures. No backend product behavior or public authoring contract changed.
+
 ## Risks
 
 - Legacy plugins retain visual differences until their authors adopt Action.

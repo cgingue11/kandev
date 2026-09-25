@@ -120,15 +120,18 @@ toggle, busy, disabled, and legacy status content.
 Validation passed: focused status/plugin-action Vitest (5 files, 24 tests), web
 typecheck, desktop status E2E (1 test), phone Action E2E (1 test), and the full
 mobile Status drawer E2E (2 tests). The first compact tablet browser check
-exposed a 44px height inherited from the default Button on coarse pointers; the
-status-bar role now explicitly retains 24px, and the rerun passed. The captured
-desktop and phone screenshots were inspected and removed.
+exposed a 44px height inherited from the default Button on coarse pointers.
+The status-bar Action now selects the compact Button variant, which removes the
+default variant's coarse-pointer 44px rule. The captured desktop and phone
+screenshots were inspected and removed.
 
 Review remediation (2026-09-25): browser checks now measure the SVG itself at
 12px in the inline status bar and 16px in the Status drawer. The mobile status
 suite passed again as part of the 5/5 mobile action/status run. The permanent
 container-specific screenshot path was removed, and the neighboring drawer
 spec now restores and verifies the complete prior system-metrics setting.
+Follow-up CI reproduced the compact-bar sizing issue; after selecting the
+compact variant, the managed mobile Status drawer spec passed 2/2 tests.
 
 PR review remediation (2026-09-25): inline status groups now cap at 18rem and
 keep all actions on the 24px row. Flex children can shrink so long values
