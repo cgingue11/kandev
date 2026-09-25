@@ -3,6 +3,9 @@ package utility
 import (
 	"slices"
 	"testing"
+
+	"github.com/kandev/kandev/internal/agent/agents"
+	"github.com/kandev/kandev/internal/agent/managedruntime"
 )
 
 func TestResolveCodexAppServerCommandAllowList(t *testing.T) {
@@ -39,6 +42,60 @@ func TestResolveCodexAppServerCommandAllowList(t *testing.T) {
 			}
 			if err == nil {
 				t.Fatal("expected command to be rejected")
+			}
+		})
+	}
+}
+
+// @covers AC-AGENTS-CODEX-NATIVE-001.1, AC-AGENTS-CODEX-NATIVE-002.1
+func TestResolveCodexAppServerCommandAcceptsGeneratedManagedCommands(t *testing.T) {
+	appServer := agents.NewCodexAppServer(true)
+	tests := []struct {
+		name    string
+		command []string
+	}{
+		{name: "default version", command: appServer.InferenceConfig().Command.Args()},
+		{name: "selected exact version", command: appServer.BuildCommand(agents.CommandOptions{ManagedRuntimeVersion: "0.155.1"}).Args()},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotCommand, gotArgs, err := resolveCodexAppServerCommand(&InferenceConfigDTO{Command: tt.command})
+			if err != nil {
+				t.Fatalf("generated command rejected: %v; command=%#v", err, tt.command)
+			}
+			if gotCommand != "npx" {
+				t.Fatalf("executable = %q, want npx", gotCommand)
+			}
+			if !slices.Equal(gotArgs, tt.command[1:]) {
+				t.Fatalf("arguments = %#v, want %#v", gotArgs, tt.command[1:])
+			}
+		})
+	}
+}
+
+func TestResolveCodexAppServerCommandRejectsUntrustedManagedPrefixes(t *testing.T) {
+	base := []string{"npx", "--yes", "--prefer-offline", "--prefix", managedruntime.NPMProjectPrefix, "@openai/codex@0.154.0", "app-server"}
+	tests := []struct {
+		name   string
+		mutate func([]string) []string
+	}{
+		{name: "arbitrary prefix", mutate: func(command []string) []string {
+			command[4] = "/tmp/untrusted"
+			return command
+		}},
+		{name: "extra argument", mutate: func(command []string) []string {
+			return append(command, "--danger")
+		}},
+		{name: "wrapper executable", mutate: func(command []string) []string {
+			command[0] = "sh"
+			return command
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			command := tt.mutate(slices.Clone(base))
+			if _, _, err := resolveCodexAppServerCommand(&InferenceConfigDTO{Command: command}); err == nil {
+				t.Fatalf("command unexpectedly accepted: %#v", command)
 			}
 		})
 	}

@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/kandev/kandev/internal/agent/managedruntime"
 	protocol "github.com/kandev/kandev/pkg/codexappserver"
 	"go.uber.org/zap"
 )
@@ -127,6 +128,10 @@ func (e *CodexAppServerInferenceExecutor) start(
 	args []string,
 	cfg *InferenceConfigDTO,
 ) (*protocol.Client, func(), *stderrBuffer, error) {
+	args = append([]string(nil), args...)
+	if err := managedruntime.PrepareNPMProjectPrefix(args); err != nil {
+		return nil, nil, nil, fmt.Errorf("prepare managed npm project prefix: %w", err)
+	}
 	cmd := exec.CommandContext(ctx, command, args...)
 	cmd.Dir = cfg.WorkDir
 	cmd.Env = sanitizeEnvForAgent(cfg)
@@ -164,13 +169,31 @@ func resolveCodexAppServerCommand(cfg *InferenceConfigDTO) (string, []string, er
 		return "", nil, errors.New("codex app-server utility requires the built-in unwrapped command")
 	}
 	args := cfg.Command
-	if len(args) == 2 && args[0] == "codex" && args[1] == "app-server" {
-		return args[0], args[1:], nil
+	if isDirectCodexAppServerCommand(args) {
+		return args[0], append([]string(nil), args[1:]...), nil
 	}
-	if len(args) == 5 && args[0] == codexNPXExecutable && args[1] == "--yes" && args[2] == "--prefer-offline" && codexPackageSpec.MatchString(args[3]) && args[4] == "app-server" {
-		return args[0], args[1:], nil
+	if isLegacyManagedCodexAppServerCommand(args) {
+		return args[0], append([]string(nil), args[1:]...), nil
+	}
+	if isManagedCodexAppServerCommand(args) {
+		return args[0], append([]string(nil), args[1:]...), nil
 	}
 	return "", nil, errors.New("codex app-server utility command is not allow-listed")
+}
+
+func isDirectCodexAppServerCommand(args []string) bool {
+	return len(args) == 2 && args[0] == "codex" && args[1] == "app-server"
+}
+
+func isLegacyManagedCodexAppServerCommand(args []string) bool {
+	return len(args) == 5 && args[0] == codexNPXExecutable && args[1] == "--yes" &&
+		args[2] == "--prefer-offline" && codexPackageSpec.MatchString(args[3]) && args[4] == "app-server"
+}
+
+func isManagedCodexAppServerCommand(args []string) bool {
+	return len(args) == 7 && args[0] == codexNPXExecutable && args[1] == "--yes" &&
+		args[2] == "--prefer-offline" && args[3] == "--prefix" &&
+		args[4] == managedruntime.NPMProjectPrefix && codexPackageSpec.MatchString(args[5]) && args[6] == "app-server"
 }
 
 func initializeCodexAppServer(ctx context.Context, client *protocol.Client) error {
