@@ -44,6 +44,10 @@ Verification passed:
 
 No authenticated Codex request ran. No browser layout changes or new UI controls were needed.
 
+## PR fixup notes
+
+Backend CI identified repeated command literals in the resolver predicates. They are now shared constants; the utility race tests and CI-style changed-code lint pass after this correction. The first PR documentation-coverage run failed when GitHub code search returned HTTP 429 after exhausting its wait budget. Local documentation validation passed; coverage on the next pushed head remains to be verified.
+
 ## Risks
 
 Accepting the prefix without preparing it can leave a literal tilde path or npm state in the wrong directory.

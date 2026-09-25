@@ -16,7 +16,13 @@ import (
 	"go.uber.org/zap"
 )
 
-const codexNPXExecutable = "npx"
+const (
+	codexNPXExecutable        = "npx"
+	codexAppServerSubcommand  = "app-server"
+	codexNpxYesFlag           = "--yes"
+	codexNpmPreferOfflineFlag = "--prefer-offline"
+	codexNpmPrefixFlag        = "--prefix"
+)
 
 var codexPackageSpec = regexp.MustCompile(`^@openai/codex@[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$`)
 
@@ -182,18 +188,18 @@ func resolveCodexAppServerCommand(cfg *InferenceConfigDTO) (string, []string, er
 }
 
 func isDirectCodexAppServerCommand(args []string) bool {
-	return len(args) == 2 && args[0] == "codex" && args[1] == "app-server"
+	return len(args) == 2 && args[0] == "codex" && args[1] == codexAppServerSubcommand
 }
 
 func isLegacyManagedCodexAppServerCommand(args []string) bool {
-	return len(args) == 5 && args[0] == codexNPXExecutable && args[1] == "--yes" &&
-		args[2] == "--prefer-offline" && codexPackageSpec.MatchString(args[3]) && args[4] == "app-server"
+	return len(args) == 5 && args[0] == codexNPXExecutable && args[1] == codexNpxYesFlag &&
+		args[2] == codexNpmPreferOfflineFlag && codexPackageSpec.MatchString(args[3]) && args[4] == codexAppServerSubcommand
 }
 
 func isManagedCodexAppServerCommand(args []string) bool {
-	return len(args) == 7 && args[0] == codexNPXExecutable && args[1] == "--yes" &&
-		args[2] == "--prefer-offline" && args[3] == "--prefix" &&
-		args[4] == managedruntime.NPMProjectPrefix && codexPackageSpec.MatchString(args[5]) && args[6] == "app-server"
+	return len(args) == 7 && args[0] == codexNPXExecutable && args[1] == codexNpxYesFlag &&
+		args[2] == codexNpmPreferOfflineFlag && args[3] == codexNpmPrefixFlag &&
+		args[4] == managedruntime.NPMProjectPrefix && codexPackageSpec.MatchString(args[5]) && args[6] == codexAppServerSubcommand
 }
 
 func initializeCodexAppServer(ctx context.Context, client *protocol.Client) error {

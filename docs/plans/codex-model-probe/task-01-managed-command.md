@@ -72,4 +72,4 @@ Do not fix the mismatch by removing npm isolation or allowing arbitrary executab
 
 Completed. The resolver now accepts only the canonical managed-prefix form and retains the previous supported command forms. The shared launcher prepares a cloned argument slice before spawn and fails closed if preparation fails. Fake-process probing returned the expected model; selected exact versions, invalid prefixes/arguments, original command preservation, and preparation failure are covered.
 
-Verification passed: the four-package backend race command, `make -C apps/backend lint` (0 issues), catalog validation (306 decisions, 1155 specifications), full specification lint, and `git diff --check`. No authenticated model request ran.
+Verification passed: the four-package backend race command, `make -C apps/backend lint` (0 issues), catalog validation (306 decisions, 1155 specifications), full specification lint, and `git diff --check`. After the CI lint correction, `go test -race ./internal/agentctl/server/utility` and the CI-style changed-code lint also passed. No authenticated model request ran.
