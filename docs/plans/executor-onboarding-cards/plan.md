@@ -129,7 +129,7 @@ The runner builds the production Vite bundle before these checks.
 
 ## Verification results
 
-Implementation checks passed: 28 focused component tests, the TypeScript check, the pseudo-locale production build, all localization gates, targeted ESLint and Prettier checks, one desktop executor E2E test, two mobile onboarding E2E tests, 62 public-doc tests, public-doc and specification validation, specification lint, and `git diff --check`. Regression coverage confirms a dirty profile survives desktop-to-phone-to-desktop resizing and resource refetch, and saves only when the user proceeds.
+Implementation and PR-fixup checks passed: 32 focused component tests, the TypeScript check, the pseudo-locale production build, all localization gates, targeted ESLint and Prettier checks, one desktop executor E2E test, two mobile onboarding E2E tests, 62 public-doc tests, public-doc and specification validation, specification lint, and `git diff --check`. Regression coverage confirms a dirty profile survives desktop-to-phone-to-desktop resizing and resource refetch while the profile remains the same, replaced or removed profiles cannot be saved with stale IDs, duplicate save actions are suppressed, and unexpected save errors keep the user on the current step with a localized message.
 
 ## Risks
 

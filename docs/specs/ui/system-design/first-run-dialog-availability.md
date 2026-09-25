@@ -1,5 +1,5 @@
 ---
-status: draft
+status: current
 system: ui
 requirements:
   - REQ-UI-FIRST-RUN-DIALOG-001

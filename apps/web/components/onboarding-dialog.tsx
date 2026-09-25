@@ -1,13 +1,6 @@
 "use client";
 
-import {
-  type Dispatch,
-  type SetStateAction,
-  useCallback,
-  useEffect,
-  useState,
-  useSyncExternalStore,
-} from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import {
   Dialog,
   DialogContent,
@@ -31,13 +24,15 @@ import {
   IconArrowDown,
 } from "@tabler/icons-react";
 import { Kbd } from "@kandev/ui/kbd";
-import { type ProfileFormData } from "@/components/settings/profile-form-fields";
-import { permissionsToProfilePatch, profilePermissionValues } from "@/lib/agent-permissions";
+import { profilePermissionValues } from "@/lib/agent-permissions";
 import { listAvailableAgents, listWorkflowTemplates } from "@/lib/api";
-import { listAgentsAction, updateAgentProfileAction } from "@/app/actions/agents";
-import { isHandledApiError } from "@/lib/api/client";
+import { listAgentsAction } from "@/app/actions/agents";
 import { backendReloadCoordinator } from "@/lib/platform/backend-reload-coordinator";
 import { StepAgents, type AgentSetting } from "@/components/onboarding/step-agents";
+import {
+  TOTAL_ONBOARDING_STEPS,
+  useOnboardingActions,
+} from "@/components/onboarding/use-onboarding-actions";
 import type { AvailableAgent, ToolStatus, WorkflowTemplate, AgentProfile } from "@/lib/types/http";
 import { Trans, useTranslation } from "react-i18next";
 import { getExecutorIcon, getExecutorLabel } from "@/lib/executor-icons";
@@ -47,7 +42,7 @@ interface OnboardingDialogProps {
   onComplete: () => void;
 }
 
-const TOTAL_STEPS = 4;
+const TOTAL_STEPS = TOTAL_ONBOARDING_STEPS;
 
 // Catalog keys, not resolved copy: `t()` at module scope would freeze at the
 // boot locale. `id` stays untranslated so the React key is locale-independent.
@@ -141,6 +136,7 @@ type OnboardingFooterProps = {
   onBack: () => void;
   onNext: () => void;
   onGetStarted: () => void;
+  isBusy: boolean;
 };
 
 function OnboardingStepDots({ step }: { step: number }) {
@@ -198,7 +194,12 @@ function useOnboardingResources(open: boolean) {
             setAgentSettings((currentSettings) => {
               const nextSettings = { ...fetchedSettings };
               for (const [agentName, currentSetting] of Object.entries(currentSettings)) {
-                if (currentSetting.dirty) nextSettings[agentName] = currentSetting;
+                if (
+                  currentSetting.dirty &&
+                  nextSettings[agentName]?.profileId === currentSetting.profileId
+                ) {
+                  nextSettings[agentName] = currentSetting;
+                }
               }
               return nextSettings;
             });
@@ -245,94 +246,42 @@ function useOnboardingResources(open: boolean) {
   };
 }
 
-function useOnboardingActions({
+function OnboardingFooter({
   step,
-  setStep,
-  onComplete,
-  agentSettings,
-  setAgentSettings,
-}: {
-  step: number;
-  setStep: Dispatch<SetStateAction<number>>;
-  onComplete: () => void;
-  agentSettings: Record<string, AgentSetting>;
-  setAgentSettings: Dispatch<SetStateAction<Record<string, AgentSetting>>>;
-}) {
-  const saveAgentSettings = useCallback(async (): Promise<boolean> => {
-    try {
-      await Promise.all(
-        Object.values(agentSettings)
-          .filter((s) => s.dirty)
-          .map((s) =>
-            updateAgentProfileAction(s.profileId, {
-              model: s.formData.model,
-              ...permissionsToProfilePatch(s.formData),
-              cli_passthrough: s.formData.cli_passthrough,
-              cli_flags: s.formData.cli_flags,
-              command_prefix: s.formData.command_prefix,
-            }),
-          ),
-      );
-      return true;
-    } catch (error) {
-      if (isHandledApiError(error)) return false;
-      throw error;
-    }
-  }, [agentSettings]);
-
-  const handleSkip = () => {
-    onComplete();
-    setStep(0);
-  };
-  const handleNext = async () => {
-    if (step === 0 && !(await saveAgentSettings())) return;
-    if (step < TOTAL_STEPS - 1) setStep(step + 1);
-  };
-  const handleBack = () => {
-    if (step > 0) setStep(step - 1);
-  };
-  const handleGetStarted = async () => {
-    if (!(await saveAgentSettings())) return;
-    onComplete();
-    setStep(0);
-  };
-  const updateSetting = (agentName: string, formPatch: Partial<ProfileFormData>) => {
-    setAgentSettings((prev) => ({
-      ...prev,
-      [agentName]: {
-        ...prev[agentName],
-        formData: { ...prev[agentName].formData, ...formPatch },
-        dirty: true,
-      },
-    }));
-  };
-
-  return { handleSkip, handleNext, handleBack, handleGetStarted, updateSetting };
-}
-
-function OnboardingFooter({ step, onSkip, onBack, onNext, onGetStarted }: OnboardingFooterProps) {
+  onSkip,
+  onBack,
+  onNext,
+  onGetStarted,
+  isBusy,
+}: OnboardingFooterProps) {
   const { t } = useTranslation();
   return (
     <DialogFooter className="shrink-0">
       <div className="flex w-full items-center justify-between">
-        <Button variant="ghost" size="sm" onClick={onSkip} className="cursor-pointer">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onSkip}
+          disabled={isBusy}
+          className="cursor-pointer"
+        >
           <IconX className="mr-1.5 h-3.5 w-3.5" />
           {t("common:skip")}
         </Button>
         <div className="flex gap-2">
           {step > 0 && (
-            <Button variant="outline" onClick={onBack} className="cursor-pointer">
+            <Button variant="outline" onClick={onBack} disabled={isBusy} className="cursor-pointer">
               <IconArrowLeft className="mr-1.5 h-4 w-4" />
               {t("common:back")}
             </Button>
           )}
           {step < TOTAL_STEPS - 1 ? (
-            <Button onClick={onNext} className="cursor-pointer">
+            <Button onClick={onNext} disabled={isBusy} className="cursor-pointer">
               {t("common:next")}
               <IconArrowRight className="ml-1.5 h-4 w-4" />
             </Button>
           ) : (
-            <Button onClick={onGetStarted} className="cursor-pointer">
+            <Button onClick={onGetStarted} disabled={isBusy} className="cursor-pointer">
               <IconCheck className="mr-1.5 h-4 w-4" />
               {t("common:getStarted")}
             </Button>
@@ -360,7 +309,7 @@ export function OnboardingDialog({ open, onComplete }: OnboardingDialogProps) {
     loadingAgents,
     loadingTemplates,
   } = useOnboardingResources(open);
-  const { handleSkip, handleNext, handleBack, handleGetStarted, updateSetting } =
+  const { handleSkip, handleNext, handleBack, handleGetStarted, updateSetting, isSaving } =
     useOnboardingActions({ step, setStep, onComplete, agentSettings, setAgentSettings });
 
   return (
@@ -403,6 +352,7 @@ export function OnboardingDialog({ open, onComplete }: OnboardingDialogProps) {
           onBack={handleBack}
           onNext={handleNext}
           onGetStarted={handleGetStarted}
+          isBusy={isSaving}
         />
       </DialogContent>
     </Dialog>

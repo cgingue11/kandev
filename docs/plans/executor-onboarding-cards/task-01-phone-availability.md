@@ -94,9 +94,10 @@ None. Read the UI requirement and design first.
 
 ## Results
 
-Implemented the synchronous `isMobile` gate in `PageClient`. While the tour is unfinished, its component stays mounted and receives `open=false` on phones. This hides the dialog without resetting its step or dirty agent-profile edits. Reopening refreshes agent data while preserving in-memory dirty settings. The browser-local completion marker remains unchanged. Updated both mobile Playwright cases and the first-run paragraph in the public Get Started guide.
+Implemented the synchronous `isMobile` gate in `PageClient`. While the tour is unfinished, its component stays mounted and receives `open=false` on phones. This hides the dialog without resetting its step or dirty agent-profile edits. Reopening refreshes agent data and preserves a dirty edit only when the refreshed profile ID still matches; if a profile was replaced or removed while hidden, the fresh settings win and no save targets the stale ID. The browser-local completion marker remains unchanged. Updated both mobile Playwright cases and the first-run paragraph in the public Get Started guide.
 
 Verification passed:
 
-- `pnpm exec vitest run app/page-client.test.tsx components/onboarding-dialog.test.tsx` (28 tests, including dirty-profile resize and refetch coverage)
+- `pnpm exec vitest run components/onboarding-dialog.test.tsx app/page-client.test.tsx` (32 tests, including dirty-profile resize, stale-profile replacement, and save-on-proceed coverage)
+- `pnpm run typecheck`
 - `pnpm e2e:run --no-build --project mobile-chrome tests/office/mobile-onboarding-dialog.spec.ts tests/office/mobile-onboarding-dialog-rich.spec.ts` (2 tests)

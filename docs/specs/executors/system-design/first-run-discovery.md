@@ -1,5 +1,5 @@
 ---
-status: draft
+status: current
 system: executors
 requirements:
   - REQ-EXECUTORS-ONBOARDING-001
@@ -41,7 +41,7 @@ Long translations wrap inside cards without clipping or document-level horizonta
 
 No executor API, store field, or readiness probe is added. Opening and reading the step does not mutate an executor or task. The guide link opens `https://kandev.ai/docs/executors` in a separate browser tab without changing wizard state. The Settings path is instructional copy, not a second configuration flow inside the tour.
 
-The existing `OnboardingFooter`, `handleNext`, `handleBack`, `handleSkip`, and `handleGetStarted` remain the only wizard transition path. Dirty agent-profile settings keep their current save behavior. The completion marker stays browser-local through `PageClient`.
+The existing `OnboardingFooter`, `handleNext`, `handleBack`, `handleSkip`, and `handleGetStarted` remain the only wizard transition path. On reopening, preserve dirty form data only when the refreshed profile has the same ID; use fresh settings when a profile has been replaced or removed. Save requests are single-flight, and footer actions stay disabled while a save is pending. Handled backend-reload errors keep their existing path. Other save errors show a localized toast and leave the current step open for retry. The completion marker stays browser-local through `PageClient`.
 
 ## Verification
 

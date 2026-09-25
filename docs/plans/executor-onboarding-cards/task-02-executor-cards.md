@@ -127,11 +127,11 @@ Task 01 establishes phone availability. Read the executor requirement, design, a
 
 ## Results
 
-Implemented six static, localized executor cards in Worktree-first order. The cards match the operational Settings choices and exclude Remote Docker and test-only types. Added setup and trust-boundary notes, the executor/profile explanation, Settings direction, and the executor-guide link. The Local card says work runs on the Kandev host. The executor step uses a bounded dialog with a scrollable body, keeping its heading, progress, and controls visible. Updated the public Get Started guide. After generating the Traditional Chinese onboarding values, restored unrelated generated changes so the `zh-tw` and `zh-hk` diffs contain only `common.json`.
+Implemented six static, localized executor cards in Worktree-first order. The cards match the operational Settings choices and exclude Remote Docker and test-only types. Added setup and trust-boundary notes, the executor/profile explanation, Settings direction, and the executor-guide link. The Local card says work runs on the Kandev host. The executor step uses a bounded dialog with a scrollable body, keeping its heading, progress, and controls visible. Updated the public Get Started guide. Save actions now allow only one in-flight request across Next and Get Started, disable footer actions while saving, and show a localized error while keeping the current step open when an unexpected save fails. Updated both requirements to active and both designs to current. After generating the Traditional Chinese onboarding values, restored unrelated generated changes so the `zh-tw` and `zh-hk` diffs contain only `common.json`.
 
 Verification passed:
 
-- `pnpm exec vitest run components/onboarding-dialog.test.tsx app/page-client.test.tsx` (28 tests)
+- `pnpm exec vitest run components/onboarding-dialog.test.tsx app/page-client.test.tsx` (32 tests, including repeated Next/Get Started clicks and unexpected save errors)
 - `pnpm run typecheck` and `pnpm run build:e2e`
 - `pnpm run i18n:zh-hant`, `pnpm run i18n:pseudo`, `pnpm run i18n:check`, and `pnpm run i18n:ratchet`
 - Targeted ESLint and Prettier checks

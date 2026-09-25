@@ -1,5 +1,5 @@
 ---
-status: draft
+status: active
 system: executors
 created: 2026-09-25
 owners:
@@ -28,6 +28,8 @@ The first-run tour must explain where an agent can run before a user starts a ta
 - **AC-EXECUTORS-ONBOARDING-001.6:** When the tour is available, the choices shall appear as a compact two-column card grid. The content shall remain readable with long translated text and keep navigation controls visible.
 - **AC-EXECUTORS-ONBOARDING-001.7:** Cards shall read as information, not selectable options. Labels, descriptions, prerequisites, and guidance shall follow the active locale. Links and navigation shall have accessible names.
 - **AC-EXECUTORS-ONBOARDING-001.8:** The executor step shall retain the tour's current Back, Next, and Skip behavior. Advancing from the agent step shall still save dirty agent-profile edits. Skip shall still set only the browser-local completion marker.
+- **AC-EXECUTORS-ONBOARDING-001.9:** If a profile is replaced or removed while the tour is hidden, reopening shall use the refreshed profile settings and shall not submit dirty edits to the stale profile ID.
+- **AC-EXECUTORS-ONBOARDING-001.10:** Profile saves during tour progression shall be single-flight. Pending saves shall disable navigation controls; an unexpected save failure shall show a localized error and keep the current step open for retry.
 
 ## Related requirements
 
