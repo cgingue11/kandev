@@ -1,5 +1,6 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
+import { usePluginActionSurface } from "@/components/plugins/plugin-action-surface";
 import { pluginRegistry } from "@/lib/plugins/registry";
 import { MainTopBarPluginActions, type MainTopBarSlotProps } from "./main-top-bar-plugin-actions";
 
@@ -62,4 +63,29 @@ describe("MainTopBarPluginActions", () => {
       "[&_[data-slot=button]]:!min-h-11",
     );
   });
+
+  it.each(["desktop", "mobile"] as const)(
+    "provides the topbar action surface for %s",
+    (presentation) => {
+      pluginRegistry.forPlugin("plugin-a").registerComponent(SLOT, () => {
+        const surface = usePluginActionSurface();
+        return (
+          <div
+            data-testid="plugin-action-surface"
+            data-surface={surface?.surface}
+            data-presentation={surface?.presentation}
+          />
+        );
+      });
+
+      render(<MainTopBarPluginActions currentPage="kanban" presentation={presentation} />);
+
+      expect(screen.getByTestId("plugin-action-surface").getAttribute("data-surface")).toBe(
+        "topbar",
+      );
+      expect(screen.getByTestId("plugin-action-surface").getAttribute("data-presentation")).toBe(
+        presentation,
+      );
+    },
+  );
 });

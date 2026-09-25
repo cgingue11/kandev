@@ -63,7 +63,12 @@ export function MainTopBarPluginActions(props: {
   );
 
   const content = (
-    <PluginSlot name="main-top-bar" slotProps={slotProps} excludePluginIds={excludePluginIds} />
+    <PluginSlot
+      name="main-top-bar"
+      slotProps={slotProps}
+      excludePluginIds={excludePluginIds}
+      actionSurface={{ surface: "topbar", presentation }}
+    />
   );
   if (presentation === "desktop") return content;
 
