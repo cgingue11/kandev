@@ -265,13 +265,17 @@
       }
 
       function FixtureActionGlyph() {
-        return jsx("svg", {
-          viewBox: "0 0 24 24",
-          fill: "none",
-          stroke: "currentColor",
-          "aria-hidden": true,
-          "data-testid": "e2e-component-action-glyph",
-        }, jsx("path", { d: FIXTURE_ACTION_ICON_PATH }));
+        return jsx(
+          "svg",
+          {
+            viewBox: "0 0 24 24",
+            fill: "none",
+            stroke: "currentColor",
+            "aria-hidden": true,
+            "data-testid": "e2e-component-action-glyph",
+          },
+          jsx("path", { d: FIXTURE_ACTION_ICON_PATH }),
+        );
       }
 
       function MainTopBarSlot(props) {
@@ -314,14 +318,26 @@
               }),
               jsx(ui.Action, {
                 label: "Fixture workspace status",
-                icon: jsx("svg", { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", "aria-hidden": true }, jsx("path", { d: FIXTURE_ACTION_ICON_PATH })),
+                icon: jsx(
+                  "svg",
+                  {
+                    viewBox: "0 0 24 24",
+                    fill: "none",
+                    stroke: "currentColor",
+                    "aria-hidden": true,
+                  },
+                  jsx("path", { d: FIXTURE_ACTION_ICON_PATH }),
+                ),
                 text: "63%",
                 badge: "2",
                 "data-testid": "e2e-main-topbar-value-action",
               }),
             ]
           : [];
-        var standardActionGroup = renderActionGroup(standardActions, "Fixture workspace topbar actions");
+        var standardActionGroup = renderActionGroup(
+          standardActions,
+          "Fixture workspace topbar actions",
+        );
         return jsx(React.Fragment, { children: [legacyButton, standardActionGroup] });
       }
 
@@ -339,7 +355,8 @@
           children: [
             jsx("button", {
               type: "button",
-              className: "h-7 min-w-12 rounded border border-amber-600 bg-amber-500/10 px-2 text-xs",
+              className:
+                "h-7 min-w-12 rounded border border-amber-600 bg-amber-500/10 px-2 text-xs",
               "aria-label": "Legacy CPU usage",
               "data-activated": metricActivated,
               "data-testid": "e2e-legacy-raw-topbar-action",
@@ -398,7 +415,16 @@
           ? [
               jsx(ui.Action, {
                 label: "Fixture task topbar action",
-                icon: jsx("svg", { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", "aria-hidden": true }, jsx("circle", { cx: "12", cy: "12", r: "8" })),
+                icon: jsx(
+                  "svg",
+                  {
+                    viewBox: "0 0 24 24",
+                    fill: "none",
+                    stroke: "currentColor",
+                    "aria-hidden": true,
+                  },
+                  jsx("circle", { cx: "12", cy: "12", r: "8" }),
+                ),
                 pressed: active,
                 "data-testid": "e2e-chat-top-bar-standard-action",
                 onClick: function () {
@@ -407,7 +433,16 @@
               }),
               jsx(ui.Action, {
                 label: "Fixture task completion status",
-                icon: jsx("svg", { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", "aria-hidden": true }, jsx("path", { d: FIXTURE_ACTION_ICON_PATH })),
+                icon: jsx(
+                  "svg",
+                  {
+                    viewBox: "0 0 24 24",
+                    fill: "none",
+                    stroke: "currentColor",
+                    "aria-hidden": true,
+                  },
+                  jsx("path", { d: FIXTURE_ACTION_ICON_PATH }),
+                ),
                 text: "Ready",
                 "data-testid": "e2e-chat-top-bar-value-action",
               }),
@@ -416,14 +451,32 @@
                     jsx(ui.Action, {
                       key: "phone-overflow-one",
                       label: "Fixture long task action one",
-                      icon: jsx("svg", { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", "aria-hidden": true }, jsx("circle", { cx: "12", cy: "12", r: "8" })),
+                      icon: jsx(
+                        "svg",
+                        {
+                          viewBox: "0 0 24 24",
+                          fill: "none",
+                          stroke: "currentColor",
+                          "aria-hidden": true,
+                        },
+                        jsx("circle", { cx: "12", cy: "12", r: "8" }),
+                      ),
                       text: "A long fixture value that needs a second row",
                       "data-testid": "e2e-chat-top-bar-long-value-one",
                     }),
                     jsx(ui.Action, {
                       key: "phone-overflow-two",
                       label: "Fixture long task action two",
-                      icon: jsx("svg", { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", "aria-hidden": true }, jsx("path", { d: FIXTURE_ACTION_ICON_PATH })),
+                      icon: jsx(
+                        "svg",
+                        {
+                          viewBox: "0 0 24 24",
+                          fill: "none",
+                          stroke: "currentColor",
+                          "aria-hidden": true,
+                        },
+                        jsx("path", { d: FIXTURE_ACTION_ICON_PATH }),
+                      ),
                       text: "Another long fixture value that needs a second row",
                       "data-testid": "e2e-chat-top-bar-long-value-two",
                     }),
@@ -432,23 +485,24 @@
             ]
           : [];
         var standardActionGroup = renderActionGroup(standardActions, "Fixture task topbar actions");
-        var legacyMobileButton = slotProps.presentation === "mobile"
-          ? jsx(
-              ui.Button,
-              {
-                type: "button",
-                variant: "outline",
-                className: "cursor-pointer",
-                "data-testid": "e2e-chat-top-bar-action",
-                "data-presentation": slotProps.presentation || "unknown",
-                "data-activated": active ? "true" : "false",
-                onClick: function () {
-                  setActive(true);
+        var legacyMobileButton =
+          slotProps.presentation === "mobile"
+            ? jsx(
+                ui.Button,
+                {
+                  type: "button",
+                  variant: "outline",
+                  className: "cursor-pointer",
+                  "data-testid": "e2e-chat-top-bar-action",
+                  "data-presentation": slotProps.presentation || "unknown",
+                  "data-activated": active ? "true" : "false",
+                  onClick: function () {
+                    setActive(true);
+                  },
                 },
-              },
-              active ? "Fixture action complete" : "Run fixture task action",
-            )
-          : null;
+                active ? "Fixture action complete" : "Run fixture task action",
+              )
+            : null;
         if (!standardActionGroup && !legacyMobileButton) return null;
         return jsx(React.Fragment, { children: [standardActionGroup, legacyMobileButton] });
       }
@@ -776,7 +830,16 @@
           ? [
               jsx(ui.Action, {
                 label: "Fixture sidebar workspace action",
-                icon: jsx("svg", { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", "aria-hidden": true }, jsx("circle", { cx: "12", cy: "12", r: "8" })),
+                icon: jsx(
+                  "svg",
+                  {
+                    viewBox: "0 0 24 24",
+                    fill: "none",
+                    stroke: "currentColor",
+                    "aria-hidden": true,
+                  },
+                  jsx("circle", { cx: "12", cy: "12", r: "8" }),
+                ),
                 pressed: pressed,
                 "data-testid": "e2e-sidebar-standard-action",
                 onClick: function () {
@@ -785,13 +848,25 @@
               }),
               jsx(ui.Action, {
                 label: "Fixture sidebar workspace status",
-                icon: jsx("svg", { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", "aria-hidden": true }, jsx("path", { d: FIXTURE_ACTION_ICON_PATH })),
+                icon: jsx(
+                  "svg",
+                  {
+                    viewBox: "0 0 24 24",
+                    fill: "none",
+                    stroke: "currentColor",
+                    "aria-hidden": true,
+                  },
+                  jsx("path", { d: FIXTURE_ACTION_ICON_PATH }),
+                ),
                 text: "2 tasks",
                 "data-testid": "e2e-sidebar-standard-value-action",
               }),
             ]
           : [];
-        var standardActionGroup = renderActionGroup(standardActions, "Fixture sidebar workspace actions");
+        var standardActionGroup = renderActionGroup(
+          standardActions,
+          "Fixture sidebar workspace actions",
+        );
         return jsx(React.Fragment, { children: [legacyButton, standardActionGroup] });
       }
 
@@ -816,20 +891,44 @@
           ? [
               jsx(ui.Action, {
                 label: "Fixture service status",
-                icon: jsx("svg", { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", "aria-hidden": true }, jsx("circle", { cx: "12", cy: "12", r: "8" })),
+                icon: jsx(
+                  "svg",
+                  {
+                    viewBox: "0 0 24 24",
+                    fill: "none",
+                    stroke: "currentColor",
+                    "aria-hidden": true,
+                  },
+                  jsx("circle", { cx: "12", cy: "12", r: "8" }),
+                ),
                 text: "Online",
                 badge: "2",
                 pressed: pressed,
-                "data-testid": slotProps.presentation === "bar" ? "e2e-status-bar-action" : "e2e-status-drawer-action",
+                "data-testid":
+                  slotProps.presentation === "bar"
+                    ? "e2e-status-bar-action"
+                    : "e2e-status-drawer-action",
                 onClick: function () {
                   setPressed(!pressed);
                 },
               }),
               jsx(ui.Action, {
                 label: "Fixture status queue",
-                icon: jsx("svg", { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", "aria-hidden": true }, jsx("path", { d: FIXTURE_ACTION_ICON_PATH })),
+                icon: jsx(
+                  "svg",
+                  {
+                    viewBox: "0 0 24 24",
+                    fill: "none",
+                    stroke: "currentColor",
+                    "aria-hidden": true,
+                  },
+                  jsx("path", { d: FIXTURE_ACTION_ICON_PATH }),
+                ),
                 text: "2 queued",
-                "data-testid": slotProps.presentation === "bar" ? "e2e-status-bar-value-action" : "e2e-status-drawer-value-action",
+                "data-testid":
+                  slotProps.presentation === "bar"
+                    ? "e2e-status-bar-value-action"
+                    : "e2e-status-drawer-value-action",
               }),
             ]
           : [];
@@ -837,7 +936,11 @@
           actions.push(
             jsx(ui.Action, {
               label: "Refresh status",
-              icon: jsx("svg", { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", "aria-hidden": true }, jsx("path", { d: FIXTURE_ACTION_ICON_PATH })),
+              icon: jsx(
+                "svg",
+                { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", "aria-hidden": true },
+                jsx("path", { d: FIXTURE_ACTION_ICON_PATH }),
+              ),
               busy: true,
               "data-testid": "e2e-status-busy-action",
               onClick: function () {
@@ -846,7 +949,11 @@
             }),
             jsx(ui.Action, {
               label: "Unavailable status action",
-              icon: jsx("svg", { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", "aria-hidden": true }, jsx("path", { d: FIXTURE_ACTION_ICON_PATH })),
+              icon: jsx(
+                "svg",
+                { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", "aria-hidden": true },
+                jsx("path", { d: FIXTURE_ACTION_ICON_PATH }),
+              ),
               disabled: true,
               "data-testid": "e2e-status-disabled-action",
             }),
