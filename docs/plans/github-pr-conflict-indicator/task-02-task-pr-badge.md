@@ -163,3 +163,19 @@ PR hydration. The cross-surface scenario confirms conflict appears and clears
 in the task sidebar, Home card, and pipeline row. The phone scenario confirms
 automation indicators, conflict state, detail disclosure, and focus behavior
 remain intact.
+
+The PR fixup consolidated the duplicate top-bar UI requirement/design/plan
+into the GitHub-owned requirement and design. The single-PR layout and
+accessible status, multi-PR count and chevron, menu behavior, and existing
+phone drawer remain covered by AC-INTEGRATIONS-GITHUB-PR-CONFLICT-INDICATOR-001.3,
+.6, and .7.
+
+Post-fixup documentation checks pass:
+
+- `node --test .github/scripts/pr-docs.test.cjs` (81 tests).
+- `python3 scripts/list-docs.py validate` (305 decisions and 1,155
+  specifications validated).
+- `python3 scripts/lint-spec-files.test.py` (36 tests).
+- `python3 scripts/lint-spec-files.py --all`.
+- `python3 .github/scripts/pr-docs-workflow-contract_test.py` (7 tests).
+- `git diff --check`.

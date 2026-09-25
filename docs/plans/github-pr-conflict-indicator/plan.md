@@ -162,6 +162,24 @@ task-switcher scenario verifies conflict in both the linked-PR record and
 bounded summary, with automation dots, touch disclosure, focus return, and
 terminal-state cleanup.
 
+The PR fixup keeps compact accessibility labels within the bounded summary's
+known facts. The focused tests cover neutral failure and pending buckets,
+review-only pending, and an open PR whose `ready` bucket has no check evidence.
+The duplicate top-bar UI requirement/design/plan was consolidated into this
+GitHub-owned requirement and design; its single- and multi-PR layout, accessible
+status, interactions, and phone behavior remain covered by AC-001.3, .6, and
+.7 and Task 02.
+
+Post-fixup documentation checks pass:
+
+- `node --test .github/scripts/pr-docs.test.cjs` (81 tests).
+- `python3 scripts/list-docs.py validate` (305 decisions and 1,155
+  specifications validated).
+- `python3 scripts/lint-spec-files.test.py` (36 tests).
+- `python3 scripts/lint-spec-files.py --all`.
+- `python3 .github/scripts/pr-docs-workflow-contract_test.py` (7 tests).
+- `git diff --check`.
+
 ## Risks
 
 - `mergeable_state` currently encodes draft, so deriving the warning from it
