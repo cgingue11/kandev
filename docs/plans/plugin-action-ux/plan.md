@@ -289,6 +289,13 @@ on the changed web files; managed Chromium E2E
 CI waiter remains active while original checks finish so all prior failures can
 be inspected before push.
 
+CI exposed stale assertions in `chat-input-toolbar.test.tsx`, which still
+required old `h-7`/`min-h-11` classes after the shared renderer introduced
+square `size-7`/`size-11` controls. The focused toolbar suite now passes all 27
+tests with assertions matching both shared square controls and existing
+minimum-size toolbar buttons. This test is included in the fixup while the
+original-head CI run remains in progress.
+
 ## Risks
 
 - Legacy plugins retain visual differences until their authors adopt Action.

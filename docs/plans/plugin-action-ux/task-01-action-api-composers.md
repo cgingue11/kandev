@@ -147,3 +147,9 @@ renderer suite passed (3 files, 19 tests):
 `(cd apps/web && pnpm exec vitest run components/plugins/plugin-action.test.tsx components/kanban/main-top-bar-plugin-actions.test.tsx components/actions/surface-action-styles.test.ts)`.
 Also passed: `(cd apps/web && pnpm run typecheck)` and focused ESLint on the
 changed renderer, topbar, style, test, and action UX E2E files.
+
+The original PR-head frontend job still expected the pre-migration `h-7` and
+`min-h-11` class names on every composer action. Updated the responsive toolbar
+test to accept the shared square `size-7`/`size-11` contract or existing
+minimum-size controls. The focused toolbar suite passed all 27 tests:
+`(cd apps/web && pnpm exec vitest run components/task/chat/chat-input-toolbar.test.tsx)`.
