@@ -89,6 +89,79 @@ func TestAppendSessionModelsMessageUsesPersistedConfigAfterCacheRestart(t *testi
 	}
 }
 
+func TestAppendSessionModelsMessageKeepsPersistedSelectionWithoutStaleConfig(t *testing.T) {
+	model := streams.SessionModelInfo{ModelID: "persisted-model", Name: "Persisted model"}
+	session := &models.TaskSession{
+		ID:     "session-1",
+		TaskID: "task-1",
+		Metadata: map[string]interface{}{
+			models.SessionMetaKeyACPModelState: lifecycle.SessionModelsSnapshot{
+				CurrentModelID: model.ModelID,
+				Models:         []streams.SessionModelInfo{model},
+				ConfigOptions: []streams.ConfigOption{{
+					Type:         "select",
+					ID:           "model",
+					CurrentValue: "stale-persisted-model",
+				}},
+				ConfigOptionsSettled: true,
+			},
+		},
+	}
+
+	messages := appendSessionModelsMessageFromState(
+		session.ID,
+		session,
+		&lifecycle.CachedModelState{},
+		nil,
+	)
+	if len(messages) != 1 {
+		t.Fatalf("messages = %d, want 1", len(messages))
+	}
+	var payload lifecycle.SessionModelsEventPayload
+	if err := json.Unmarshal(messages[0].Payload, &payload); err != nil {
+		t.Fatalf("decode session models payload: %v", err)
+	}
+	if payload.CurrentModelID != model.ModelID {
+		t.Fatalf("current model = %q, want %q", payload.CurrentModelID, model.ModelID)
+	}
+	if len(payload.Models) != 1 || payload.Models[0].ModelID != model.ModelID {
+		t.Fatalf("models = %#v, want persisted model %q", payload.Models, model.ModelID)
+	}
+	if len(payload.ConfigOptions) != 0 {
+		t.Fatalf("config options = %#v, want live empty catalog", payload.ConfigOptions)
+	}
+	if !payload.ConfigOptionsSettled {
+		t.Fatal("config options settled = false, want persisted settlement marker")
+	}
+}
+
+func TestAppendSessionModelsMessagePreservesSettledEmptySnapshot(t *testing.T) {
+	session := &models.TaskSession{
+		ID:     "session-1",
+		TaskID: "task-1",
+		Metadata: map[string]interface{}{
+			models.SessionMetaKeyACPModelState: lifecycle.SessionModelsSnapshot{
+				ConfigOptionsSettled: true,
+			},
+		},
+	}
+
+	messages := appendSessionModelsMessageFromState(session.ID, session, nil, nil)
+	if len(messages) != 1 {
+		t.Fatalf("messages = %d, want 1 settled-empty notification", len(messages))
+	}
+	var payload lifecycle.SessionModelsEventPayload
+	if err := json.Unmarshal(messages[0].Payload, &payload); err != nil {
+		t.Fatalf("decode session models payload: %v", err)
+	}
+	if !payload.ConfigOptionsSettled {
+		t.Fatal("config options settled = false, want true")
+	}
+	if len(payload.ConfigOptions) != 0 {
+		t.Fatalf("config options = %#v, want empty", payload.ConfigOptions)
+	}
+}
+
 func TestAppendSessionModelsMessageKeepsLiveStateAuthoritative(t *testing.T) {
 	session := &models.TaskSession{
 		ID:     "session-1",
@@ -117,6 +190,7 @@ func TestAppendSessionModelsMessageKeepsLiveStateAuthoritative(t *testing.T) {
 		name            string
 		liveState       *lifecycle.CachedModelState
 		wantConfigCount int
+		wantConfigValue string
 	}{
 		{
 			name: "live config options",
@@ -125,6 +199,7 @@ func TestAppendSessionModelsMessageKeepsLiveStateAuthoritative(t *testing.T) {
 				ConfigOptions:  liveOptions,
 			},
 			wantConfigCount: len(liveOptions),
+			wantConfigValue: liveOptions[0].CurrentValue,
 		},
 		{
 			name: "settled empty catalog",
@@ -154,6 +229,9 @@ func TestAppendSessionModelsMessageKeepsLiveStateAuthoritative(t *testing.T) {
 			}
 			if len(payload.ConfigOptions) != tt.wantConfigCount {
 				t.Fatalf("config options = %d, want %d", len(payload.ConfigOptions), tt.wantConfigCount)
+			}
+			if tt.wantConfigValue != "" && payload.ConfigOptions[0].CurrentValue != tt.wantConfigValue {
+				t.Fatalf("config option value = %q, want %q", payload.ConfigOptions[0].CurrentValue, tt.wantConfigValue)
 			}
 		})
 	}

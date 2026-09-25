@@ -1,3 +1,4 @@
+import type { Page } from "@playwright/test";
 import { test, expect } from "../../fixtures/test-base";
 import {
   assertLocatorWithinViewportX,
@@ -5,6 +6,7 @@ import {
   assertTextWrapsNaturallyWithoutHorizontalOverflow,
   requireBox,
 } from "../../helpers/layout-assertions";
+import { waitForFiniteAnimations } from "../../helpers/animations";
 import { SessionPage } from "../../pages/session-page";
 
 type TaskPRFixtureWindow = Window & {
@@ -14,6 +16,15 @@ type TaskPRFixtureWindow = Window & {
     };
   };
 };
+
+function readTaskPRNumbers(page: Page, taskId: string) {
+  return page.evaluate((id) => {
+    const store = (window as TaskPRFixtureWindow).__KANDEV_E2E_STORE__;
+    return (store?.getState().taskPRs?.byTaskId?.[id] ?? [])
+      .map((pr) => pr.pr_number)
+      .sort((left, right) => left - right);
+  }, taskId);
+}
 
 const OWNER = "testorg";
 const REPO = "testrepo";
@@ -91,10 +102,7 @@ test.describe("mobile PR re-request review", () => {
     const session = new SessionPage(testPage);
     await session.waitForLoad();
     await session.waitForChatIdle();
-    // The task-PR association can arrive before this route's WS subscription;
-    // reload to hydrate the linked PR from the authoritative boot payload.
-    await testPage.reload();
-    await session.waitForLoad();
+    await expect.poll(() => readTaskPRNumbers(testPage, task.id)).toEqual([PR_NUMBER]);
     await expect(session.prTopbarButton()).toHaveCount(0);
 
     await testPage.getByRole("button", { name: "Review", exact: true }).tap();
@@ -253,23 +261,8 @@ test.describe("mobile PR re-request review", () => {
     await testPage.goto(`/t/${task.id}`);
     const session = new SessionPage(testPage);
     await session.waitForLoad();
-    const readTaskPRNumbers = () =>
-      testPage.evaluate((taskId) => {
-        const store = (window as TaskPRFixtureWindow).__KANDEV_E2E_STORE__;
-        return (store?.getState().taskPRs?.byTaskId?.[taskId] ?? [])
-          .map((pr) => pr.pr_number)
-          .sort((left, right) => left - right);
-      }, task.id);
     const expectedPRNumbers = [SWITCH_PR_NUMBER, SWITCH_SECOND_PR_NUMBER];
-    try {
-      await expect.poll(readTaskPRNumbers, { timeout: 20_000 }).toEqual(expectedPRNumbers);
-    } catch {
-      // Re-drive the initial task payload if it captured a partial PR snapshot.
-      await testPage.reload();
-      await session.waitForLoad();
-      await session.waitForChatIdle();
-      await expect.poll(readTaskPRNumbers, { timeout: 30_000 }).toEqual(expectedPRNumbers);
-    }
+    await expect.poll(() => readTaskPRNumbers(testPage, task.id)).toEqual(expectedPRNumbers);
     await testPage.getByRole("button", { name: "Review", exact: true }).tap();
     const reviewSelector = testPage.getByTestId("review-item-selector-trigger");
     const reviewSelectorMenu = testPage.getByTestId("review-item-selector-menu");
@@ -285,12 +278,13 @@ test.describe("mobile PR re-request review", () => {
       timeout: 15_000,
     });
     await expect(session.prSubmittedReview(REVIEWER)).toBeVisible({ timeout: 15_000 });
-    await expect.poll(readTaskPRNumbers).toEqual(expectedPRNumbers);
+    await expect.poll(() => readTaskPRNumbers(testPage, task.id)).toEqual(expectedPRNumbers);
     const action = session.prReRequestReviewButton(REVIEWER);
     await expect(action).toBeVisible({ timeout: 15_000 });
 
     await reviewSelector.tap();
     await expect(reviewSelectorMenu).toBeVisible();
+    await waitForFiniteAnimations(reviewSelectorMenu);
     const secondReview = testPage.getByRole("menuitemradio", {
       name: new RegExp(`^PR ${SWITCH_SECOND_PR_NUMBER}\\b`),
     });
@@ -299,7 +293,7 @@ test.describe("mobile PR re-request review", () => {
       requireBox(secondReview, "second PR choice"),
       requireBox(testPage.getByTestId("session-mobile-bottom-nav"), "mobile bottom navigation"),
     ]);
-    expect(Math.round(secondReviewBox.height * 100) / 100).toBeGreaterThanOrEqual(44);
+    expect(secondReviewBox.height).toBeGreaterThanOrEqual(44);
     expect(secondReviewBox.y + secondReviewBox.height).toBeLessThanOrEqual(bottomNavBox.y);
     await assertLocatorWithinViewportX(secondReview, "second PR choice");
     await assertNoDocumentHorizontalOverflow(testPage, "mobile PR selector");

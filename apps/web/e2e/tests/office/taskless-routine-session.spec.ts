@@ -2,6 +2,7 @@ import { expect, test } from "../../fixtures/office-fixture";
 
 type RoutineRun = {
   id: string;
+  causation_id?: string;
   linked_task_id?: string;
   status: string;
 };
@@ -29,8 +30,6 @@ test.describe("Office taskless routine sessions", () => {
     });
     const routineId = routine.id as string;
 
-    const existing = await officeApi.listRuns(officeSeed.workspaceId);
-    const seen = new Set(((existing.runs ?? []) as { id: string }[]).map((run) => run.id));
     const sessions: string[] = [];
     for (let attempt = 1; attempt <= 2; attempt += 1) {
       const response = await officeApi.runRoutine(routineId);
@@ -42,6 +41,8 @@ test.describe("Office taskless routine sessions", () => {
       const fired = (await response.json()) as { run: RoutineRun };
       expect(fired.run.id).toBeTruthy();
       const routineRunId = fired.run.id;
+      const expectedCausationId = fired.run.causation_id;
+      expect(expectedCausationId, "routine fire causation ID").toBeTruthy();
       await expect
         .poll(() => routineRuns(officeApi, routineId), { timeout: 20_000 })
         .toHaveLength(attempt);
@@ -57,17 +58,8 @@ test.describe("Office taskless routine sessions", () => {
           async () => {
             const result = await officeApi.listRuns(officeSeed.workspaceId);
             observedRuns = (result.runs ?? []) as unknown[];
-            const run = (
-              observedRuns as {
-                id: string;
-                agent_profile_id?: string;
-                reason?: string;
-              }[]
-            ).find(
-              (candidate) =>
-                !seen.has(candidate.id) &&
-                candidate.agent_profile_id === officeSeed.agentId &&
-                candidate.reason?.startsWith("routine_"),
+            const run = (observedRuns as { id: string; causation_id?: string }[]).find(
+              (candidate) => candidate.causation_id === expectedCausationId,
             );
             runId = run?.id ?? "";
             return runId;
@@ -77,11 +69,10 @@ test.describe("Office taskless routine sessions", () => {
         .not.toBe("")
         .catch((error) => {
           throw new Error(
-            `No live office run found for routine fire ${JSON.stringify({ routineId, routineRunId, agentId: officeSeed.agentId, observedRuns })}`,
+            `No live office run found for causation ID ${expectedCausationId}: ${JSON.stringify(observedRuns)}`,
             { cause: error },
           );
         });
-      seen.add(runId);
       const detailPath = `/agents/${officeSeed.agentId}/runs/${runId}`;
       await expect
         .poll(

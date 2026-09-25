@@ -664,14 +664,15 @@ func appendSessionModelsMessageFromState(sessionID string, session *models.TaskS
 			!replayState.ConfigOptionsSettled {
 			if len(snapshot.Models) > 0 {
 				replayState.Models = snapshot.Models
-			}
-			if len(snapshot.ConfigOptions) > 0 {
-				replayState.ConfigOptions = snapshot.ConfigOptions
+				if replayState.CurrentModelID == "" {
+					replayState.CurrentModelID = snapshot.CurrentModelID
+				}
 			}
 		}
 	}
 	replayState.ConfigOptionsSettled = replayState.ConfigOptionsSettled || snapshot.ConfigOptionsSettled
-	if replayState.CurrentModelID == "" && len(replayState.Models) == 0 && len(replayState.ConfigOptions) == 0 {
+	if replayState.CurrentModelID == "" && len(replayState.Models) == 0 &&
+		len(replayState.ConfigOptions) == 0 && !replayState.ConfigOptionsSettled {
 		return result
 	}
 	notification, err := ws.NewNotification(ws.ActionSessionModelsUpdated, lifecycle.SessionModelsEventPayload{

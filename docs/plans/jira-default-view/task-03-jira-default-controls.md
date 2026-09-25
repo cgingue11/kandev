@@ -138,13 +138,19 @@ pnpm e2e:run --project mobile-chrome tests/integrations/mobile-jira-default-view
 
 ## CI retry follow-up
 
-PR #3924 merged on 2026-09-25. Its E2E retry report identified 11 retry-only passes. Follow-up changes restore persisted model/config state when the live session cache is empty after restart; distinguish the routine-run record from the live Office run in the taskless-routine E2E; position the mobile PR selector above the bottom navigation; wait for its prior selection to close; scope dropped WebSocket replies to the test session; and wait for screenshot and virtualized file-tree content before asserting. Mobile touch-size assertions round fractional CSS-pixel measurements.
+PR #3924 merged on 2026-09-25. Its E2E retry report identified 11 retry-only passes. Follow-up changes restore persisted model/config state when the live session cache is empty after restart; correlate the taskless RoutineRun with the live Office run through their shared causation ID; position the mobile PR selector above the bottom navigation; wait for its prior selection to close and its menu animation to finish; scope dropped WebSocket replies to the test session; and wait for screenshot and virtualized file-tree content before asserting. Mobile touch-size assertions use unrounded measured dimensions.
 
 ```text
 chromium taskless-routine-session.spec.ts, repeat-each=10, retries=0
 10 passed
-mobile session-entry-recovery, PR re-request-review, and threads saved-view scenarios, repeat-each=3, retries=0
-9 passed
+mobile PR re-request-review, threads saved-view, and session-entry-recovery scenarios, retries=0
+15 passed across repeat counts 3, 3, and 3 (two PR and two saved-view cases per repeat)
+Quick Chat backend-restart recovery, repeat-each=3, retries=0
+3 passed
+completed-workspace restoration, repeat-each=2, retries=0
+2 passed
+preview feedback, repeat-each=3, retries=0
+3 passed
 pnpm run typecheck
 PASS
 focused ESLint on changed web files
@@ -155,4 +161,4 @@ git diff --check
 PASS
 ```
 
-The follow-up PR CI run will provide final shared-runner confirmation.
+The live Office run-list response now includes its existing causation ID so the E2E can require an exact match with the RoutineRun returned by the manual fire. `TestRunToListItemPreservesCausationID` covers this response contract. The corrected PR head's CI will provide final shared-runner confirmation.
