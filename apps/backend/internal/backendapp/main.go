@@ -1554,7 +1554,6 @@ func initOfficeServices(
 		agentRegistry, log, services, lifecycleMgr, cfg.Office.JWTSigningKey,
 	)
 	wireOfficeSvcsDependencies(services, repos, eventBus, orchestratorSvc, agentRegistry)
-	services.OfficeSvcs.Dashboard.SetOfficeSessionIdentity(cfg.Features.OfficeSessionIdentity)
 
 	// Reconcile using the new infra package.
 	reconciler := officeinfra.NewReconciler(repos.Office, log)

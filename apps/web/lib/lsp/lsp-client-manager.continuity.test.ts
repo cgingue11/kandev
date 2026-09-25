@@ -151,6 +151,24 @@ afterEach(() => {
 });
 
 describe("LSP browser continuity", () => {
+  it("clears document diagnostics when its last editor closes", async () => {
+    const { markersByUri } = createMonacoHarness([DOCUMENT_MODEL_URI]);
+    mocks.registerLspProviders.mockReturnValue([]);
+    const { socket } = await connectContinuityReady();
+    lspClientManager.openDocument(SESSION_ID, "typescript", {
+      uri: DOCUMENT_URI,
+      languageId: "typescript",
+      text: CURRENT_DOCUMENT_TEXT,
+    });
+
+    publishDiagnostic(socket, DOCUMENT_URI, "closed document issue");
+    expect(markerMessages(markersByUri, DOCUMENT_MODEL_URI)).toContain("closed document issue");
+
+    lspClientManager.closeDocument(SESSION_ID, "typescript", DOCUMENT_URI);
+
+    expect(markerMessages(markersByUri, DOCUMENT_MODEL_URI)).toEqual([]);
+  });
+
   it("reattaches without initializing again and waits for current document synchronization", async () => {
     const { markersByUri } = createMonacoHarness([DOCUMENT_MODEL_URI]);
     mocks.registerLspProviders.mockReturnValue([]);

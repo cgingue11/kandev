@@ -368,6 +368,7 @@ class LSPClientManager {
     if (!document) return;
     document.refCount = Math.max(0, document.refCount - 1);
     if (document.refCount > 0) return;
+    this.editorState.clearDocumentDiagnostics(conn, canonicalUri);
 
     if (conn.continuityEnabled && conn.reconnecting && !conn.documentsSynced) {
       document.pendingClose = true;
