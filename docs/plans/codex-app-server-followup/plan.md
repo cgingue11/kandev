@@ -80,16 +80,16 @@ Record the exact scenario paths and commands used. Do not claim browser coverage
 
 - [ ] [01: Approval concurrency and offered decisions](task-01-approval-lifecycle.md)
 - [x] [02: Reconnect and usage identity](task-02-reconnect-and-usage.md)
-- [ ] [03: Protocol conformance and PR delivery](task-03-conformance-and-delivery.md)
+- [x] [03: Protocol conformance and PR delivery](task-03-conformance-and-delivery.md)
 
-Execute sequentially in the already-running implementation session, after its current work.
+The primary session executed the work orders in order and recorded any incomplete acceptance criteria.
 This follow-up does not authorize more implementation subagents.
 
 ## Verification results
 
 Planning validation passed: catalog validation (306 decisions, 1146 specifications), full specification lint, and local link, requirement-ID, and whitespace checks for all four files.
 
-Task 02 is complete. Its fake-server tests preserve reconnect identity and usage attribution across delayed events. Task 01 remains pending because direct native question requests do not have a reply route into Kandev clarification. Task 03 remains pending until delivery checks and the existing PR update finish.
+Tasks 02 and 03 are complete. Their fake-server tests preserve reconnect identity, usage attribution, and pinned protocol coverage. Commit `afbfafe5a898c2f77a82ac4af5c87c499da772c6` reached the existing PR #3916. Task 01 remains pending because direct native question requests do not have a reply route into Kandev clarification.
 
 The original Task 07 remains pending. Its live run did not observe an approval request, exact response usage, or child-to-collaboration-call correlation. Docker, SSH, and Kind tests use a fake app-server and do not prove upstream Codex compatibility inside those executors.
 Reconcile affected results in the original package without overwriting unrelated work or claiming a full rerun.

@@ -1,7 +1,7 @@
 ---
 id: "03-conformance-and-delivery"
 title: "Protocol conformance and PR delivery"
-status: pending
+status: done
 wave: 3
 depends_on:
   - "01-approval-lifecycle"
@@ -107,4 +107,4 @@ These local checks passed:
 
 The native Codex 0.154.0 live suite passed initialization, prompt, resume, fork, shared-workspace behavior, and background completion. It did not observe a permission prompt, exact response usage, or child-to-collaboration-call correlation. The executor matrix used a fake app-server and does not prove upstream Codex compatibility in those executors.
 
-This work order remains pending until the verified commit reaches the existing PR. Task 01 also remains pending because direct `item/tool/requestUserInput` requests have no clarification response route.
+Commit `afbfafe5a898c2f77a82ac4af5c87c499da772c6` reached the existing [PR #3916](https://github.com/kdlbs/kandev/pull/3916). Task 01 remains pending because direct `item/tool/requestUserInput` requests have no clarification response route.
