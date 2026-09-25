@@ -122,7 +122,7 @@ The UI reads normalized capabilities, identities, and states only.
 | Reasoning summary | Existing reasoning presentation, without exposing unavailable private reasoning |
 | Command, file change, MCP tool | Existing tool call/update/result kinds, output, and diffs |
 | Plan and diff updates | Existing plan and diff models |
-| Server approval/question | Permission or clarification request with request/thread/turn ownership |
+| Server approval/question | Permission or clarification request with request/thread/turn ownership; direct native questions use the Kandev session ID for clarification persistence while native IDs remain provider correlation only |
 | `serverRequest/resolved` | Close the corresponding pending request |
 | Child activity and child turn events | Subagent tool detail plus independent normalized execution state |
 | Background command lifecycle | Independent normalized background-work record |
@@ -204,7 +204,7 @@ Shared options: executable path plus argument array, timeout, output path, workd
 MCP probing uses the existing sentinel pattern and distinguishes configured attachment from observed MCP traffic.
 
 Default to a fresh temporary workdir and developer-owned subprocess.
-Approvals default to decline; questions default to explicit cancellation.
+Approvals default to decline; questions default to explicit cancellation. Native secret questions are rejected because the existing clarification flow persists answers in chat. A provider resolution cancels its pending clarification through the session timeout action.
 An answer file can supply method-specific responses for an intentionally requested reproduction.
 Unknown server requests receive a protocol error, not approval.
 Never resume an arbitrary live thread as part of a generic probe.

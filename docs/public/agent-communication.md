@@ -122,6 +122,11 @@ An autopilot root has no parent, so its task MCP profile contains no question
 tool. It must continue without asking the operator. A normal task keeps the
 operator-facing `ask_user_question_kandev` flow.
 
+Each `ask_user_question_kandev` question can set `allow_custom_text` to `false`
+when the user must select one of the offered options. If omitted, the user can
+also provide a free-text answer. Native Codex questions use the same setting
+that Codex provides for an "Other" answer.
+
 ## Reading the thread
 
 `get_task_conversation_kandev(task_id)` returns the message history for any task you know the ID of. Use it to:

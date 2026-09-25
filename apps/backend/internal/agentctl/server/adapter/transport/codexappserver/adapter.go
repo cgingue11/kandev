@@ -42,7 +42,7 @@ const (
 var serverRequestDispositions = map[string]serverRequestDisposition{
 	protocol.ServerRequestCommandExecutionApproval: serverRequestSupported,
 	protocol.ServerRequestFileChangeApproval:       serverRequestSupported,
-	protocol.ServerRequestToolUserInput:            serverRequestRejected,
+	protocol.ServerRequestToolUserInput:            serverRequestSupported,
 	protocol.ServerRequestMCPElicitation:           serverRequestRejected,
 	protocol.ServerRequestPermissionsApproval:      serverRequestRejected,
 	protocol.ServerRequestDynamicToolCall:          serverRequestRejected,
@@ -85,6 +85,7 @@ type Adapter struct {
 	turnSequence             uint64
 	models                   []streams.SessionModelInfo
 	permission               agenttypes.PermissionHandler
+	userInputRequest         agenttypes.UserInputRequestHandler
 	closed                   bool
 	completed                map[string]struct{}
 	children                 map[string]childBinding
@@ -384,6 +385,12 @@ func (a *Adapter) GetOperationID() string {
 func (a *Adapter) SetPermissionHandler(handler agenttypes.PermissionHandler) {
 	a.mu.Lock()
 	a.permission = handler
+	a.mu.Unlock()
+}
+
+func (a *Adapter) SetUserInputRequestHandler(handler agenttypes.UserInputRequestHandler) {
+	a.mu.Lock()
+	a.userInputRequest = handler
 	a.mu.Unlock()
 }
 

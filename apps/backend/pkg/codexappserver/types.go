@@ -8,6 +8,44 @@ const (
 	SchemaSHA256V0154     = "7b9e7d385fffef8d428cc5490b56ce9c393bd3ed7bc7ccd730956387e723ec05"
 )
 
+// ToolRequestUserInputParams is the pinned Codex app-server server request
+// payload for item/tool/requestUserInput.
+type ToolRequestUserInputParams struct {
+	ThreadID         string                         `json:"threadId"`
+	TurnID           string                         `json:"turnId"`
+	ItemID           string                         `json:"itemId"`
+	Questions        []ToolRequestUserInputQuestion `json:"questions"`
+	IsBlocking       bool                           `json:"isBlocking"`
+	AutoResolutionMs *int64                         `json:"autoResolutionMs"`
+}
+
+// ToolRequestUserInputQuestion is one question sent by Codex to its client.
+type ToolRequestUserInputQuestion struct {
+	ID       string                       `json:"id"`
+	Header   string                       `json:"header"`
+	Question string                       `json:"question"`
+	IsOther  bool                         `json:"isOther"`
+	IsSecret bool                         `json:"isSecret"`
+	Options  []ToolRequestUserInputOption `json:"options"`
+}
+
+// ToolRequestUserInputOption is an option offered for a Codex input question.
+type ToolRequestUserInputOption struct {
+	Label       string `json:"label"`
+	Description string `json:"description"`
+}
+
+// ToolRequestUserInputResponse is the app-server's required answer envelope.
+type ToolRequestUserInputResponse struct {
+	Answers map[string]ToolRequestUserInputAnswer `json:"answers"`
+}
+
+// ToolRequestUserInputAnswer contains the selected labels and/or free text for
+// one question.
+type ToolRequestUserInputAnswer struct {
+	Answers []string `json:"answers"`
+}
+
 const (
 	MethodInitialize                  = "initialize"
 	MethodInitialized                 = "initialized"

@@ -21,6 +21,9 @@ func (a *Adapter) handleServerRequest(ctx context.Context, request protocol.Serv
 	if serverRequestDispositions[method] != serverRequestSupported {
 		return nil, &protocol.RPCError{Code: -32601, Message: "method not found"}
 	}
+	if method == protocol.ServerRequestToolUserInput {
+		return a.handleUserInputRequest(ctx, request.Params)
+	}
 	var params map[string]any
 	if err := json.Unmarshal(request.Params, &params); err != nil {
 		return nil, &protocol.RPCError{Code: -32602, Message: "invalid approval request"}

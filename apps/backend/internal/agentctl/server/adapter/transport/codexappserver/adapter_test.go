@@ -390,6 +390,21 @@ func TestUnofferedApprovalSelectionReturnsInvalidParams(t *testing.T) {
 	}
 }
 
+func TestToolUserInputWithoutClarificationHandlerFailsClosed(t *testing.T) {
+	adapter := NewAdapter(&shared.Config{}, logger.Default())
+	defer func() { _ = adapter.Close() }()
+	adapter.threadID = "thread-1"
+	_, err := adapter.handleServerRequest(context.Background(), protocol.ServerRequest{
+		ID:     json.RawMessage(`"input-id"`),
+		Method: protocol.ServerRequestToolUserInput,
+		Params: json.RawMessage(`{"threadId":"thread-1","turnId":"turn-1","itemId":"item-1","isBlocking":true,"questions":[{"id":"q1","header":"Mode","question":"Choose a mode","isOther":false,"isSecret":false,"options":[{"label":"Fast","description":"Quick"},{"label":"Safe","description":"Careful"}]}]}`),
+	})
+	var rpcErr *protocol.RPCError
+	if !errors.As(err, &rpcErr) || rpcErr.Code != -32601 || rpcErr.Message != "Codex user input request handler is unavailable" {
+		t.Fatalf("unhandled user input error = %#v, want explicit unavailable-handler error", err)
+	}
+}
+
 func TestNetworkPolicyDecisionRequiresRecognizedAction(t *testing.T) {
 	for _, test := range []struct {
 		name       string
@@ -447,8 +462,9 @@ func TestServerRequestCoverage(t *testing.T) {
 		}
 	}
 	if serverRequestDispositions[protocol.ServerRequestCommandExecutionApproval] != serverRequestSupported ||
-		serverRequestDispositions[protocol.ServerRequestFileChangeApproval] != serverRequestSupported {
-		t.Fatal("command and file-change approvals must remain supported")
+		serverRequestDispositions[protocol.ServerRequestFileChangeApproval] != serverRequestSupported ||
+		serverRequestDispositions[protocol.ServerRequestToolUserInput] != serverRequestSupported {
+		t.Fatal("command, file-change approval, and user-input requests must remain supported")
 	}
 }
 

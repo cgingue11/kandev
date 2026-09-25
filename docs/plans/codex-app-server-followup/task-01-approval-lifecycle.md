@@ -1,7 +1,7 @@
 ---
 id: "01-approval-lifecycle"
 title: "Approval concurrency and offered decisions"
-status: pending
+status: done
 wave: 1
 depends_on: []
 plan: "plan.md"
@@ -90,4 +90,8 @@ Approval handling now runs independently from ordered notification dispatch. The
 
 Provider decisions retain their original structured payload. The adapter rejects stale or unoffered selections. Race tests cover request resolution, cancellation, and shutdown. The debugger validates answer-file question IDs, response shape, and offered options.
 
-This work order remains pending. The native adapter rejects direct `item/tool/requestUserInput` requests because its agentctl contract has no clarification response route. Questions through Kandev's injected `ask_user_question_kandev` MCP tool use the existing clarification flow. The debugger's answer-file validation does not add native adapter support. AC-AGENTS-CODEX-NATIVE-002.2 remains incomplete until the direct request route is resolved.
+Direct `item/tool/requestUserInput` requests now route through the existing clarification action and desktop/phone controls. The bridge preserves provider question IDs and choices, maps selected option IDs back to offered labels, supports explicitly allowed free-text-only questions, validates exact answer coverage, and returns empty answer arrays on rejection. Secret questions fail closed because clarification answers are persisted in conversation messages. Provider resolution cancels the pending clarification through the existing session timeout path.
+
+Adapter tests cover option mapping, secret rejection, question cancellation, and rejected responses. API bridge tests cover Kandev session/task identity, option and text answers, response validation, and cancellation notification. Clarification and MCP handler tests cover the text-only validator and preserve the ordinary two-option requirement. The frontend overlay test confirms custom text is hidden when the provider disallows it while omitted metadata retains the existing default. Mobile clarification E2E and final race/lint checks are recorded in the PR delivery results.
+
+Status is complete for implementation. Live Codex 0.154.0 question requests remain unverified; the native executor matrix remains an outstanding Task 07 item.

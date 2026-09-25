@@ -107,6 +107,10 @@ These local checks passed:
 
 The native Codex 0.154.0 live suite passed initialization, prompt, resume, fork, shared-workspace behavior, and background completion. It did not observe a permission prompt, exact response usage, or child-to-collaboration-call correlation. The executor matrix used a fake app-server and does not prove upstream Codex compatibility in those executors.
 
-Commit `afbfafe5a898c2f77a82ac4af5c87c499da772c6` reached the existing [PR #3916](https://github.com/kdlbs/kandev/pull/3916). Current-head CI found a repeated `turn_fallback` string in backend static checks. The backend gate failed because of that lint failure; all backend test shards passed.
+The following PR attempt is historical and superseded by later heads. Commit `afbfafe5a898c2f77a82ac4af5c87c499da772c6` reached the existing [PR #3916](https://github.com/kdlbs/kandev/pull/3916). Current-head CI found a repeated `turn_fallback` string in backend static checks. The backend gate failed because of that lint failure; all backend test shards passed.
 
-The fix uses `nativeUsageSourceTurnFallback`. Local race tests and backend lint now pass. `scripts/pr-await` reached its 45-minute deadline with 11 E2E checks still pending. This work order remains pending until the fix reaches the PR and the current-head checks finish. Task 01 also remains pending because direct `item/tool/requestUserInput` requests have no clarification response route.
+The fix uses `nativeUsageSourceTurnFallback`. Local race tests and backend lint passed. That `scripts/pr-await` attempt reached its 45-minute deadline with 11 E2E checks pending.
+
+Direct `item/tool/requestUserInput` requests now route through the existing Kandev clarification controls. Desktop and mobile E2E cover the choice-only UI; the mobile clarification suite passed all 11 cases, and the focused desktop and mobile capture scenarios passed. The PR follow-up also passed focused Go unit/race tests, backend lint, public-doc validation, specification validation, and `git diff --check`. The screenshots are prepared for the PR description and are not committed to the product branch.
+
+Task 01 is complete for implementation. This work order remains pending until the direct-question changes and screenshots reach PR #3916 and checks finish on the exact current head. Live Codex 0.154.0 question invocation and the native executor matrix remain unverified under original Task 07.

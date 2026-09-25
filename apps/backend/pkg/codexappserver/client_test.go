@@ -120,6 +120,29 @@ func TestClientCorrelationAndClose(t *testing.T) {
 	}
 }
 
+func TestServerRequestResolvedCancelsPendingHandler(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	client := &Client{
+		ctx:            ctx,
+		cancel:         cancel,
+		serverRequests: make(map[string]*serverRequestState),
+	}
+	state, err := client.registerServerRequest(json.RawMessage(`17`))
+	if err != nil {
+		t.Fatalf("registerServerRequest: %v", err)
+	}
+	client.resolveServerRequest(json.RawMessage(`{"requestId":17}`))
+	select {
+	case <-state.ctx.Done():
+	case <-time.After(time.Second):
+		t.Fatal("serverRequest/resolved did not cancel the handler context")
+	}
+	if client.beginServerRequestResponse(state) {
+		t.Fatal("resolved server request remained eligible for a late response")
+	}
+}
+
 func TestClientAcceptsCodexAppServerResponseWithoutJSONRPCVersion(t *testing.T) {
 	clientInput, serverOutput := io.Pipe()
 	serverInput, clientOutput := io.Pipe()
