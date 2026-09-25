@@ -4,7 +4,8 @@ import type { Page } from "@playwright/test";
 import type { SeedData } from "../../fixtures/test-base";
 import type { ApiClient } from "../../helpers/api-client";
 import type { BackendContext } from "../../fixtures/backend";
-import { GitHelper, makeGitEnv } from "../../helpers/git-helper";
+import { GitHelper, makeGitEnv, publishSeedCommit } from "../../helpers/git-helper";
+import { waitForWorkspaceFile } from "../../helpers/session";
 import { SessionPage } from "../../pages/session-page";
 
 async function setupDesktopContextTask(
@@ -24,6 +25,7 @@ async function setupDesktopContextTask(
   git.createFile(`${directoryPath}/nested.txt`, "directory content\n");
   git.stageAll();
   git.commit(`add chat context fixtures ${suffix}`);
+  publishSeedCommit(git, seedData.repositoryRemoteURL);
 
   const task = await apiClient.createTaskWithAgent(
     seedData.workspaceId,
@@ -40,6 +42,10 @@ async function setupDesktopContextTask(
   const session = new SessionPage(testPage);
   await session.waitForLoad();
   await session.waitForChatIdle({ timeout: 45_000 });
+  if (!task.session_id) throw new Error("file tree context task did not return a session_id");
+  await waitForWorkspaceFile(apiClient, task.session_id, filePath);
+  await waitForWorkspaceFile(apiClient, task.session_id, directoryPath);
+  await session.clickTab("Files");
   return { session, filePath, directoryPath };
 }
 

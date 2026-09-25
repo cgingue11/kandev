@@ -47,7 +47,15 @@ test.describe("Agents browse page", () => {
       route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify(AVAILABLE_AGENTS),
+        body: JSON.stringify({
+          ...AVAILABLE_AGENTS,
+          // The app rejects older polling snapshots when a newer agent state
+          // arrived during startup. Keep this fixture newer than seeded state.
+          agents: AVAILABLE_AGENTS.agents.map((agent) => ({
+            ...agent,
+            updated_at: new Date(Date.now() + 60_000).toISOString(),
+          })),
+        }),
       }),
     );
 
