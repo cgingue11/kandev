@@ -19,6 +19,12 @@ import (
 
 const envGitHubCLIShimDir = githubauth.CredentialCLIShimDirEnv
 
+// envGitHubCLIShimActive marks the environment of the gh the shim launches. The
+// shim refuses to run when it is already set: that only happens when "real gh"
+// resolved back to a shim (a stale or mismatched shim directory on PATH), which
+// would otherwise re-exec itself without bound and exhaust the host.
+const envGitHubCLIShimActive = "KANDEV_GITHUB_CLI_SHIM_ACTIVE"
+
 const windowsOS = "windows"
 
 type githubCLILookPath func(file, path string) (string, error)
@@ -44,6 +50,9 @@ func runGitHubCLIShim(
 	lookPath githubCLILookPath,
 	runner githubCLICommandRunner,
 ) error {
+	if getenv(envGitHubCLIShimActive) != "" {
+		return fmt.Errorf("gh shim re-entered itself: the gh found on PATH is a Kandev shim, not the GitHub CLI")
+	}
 	client, err := newGitHubCLIShimCredentialBrokerClient(ctx, args, getenv, httpClient)
 	if err != nil {
 		return err
@@ -63,9 +72,10 @@ func runGitHubCLIShim(
 	}
 	defer func() { _ = os.RemoveAll(configDir) }()
 	childEnv := replaceEnvironment(environ(), map[string]string{
-		"GH_TOKEN":      credential.Password,
-		"GH_CONFIG_DIR": configDir,
-		"PATH":          realPath,
+		"GH_TOKEN":             credential.Password,
+		"GH_CONFIG_DIR":        configDir,
+		"PATH":                 realPath,
+		envGitHubCLIShimActive: "1",
 	}, "GITHUB_TOKEN")
 	return runner(ctx, executable, args, childEnv, stdin, stdout, stderr)
 }
@@ -320,7 +330,25 @@ func linkOrCopyExecutable(source, target string) error {
 	return closeErr
 }
 
+// lookPathSkippingExecutable is lookPathIn, except that it never returns the
+// given executable (compared by file identity, so symlinks and hard links to it
+// are skipped too). The shim passes its own agentctl binary, so a shim directory
+// left on PATH can never be mistaken for the real gh.
+func lookPathSkippingExecutable(self string) githubCLILookPath {
+	selfInfo, err := os.Stat(self)
+	if err != nil {
+		return lookPathIn
+	}
+	return func(file, path string) (string, error) {
+		return lookPathMatching(file, path, func(info os.FileInfo) bool { return !os.SameFile(info, selfInfo) })
+	}
+}
+
 func lookPathIn(file, path string) (string, error) {
+	return lookPathMatching(file, path, func(os.FileInfo) bool { return true })
+}
+
+func lookPathMatching(file, path string, accept func(os.FileInfo) bool) (string, error) {
 	names := []string{file}
 	if runtime.GOOS == windowsOS && filepath.Ext(file) == "" {
 		names = []string{file + ".exe", file + ".cmd", file + ".bat", file}
@@ -329,7 +357,7 @@ func lookPathIn(file, path string) (string, error) {
 		for _, name := range names {
 			candidate := filepath.Join(directory, name)
 			info, err := os.Stat(candidate)
-			if err == nil && !info.IsDir() && (runtime.GOOS == windowsOS || info.Mode()&0o111 != 0) {
+			if err == nil && !info.IsDir() && (runtime.GOOS == windowsOS || info.Mode()&0o111 != 0) && accept(info) {
 				return candidate, nil
 			}
 		}

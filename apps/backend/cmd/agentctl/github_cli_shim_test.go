@@ -403,3 +403,79 @@ func envValue(env []string, key string) string {
 	}
 	return ""
 }
+
+func TestGitHubCLIShimRefusesToReenterItself(t *testing.T) {
+	env := map[string]string{envGitHubCLIShimActive: "1", "PATH": "/stale-shim:/usr/bin"}
+	runner := func(context.Context, string, []string, []string, io.Reader, io.Writer, io.Writer) error {
+		t.Fatal("re-entered shim must not launch gh")
+		return nil
+	}
+	err := runGitHubCLIShim(
+		context.Background(), []string{"pr", "view"}, strings.NewReader(""), io.Discard, io.Discard,
+		lookupEnv(env), func() []string { return envMap(env) }, nil, "/current-shim", lookPathIn, runner,
+	)
+	if err == nil || !strings.Contains(err.Error(), "re-entered") {
+		t.Fatalf("runGitHubCLIShim() error = %v, want re-entry refusal", err)
+	}
+}
+
+func TestGitHubCLIShimMarksChildEnvironment(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]string{"username": "x-access-token", "password": "token"})
+	}))
+	t.Cleanup(server.Close)
+	env := githubCredentialTestEnv(server.URL)
+	env["PATH"] = "/shim:/usr/bin"
+	var marker string
+	runner := func(_ context.Context, _ string, _ []string, childEnv []string, _ io.Reader, _, _ io.Writer) error {
+		marker = envValue(childEnv, envGitHubCLIShimActive)
+		return nil
+	}
+	lookPath := func(string, string) (string, error) { return "/usr/bin/gh", nil }
+	if err := runGitHubCLIShim(
+		context.Background(), []string{"pr", "list"}, strings.NewReader(""), io.Discard, io.Discard,
+		lookupEnv(env), func() []string { return envMap(env) }, server.Client(), "/shim", lookPath, runner,
+	); err != nil {
+		t.Fatalf("runGitHubCLIShim() error = %v", err)
+	}
+	if marker != "1" {
+		t.Fatalf("child %s = %q, want 1", envGitHubCLIShimActive, marker)
+	}
+}
+
+func TestLookPathSkippingExecutableIgnoresLinksToSelf(t *testing.T) {
+	if runtime.GOOS == windowsOS {
+		t.Skip("symlink layout is unix-specific")
+	}
+	root := t.TempDir()
+	self := filepath.Join(root, "agentctl")
+	if err := os.WriteFile(self, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	staleShim := filepath.Join(root, "stale-shim")
+	realDir := filepath.Join(root, "real")
+	for _, dir := range []string{staleShim, realDir} {
+		if err := os.Mkdir(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Symlink(self, filepath.Join(staleShim, "gh")); err != nil {
+		t.Fatal(err)
+	}
+	realGH := filepath.Join(realDir, "gh")
+	if err := os.WriteFile(realGH, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path := strings.Join([]string{staleShim, realDir}, string(os.PathListSeparator))
+
+	if got, err := lookPathIn("gh", path); err != nil || got != filepath.Join(staleShim, "gh") {
+		t.Fatalf("lookPathIn = %q, %v; want the stale shim (the bug this guards against)", got, err)
+	}
+	got, err := lookPathSkippingExecutable(self)("gh", path)
+	if err != nil || got != realGH {
+		t.Fatalf("lookPathSkippingExecutable = %q, %v; want %q", got, err, realGH)
+	}
+	if _, err := lookPathSkippingExecutable(self)("gh", staleShim); err == nil {
+		t.Fatal("lookPathSkippingExecutable found gh although only the shim is on PATH")
+	}
+}
