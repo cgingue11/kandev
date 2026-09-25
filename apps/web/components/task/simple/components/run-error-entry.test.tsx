@@ -4,6 +4,7 @@ import type { RunError } from "@/app/office/tasks/[id]/types";
 import { WebSocketRequestError } from "@/lib/ws/client";
 import { RunErrorEntry } from "./run-error-entry";
 
+const RECOVERY_ERROR_ID = "run-error-recovery-error";
 const { requestMock } = vi.hoisted(() => ({ requestMock: vi.fn() }));
 const RUN_ERROR_RESUME_TEST_ID = "run-error-resume-button";
 
@@ -94,7 +95,7 @@ describe("RunErrorEntry", () => {
 
     screen.getByTestId(RUN_ERROR_RESUME_TEST_ID).click();
 
-    expect((await screen.findByTestId("run-error-recovery-error")).textContent).toContain(
+    expect((await screen.findByTestId(RECOVERY_ERROR_ID)).textContent).toContain(
       "The saved branch is no longer available.",
     );
     expect(screen.getByTestId("run-error-continue-new-branch-button")).toBeTruthy();
@@ -125,7 +126,7 @@ it("explains a non-retryable recovery refusal without offering a bypass", async 
   );
   render(<RunErrorEntry taskId="task-1" error={runError("provider_auth_required")} />);
   fireEvent.click(screen.getByTestId(RUN_ERROR_RESUME_TEST_ID));
-  const error = await screen.findByTestId("run-error-recovery-error");
+  const error = await screen.findByTestId(RECOVERY_ERROR_ID);
   expect(error.querySelector("p")?.textContent).toContain("Restart the backend");
   expect(screen.queryByTestId(RUN_ERROR_RESUME_TEST_ID)).toBeNull();
 });
@@ -147,6 +148,21 @@ it("redacts credential-bearing branch failures in the status line", async () => 
     />,
   );
   fireEvent.click(screen.getByTestId(RUN_ERROR_RESUME_TEST_ID));
-  await screen.findByTestId("run-error-recovery-error");
+  await screen.findByTestId(RECOVERY_ERROR_ID);
   expect(document.body.textContent).not.toContain("run-secret-fixture");
+});
+
+it("keeps an explanation when branch error sanitization removes all content", async () => {
+  requestMock.mockRejectedValueOnce(
+    new WebSocketRequestError("\u001b[31m\u001b[0m", "CONFLICT", {
+      kind: "branch_unrecoverable",
+      recovery_action: "resume_new_branch",
+      original_branch: "feature/lost",
+      base_branch: "main",
+    }),
+  );
+  render(<RunErrorEntry taskId="task-1" error={runError("provider_auth_required")} />);
+  fireEvent.click(screen.getByTestId(RUN_ERROR_RESUME_TEST_ID));
+  const error = await screen.findByTestId(RECOVERY_ERROR_ID);
+  expect(error.querySelector("p")?.textContent).toBe("Failed to resume session");
 });

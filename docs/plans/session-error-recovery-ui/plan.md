@@ -583,3 +583,12 @@ threads. Integrated current main and preserved both the Japanese recovery keys
 and its new workflow-change keys. All task catalogs parse without duplicate
 keys; localization, type checking and 55 focused recovery tests pass. Fresh
 exact-head CI and review verification remain pending after this merge push.
+
+### Review fallback refinement
+
+A branch-recovery error containing only ANSI/control characters now retains the
+localized failure explanation after sanitization. The regression failed before
+the fix and its eight-test component suite passed afterward. The optional
+context memoization suggestion is deferred: no measured performance regression
+was identified, and it is not required for the recovery correctness contract.
+Exact-head CI/review validation remains pending after this correction is pushed.

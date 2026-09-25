@@ -130,7 +130,8 @@ function LegacyRunErrorEntry({
           <div data-testid="run-error-recovery-error">
             <p role="status">
               {branchDetails || blocked
-                ? sanitizeSessionErrorDetails(recoveryError.message, 240)
+                ? sanitizeSessionErrorDetails(recoveryError.message, 240) ||
+                  t("task:failedToResumeSession")
                 : t("task:failedToResumeSession")}
             </p>
             <SessionErrorDetails>{recoveryError.message}</SessionErrorDetails>
