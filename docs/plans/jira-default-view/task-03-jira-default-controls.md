@@ -135,3 +135,24 @@ pnpm e2e:run tests/integrations/jira-default-view.spec.ts
 pnpm e2e:run --project mobile-chrome tests/integrations/mobile-jira-default-view.spec.ts
 1 passed
 ```
+
+## CI retry follow-up
+
+PR #3924 merged on 2026-09-25. Its E2E retry report identified 11 retry-only passes. Follow-up changes restore persisted model/config state when the live session cache is empty after restart; distinguish the routine-run record from the live Office run in the taskless-routine E2E; position the mobile PR selector above the bottom navigation; wait for its prior selection to close; scope dropped WebSocket replies to the test session; and wait for screenshot and virtualized file-tree content before asserting. Mobile touch-size assertions round fractional CSS-pixel measurements.
+
+```text
+chromium taskless-routine-session.spec.ts, repeat-each=10, retries=0
+10 passed
+mobile session-entry-recovery, PR re-request-review, and threads saved-view scenarios, repeat-each=3, retries=0
+9 passed
+pnpm run typecheck
+PASS
+focused ESLint on changed web files
+PASS
+go test ./internal/backendapp -run 'TestAppendSessionModelsMessage' -count=1
+PASS
+git diff --check
+PASS
+```
+
+The follow-up PR CI run will provide final shared-runner confirmation.

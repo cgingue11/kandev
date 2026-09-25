@@ -45,6 +45,50 @@ func TestAppendSessionModelsMessageFallsBackToPersistedFlatModels(t *testing.T) 
 	}
 }
 
+func TestAppendSessionModelsMessageUsesPersistedConfigAfterCacheRestart(t *testing.T) {
+	model := streams.SessionModelInfo{ModelID: "mock-fast", Name: "Mock Fast"}
+	option := streams.ConfigOption{
+		Type:         "select",
+		ID:           "model",
+		Name:         "Model",
+		CurrentValue: "mock-fast",
+		Category:     "model",
+	}
+	session := &models.TaskSession{
+		ID:     "session-1",
+		TaskID: "task-1",
+		Metadata: map[string]interface{}{
+			models.SessionMetaKeyACPModelState: lifecycle.SessionModelsSnapshot{
+				CurrentModelID:       model.ModelID,
+				Models:               []streams.SessionModelInfo{model},
+				ConfigOptions:        []streams.ConfigOption{option},
+				ConfigOptionsSettled: true,
+			},
+		},
+	}
+
+	messages := appendSessionModelsMessageFromState(session.ID, session, nil, nil)
+	if len(messages) != 1 {
+		t.Fatalf("messages = %d, want 1", len(messages))
+	}
+	var payload lifecycle.SessionModelsEventPayload
+	if err := json.Unmarshal(messages[0].Payload, &payload); err != nil {
+		t.Fatalf("decode session models payload: %v", err)
+	}
+	if payload.CurrentModelID != model.ModelID {
+		t.Fatalf("current model = %q, want %q", payload.CurrentModelID, model.ModelID)
+	}
+	if len(payload.Models) != 1 || payload.Models[0].Name != model.Name {
+		t.Fatalf("models = %#v, want persisted model %q", payload.Models, model.Name)
+	}
+	if len(payload.ConfigOptions) != 1 || payload.ConfigOptions[0].CurrentValue != option.CurrentValue {
+		t.Fatalf("config options = %#v, want persisted config option", payload.ConfigOptions)
+	}
+	if !payload.ConfigOptionsSettled {
+		t.Fatal("config options settled = false, want true")
+	}
+}
+
 func TestAppendSessionModelsMessageKeepsLiveStateAuthoritative(t *testing.T) {
 	session := &models.TaskSession{
 		ID:     "session-1",
@@ -55,6 +99,11 @@ func TestAppendSessionModelsMessageKeepsLiveStateAuthoritative(t *testing.T) {
 				Models: []streams.SessionModelInfo{{
 					ModelID: "persisted-flat-model",
 					Name:    "Persisted flat model",
+				}},
+				ConfigOptions: []streams.ConfigOption{{
+					Type:         "select",
+					ID:           "model",
+					CurrentValue: "stale-persisted-model",
 				}},
 			},
 		},

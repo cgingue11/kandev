@@ -66,7 +66,9 @@ test.describe("Web preview feedback", () => {
       await chooseCapture(testPage, "Select screenshot region");
       await dragScreenshotRegion(testPage, frame.locator("#save"));
       const screenshotDraft = testPage.getByTestId("preview-feedback-draft");
-      await expect(screenshotDraft.getByRole("img", { name: "Screenshot preview" })).toBeVisible();
+      await expect(screenshotDraft.getByRole("img", { name: "Screenshot preview" })).toBeVisible({
+        timeout: 15_000,
+      });
       await expect(screenshotDraft).toContainText(/\d+ × \d+ · PNG/);
       await saveDraft(testPage, "Tighten the spacing in this region");
 
@@ -75,7 +77,9 @@ test.describe("Web preview feedback", () => {
       await chooseCapture(testPage, "Select screenshot region");
       await dragScreenshotRegion(testPage, frame.locator("#save"));
       const failedDraft = testPage.getByTestId("preview-feedback-draft");
-      await expect(failedDraft.getByRole("img", { name: "Screenshot preview" })).toBeVisible();
+      await expect(failedDraft.getByRole("img", { name: "Screenshot preview" })).toBeVisible({
+        timeout: 15_000,
+      });
       await failedDraft
         .getByRole("textbox", { name: "Comment on selection" })
         .fill(failedScreenshotComment);

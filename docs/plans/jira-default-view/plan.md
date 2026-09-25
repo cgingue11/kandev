@@ -107,3 +107,9 @@ Focused backend tests pass. The six-file Jira web suite passes 47 tests. Web typ
 - Saved views and the default ID share one user-settings document. Deleting the default must clear both fields in one PATCH; failed writes must retain the prior state.
 - A custom JQL may refer to projects unavailable in another workspace. The page should preserve the saved query and show the existing Jira search error rather than silently rewrite it.
 - The picker is narrow on phones; star and delete targets must remain reachable without horizontal scrolling.
+
+## CI retry follow-up
+
+PR #3924 merged at 2026-09-25 14:00 UTC as `1b9c2de146d279be0702f3e6799832487a1fe819`. Its E2E retry report contained 11 tests that passed only after a retry. The follow-up remediation fixes Quick Chat's missing persisted model/config replay after a backend restart and corrects the taskless-routine test's confusion between the `RoutineRun` ID and the live Office run ID. It also fixes the mobile PR selector's overlap and close/reopen race, scopes recovery-proxy response drops to the intended session, waits for screenshot/file-tree resources, and rounds fractional mobile hit-target dimensions before asserting.
+
+On the latest `main`, the session-entry recovery, mobile PR re-request review, and mobile saved-view scenarios passed 9 runs with retries disabled. On the PR base, the taskless-routine scenario passed 10 runs with retries disabled and Quick Chat passed 3 runs with retries disabled. Other desktop scenarios from the retry report passed twice without retries. Web typecheck, focused ESLint, the backend persisted-model test, and `git diff --check` pass. The new follow-up PR CI is the remaining remote verification.

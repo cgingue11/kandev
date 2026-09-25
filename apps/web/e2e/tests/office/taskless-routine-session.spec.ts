@@ -34,31 +34,62 @@ test.describe("Office taskless routine sessions", () => {
     const sessions: string[] = [];
     for (let attempt = 1; attempt <= 2; attempt += 1) {
       const response = await officeApi.runRoutine(routineId);
-      expect(response.status).toBe(200);
+      if (response.status !== 200) {
+        throw new Error(
+          `manual routine fire returned ${response.status}: ${await response.text()}`,
+        );
+      }
+      const fired = (await response.json()) as { run: RoutineRun };
+      expect(fired.run.id).toBeTruthy();
+      const routineRunId = fired.run.id;
       await expect
         .poll(() => routineRuns(officeApi, routineId), { timeout: 20_000 })
         .toHaveLength(attempt);
+      await expect
+        .poll(async () =>
+          (await routineRuns(officeApi, routineId)).some((run) => run.id === routineRunId),
+        )
+        .toBe(true);
       let runId = "";
+      let observedRuns: unknown[] = [];
       await expect
         .poll(
           async () => {
             const result = await officeApi.listRuns(officeSeed.workspaceId);
-            const run = ((result.runs ?? []) as { id: string; reason: string }[]).find(
-              (candidate) => !seen.has(candidate.id) && candidate.reason.startsWith("routine_"),
+            observedRuns = (result.runs ?? []) as unknown[];
+            const run = (
+              observedRuns as {
+                id: string;
+                agent_profile_id?: string;
+                reason?: string;
+              }[]
+            ).find(
+              (candidate) =>
+                !seen.has(candidate.id) &&
+                candidate.agent_profile_id === officeSeed.agentId &&
+                candidate.reason?.startsWith("routine_"),
             );
             runId = run?.id ?? "";
             return runId;
           },
           { timeout: 30_000 },
         )
-        .not.toBe("");
+        .not.toBe("")
+        .catch((error) => {
+          throw new Error(
+            `No live office run found for routine fire ${JSON.stringify({ routineId, routineRunId, agentId: officeSeed.agentId, observedRuns })}`,
+            { cause: error },
+          );
+        });
       seen.add(runId);
       const detailPath = `/agents/${officeSeed.agentId}/runs/${runId}`;
       await expect
         .poll(
           async () => {
             const result = await officeApi.rawRequest("GET", detailPath);
-            expect(result.ok).toBe(true);
+            if (!result.ok) {
+              throw new Error(`run detail returned ${result.status}: ${await result.text()}`);
+            }
             const detail = await result.json();
             return detail.status;
           },
