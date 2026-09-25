@@ -48,7 +48,7 @@ export function prepareCompactRuntimeFixture({
       throw new Error(`Compact runtime E2E requires a built executable at ${sourcePath}`);
     }
   }
-  const runtimeIdentity = identity ?? currentBuildIdentity(launcherPath);
+  const runtimeIdentity = identity ?? currentBuildIdentity(launcherPath, sourceBinDir);
 
   fs.mkdirSync(path.join(bundleDir, "bin"), { recursive: true });
   const packagedLauncher = path.join(bundleDir, "bin", "kandev");
@@ -121,18 +121,39 @@ export function prepareCompactRuntimeFixture({
   };
 }
 
-function currentBuildIdentity(launcherPath: string): CompactRuntimeIdentity {
-  const commit = execFileSync("git", ["rev-parse", "HEAD"], {
-    cwd: REPO_ROOT,
-    encoding: "utf8",
-  }).trim();
+function currentBuildIdentity(launcherPath: string, sourceBinDir: string): CompactRuntimeIdentity {
   return {
     version: execFileSync(launcherPath, ["--version"], {
       cwd: REPO_ROOT,
       encoding: "utf8",
     }).trim(),
-    commit,
+    commit: buildSourceRevision(sourceBinDir) ?? gitHeadCommit(),
   };
+}
+
+function buildSourceRevision(sourceBinDir: string): string | undefined {
+  const identityPath = path.join(sourceBinDir, "e2e-build-identity.json");
+  if (!fs.existsSync(identityPath)) return undefined;
+
+  const identity = JSON.parse(fs.readFileSync(identityPath, "utf8")) as {
+    schema_version?: unknown;
+    source_revision?: unknown;
+  };
+  if (
+    identity.schema_version !== 1 ||
+    typeof identity.source_revision !== "string" ||
+    !/^[a-f0-9]{40}$/.test(identity.source_revision)
+  ) {
+    throw new Error(`Invalid E2E build identity at ${identityPath}`);
+  }
+  return identity.source_revision;
+}
+
+function gitHeadCommit(): string {
+  return execFileSync("git", ["rev-parse", "HEAD"], {
+    cwd: REPO_ROOT,
+    encoding: "utf8",
+  }).trim();
 }
 
 function findRepoRoot(startDir = process.cwd()): string {

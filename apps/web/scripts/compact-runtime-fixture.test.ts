@@ -54,12 +54,17 @@ describe("prepareCompactRuntimeFixture", () => {
     expect(fs.statSync(result.cachePath).mode & 0o111).not.toBe(0);
   });
 
-  it("uses the built launcher's version for a manifest-bearing test bundle", () => {
+  it("uses the built launcher's version and source revision for its manifest", () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "kandev-compact-runtime-identity-"));
     roots.push(root);
     const sourceBinDir = path.join(root, "source-bin");
     fs.mkdirSync(sourceBinDir);
     const expectedVersion = "0.0.0-e2e.fixture";
+    const expectedCommit = "b".repeat(40);
+    fs.writeFileSync(
+      path.join(sourceBinDir, "e2e-build-identity.json"),
+      JSON.stringify({ schema_version: 1, source_revision: expectedCommit, artifacts: {} }),
+    );
     for (const name of ["kandev", "agentctl", "agentctl-linux-amd64"]) {
       const contents =
         name === "kandev"
@@ -77,7 +82,7 @@ describe("prepareCompactRuntimeFixture", () => {
     });
 
     expect(result.version).toBe(expectedVersion);
-    expect(result.commit).toMatch(/^[a-f0-9]{40}$/);
+    expect(result.commit).toBe(expectedCommit);
     const manifest = JSON.parse(
       fs.readFileSync(path.join(result.bundleDir, "remote-helpers.json"), "utf8"),
     ) as { version: string; commit: string };
