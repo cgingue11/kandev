@@ -349,6 +349,9 @@ pub fn validate_runtime_dir(runtime_dir: &Path) -> Result<(), String> {
         &bin_dir.join(executable_name("agentctl")),
         "agentctl binary",
     )?;
+    if runtime_dir.join("remote-helpers.json").is_file() {
+        return Ok(());
+    }
     for &(name, label) in REMOTE_AGENTCTL_HELPERS.iter() {
         require_runtime_file(&bin_dir.join(name), label)?;
     }
@@ -994,6 +997,25 @@ mod tests {
             err.contains("agentctl linux/amd64 helper is missing"),
             "{err}"
         );
+    }
+
+    #[test]
+    fn manifest_bearing_standard_runtime_needs_only_host_binaries() {
+        let dir = temp_root("standard-runtime");
+        let bin = dir.join("bin");
+        fs::create_dir_all(&bin).expect("create bin");
+        fs::write(bin.join(executable_name("kandev")), b"stub").expect("write launcher");
+        fs::write(bin.join(executable_name("agentctl")), b"stub").expect("write agentctl");
+        fs::write(dir.join("remote-helpers.json"), b"{}").expect("write manifest");
+
+        validate_runtime_dir(&dir).expect("validate standard runtime");
+    }
+
+    #[test]
+    fn legacy_complete_runtime_still_validates_without_manifest() {
+        let dir = temp_runtime_dir("legacy-complete-runtime");
+
+        validate_runtime_dir(&dir).expect("validate legacy complete runtime");
     }
 
     #[test]

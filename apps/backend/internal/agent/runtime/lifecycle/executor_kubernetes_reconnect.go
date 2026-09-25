@@ -404,7 +404,7 @@ func (r *KubernetesExecutor) recreateMissingKubernetesPod(
 	if createErr != nil {
 		return nil, createErr
 	}
-	binary, err := r.resolveBinary(profile.Platform)
+	binary, err := r.resolveBinary(ctx, req, profile.Platform)
 	if err != nil {
 		return nil, fmt.Errorf("kubernetes lifecycle: resolve replacement agentctl: %w", err)
 	}

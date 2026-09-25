@@ -1,14 +1,17 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { test } from "node:test";
 
 import {
   HEALTH_REQUESTED_TIMEOUT_MS,
   ROOT_REQUESTED_TIMEOUT_MS,
   waitForFile,
+  writeFakeRuntime,
+  writeReleaseShapedRuntime,
 } from "./desktop-launch-smoke.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -78,6 +81,67 @@ test("waitForFile calls tick on every poll and surfaces a tick failure immediate
   });
 });
 
+test("desktop smoke runtime uses standard resources without bundled remote helpers", async () => {
+  await withTempDir(async (dir) => {
+    const runtimeDir = join(dir, "runtime");
+    const stateDir = join(dir, "state");
+    await mkdir(join(runtimeDir, "bin"), { recursive: true });
+    await mkdir(stateDir, { recursive: true });
+
+    await writeFakeRuntime(runtimeDir, stateDir);
+
+    const executables = (await readdir(join(runtimeDir, "bin"))).sort();
+    assert.deepEqual(
+      executables,
+      process.platform === "win32" ? ["agentctl.cmd", "kandev.cmd"] : ["agentctl", "kandev"],
+    );
+    const manifest = JSON.parse(await readFile(join(runtimeDir, "remote-helpers.json"), "utf8"));
+    assert.equal(manifest.variant, "standard");
+    assert.equal(manifest.schema_version, 1);
+  });
+});
+
+test("release-shaped Desktop runtime seeds the verified helper outside the standard bundle", async () => {
+  await withTempDir(async (dir) => {
+    const sourceBinDir = join(dir, "source-bin");
+    const runtimeDir = join(dir, "runtime");
+    const homeDir = join(dir, "home");
+    await mkdir(sourceBinDir, { recursive: true });
+    for (const name of [
+      "kandev",
+      "agentctl",
+      "agentctl-linux-amd64",
+      "agentctl-linux-arm64",
+      "agentctl-darwin-amd64",
+      "agentctl-darwin-arm64",
+    ]) {
+      await writeFile(join(sourceBinDir, name), `#!/bin/sh\n# ${name}\n`);
+      await chmod(join(sourceBinDir, name), 0o755);
+    }
+
+    const runtime = await writeReleaseShapedRuntime({
+      sourceBinDir,
+      runtimeDir,
+      homeDir,
+      version: "1.2.3",
+      commit: "a".repeat(40),
+    });
+
+    assert.deepEqual((await readdir(join(runtimeDir, "bin"))).sort(), ["agentctl", "kandev"]);
+    assert.equal(runtime.manifest.variant, "standard");
+    assert.equal(runtime.manifest.version, "1.2.3");
+    assert.equal(runtime.manifest.commit, "a".repeat(40));
+    const linuxHelper = runtime.manifest.helpers.find(
+      (helper) => helper.platform === "linux/amd64",
+    );
+    assert.ok(linuxHelper);
+    const cachedHelper = await readFile(runtime.cachePath);
+    assert.equal(createHash("sha256").update(cachedHelper).digest("hex"), linuxHelper.sha256);
+    assert.equal(cachedHelper.length, linuxHelper.size_bytes);
+    assert.ok((await stat(runtime.cachePath)).mode & 0o111, "cached helper must be executable");
+  });
+});
+
 test("health-requested timeout stays above the Rust backend's own HEALTH_TIMEOUT", async () => {
   const source = await readFile(backendRsPath, "utf8");
   const match = source.match(/const HEALTH_TIMEOUT: Duration = Duration::from_secs\((\d+)\);/);
@@ -111,17 +175,17 @@ test("Close Context owns Cmd/Ctrl+W without a native window-close fallback", asy
     /MENU_CLOSE_CONTEXT\s*=>\s*Some\(MenuAction::Emit\(CLOSE_CONTEXT_EVENT\)\)/,
   );
   assert.doesNotMatch(mainSource, /PredefinedMenuItem::close_window/);
-  assert.doesNotMatch(mainSource, /\.accelerator\("CmdOrCtrl\+KeyW"\)[\s\S]{0,160}shutdown_and_exit/);
+  assert.doesNotMatch(
+    mainSource,
+    /\.accelerator\("CmdOrCtrl\+KeyW"\)[\s\S]{0,160}shutdown_and_exit/,
+  );
 });
 
 test("generic app activation never consumes a pending notification route", async () => {
   const mainSource = await readFile(mainRsPath, "utf8");
 
   assert.doesNotMatch(mainSource, /emit_pending_notification_route/);
-  assert.match(
-    mainSource,
-    /tauri_plugin_single_instance::init\([\s\S]*activate_main_window/,
-  );
+  assert.match(mainSource, /tauri_plugin_single_instance::init\([\s\S]*activate_main_window/);
   assert.match(mainSource, /RunEvent::Reopen[\s\S]*activate_main_window/);
 });
 
