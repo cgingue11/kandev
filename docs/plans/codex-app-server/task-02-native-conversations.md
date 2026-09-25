@@ -89,7 +89,7 @@ git diff --check
 
 ## Risks
 
-Managed-runtime helpers and utility probes currently assume ACP.
+Native model probes must validate the selected managed Codex command and prepare its private npm prefix before spawn.
 Native gateway settings must fail before launch when their translation is not supported.
 
 ## Results
@@ -97,3 +97,5 @@ Native gateway settings must fail before launch when their translation is not su
 Implementation and targeted validation passed. Native lifecycle, MCP overlay, and approval mapping are covered by the fake-server adapter tests. Desktop and mobile profile E2E tests pass with deterministic model responses, and the feature flag remains off by default. The profile UI test checks that the model catalog resolves before capture.
 
 The Codex-specific chat E2E covers completed-turn forks. Fake-server adapter tests cover basic chat, resume, questions through Kandev's injected `ask_user_question_kandev` MCP tool, native `item/tool/requestUserInput` clarification requests, and approval flows. Native questions use Kandev's clarification controls; secret questions fail closed, and provider resolution closes pending clarifications. Desktop and phone E2E cover the choice-only clarification UI. The authenticated Codex 0.154.0 suite did not invoke a native question or approval request, so live compatibility remains unverified.
+
+A follow-up found that the native model probe rejected the actual managed command and did not prepare its trusted npm prefix. [The model-probe work order](../codex-model-probe/task-01-managed-command.md) fixes both paths without relaxing the allowlist. Its default and selected-version builder tests, fake-process model probe, prefix-preparation failure test, four-package race suite, backend lint, and documentation checks pass.

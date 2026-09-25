@@ -46,7 +46,7 @@ No authenticated Codex request ran. No browser layout changes or new UI controls
 
 ## PR fixup notes
 
-Backend CI identified repeated command literals in the resolver predicates. They are now shared constants; the utility race tests and CI-style changed-code lint pass after this correction. The first PR documentation-coverage run failed when GitHub code search returned HTTP 429 after exhausting its wait budget. Local documentation validation passed; coverage on the next pushed head remains to be verified.
+Backend CI identified repeated command literals in the resolver predicates. They are now shared constants; the utility race tests and CI-style changed-code lint pass after this correction. The first PR documentation-coverage run failed when GitHub code search returned HTTP 429 after exhausting its wait budget. The documentation-coverage and backend-static-check jobs passed on the subsequent source-fix push; its full PR snapshot had 60 passed, 0 failed, and 0 pending checks, with no open review threads. A plan-only reconciliation follows, so its own PR check snapshot must be verified separately.
 
 ## Risks
 
