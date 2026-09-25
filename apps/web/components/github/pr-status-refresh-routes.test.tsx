@@ -292,6 +292,7 @@ describe("multi-PR accessible status", () => {
     renderWithStore(taskState([failed, passing], true), <PRTopbarButton />);
 
     const button = screen.getByTestId(TOPBAR_BUTTON_TESTID);
+    expect(ariaLabel(button)).toContain(button.textContent);
     expect(ariaLabel(button)).toContain(CHECKS_FAILED);
     expect(ariaLabel(button)).toContain(CHECKS_PASSED);
     expect(ariaLabel(button)).toContain(CONFLICTS);

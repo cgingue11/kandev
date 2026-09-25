@@ -51,7 +51,7 @@ function prTopbarAccessibleStatus(pr: TaskPR, t: ReturnType<typeof useTranslatio
 
 function multiPRAccessibleStatus(prs: TaskPR[], t: ReturnType<typeof useTranslation>["t"]): string {
   const parts = [
-    t("github:pullRequestStatuses", { count: prs.length }),
+    `${prs.length} ${t("github:prs")}`,
     ...new Set(prs.flatMap((pr) => getPRStatusAccessibleLabels(pr, t))),
   ];
   if (hasAnyPRMergeConflict(prs)) parts.push(t("github:conflicts"));
