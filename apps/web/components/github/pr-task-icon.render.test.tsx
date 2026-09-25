@@ -302,6 +302,103 @@ describe("PRTaskIcon accessible status", () => {
   });
 });
 
+describe("PRTaskIcon live status accessibility", () => {
+  it.each(["merged", "closed"] as const)(
+    "does not announce stale check or review state for a %s PR",
+    (state) => {
+      renderWithStore(
+        {
+          taskPRs: {
+            byTaskId: {
+              [TASK_ID]: [
+                makePR({ state, checks_state: "failure", review_state: "changes_requested" }),
+              ],
+            },
+          },
+        },
+        <PRTaskIcon taskId={TASK_ID} />,
+      );
+
+      const label = screen
+        .getByTestId(`pr-task-icon-${TASK_ID}`)
+        .getAttribute(ARIA_LABEL_ATTRIBUTE);
+      expect(label).not.toContain("Checks failed");
+      expect(label).not.toContain("Changes requested");
+    },
+  );
+
+  it("reports the number of checks still running when counts are available", () => {
+    renderWithStore(
+      {
+        taskPRs: {
+          byTaskId: {
+            [TASK_ID]: [makePR({ checks_state: "pending", checks_total: 7, checks_passing: 2 })],
+          },
+        },
+      },
+      <PRTaskIcon taskId={TASK_ID} />,
+    );
+
+    const label = screen.getByTestId(`pr-task-icon-${TASK_ID}`).getAttribute(ARIA_LABEL_ATTRIBUTE);
+    expect(label).toContain("5 pending");
+  });
+
+  it("announces count-only checks when the rollup state is empty", () => {
+    renderWithStore(
+      {
+        taskPRs: {
+          byTaskId: {
+            [TASK_ID]: [
+              makePR({
+                checks_total: 4,
+                checks_passing: 2,
+              }),
+            ],
+          },
+        },
+      },
+      <PRTaskIcon taskId={TASK_ID} />,
+    );
+
+    const label = screen.getByTestId(`pr-task-icon-${TASK_ID}`).getAttribute(ARIA_LABEL_ATTRIBUTE);
+    expect(label).toContain("2 pending");
+  });
+
+  it("announces a branch-protection blocker after checks pass", () => {
+    renderWithStore(
+      {
+        taskPRs: {
+          byTaskId: {
+            [TASK_ID]: [
+              makePR({
+                checks_state: "success",
+                checks_total: 4,
+                checks_passing: 4,
+                mergeable_state: "blocked",
+                review_state: "",
+              }),
+            ],
+          },
+        },
+      },
+      <PRTaskIcon taskId={TASK_ID} />,
+    );
+
+    const label = screen.getByTestId(`pr-task-icon-${TASK_ID}`).getAttribute(ARIA_LABEL_ATTRIBUTE);
+    expect(label).toContain("Blocked by branch protection");
+  });
+
+  it("announces when an open PR is behind its base branch", () => {
+    renderWithStore(
+      { taskPRs: { byTaskId: { [TASK_ID]: [makePR({ mergeable_state: "behind" })] } } },
+      <PRTaskIcon taskId={TASK_ID} />,
+    );
+
+    const label = screen.getByTestId(`pr-task-icon-${TASK_ID}`).getAttribute(ARIA_LABEL_ATTRIBUTE);
+    expect(label).toContain("Behind base");
+  });
+});
+
 describe("PRTaskIcon automation indicators", () => {
   it("shows the conflict warning with both automation dots on a compact row", () => {
     renderWithStore(
@@ -322,6 +419,32 @@ describe("PRTaskIcon automation indicators", () => {
     expect(icon.querySelector('[data-testid="pr-task-automation-auto-fix"]')).not.toBeNull();
     expect(icon.querySelector('[data-testid="pr-task-automation-auto-merge"]')).not.toBeNull();
     expect(icon.getAttribute(ARIA_LABEL_ATTRIBUTE)).toContain("Conflicts");
+  });
+
+  it("labels the PR info fallback with localized bounded status and automation", () => {
+    renderWithStore(
+      {},
+      <TaskContributionIcons
+        prInfo={{
+          number: 8,
+          state: OPEN_STATUS_LABEL,
+          aggregateState: "pending",
+          hasMergeConflicts: true,
+          autoFixEnabled: true,
+          autoMergeEnabled: true,
+        }}
+      />,
+    );
+
+    const icon = screen.getByTestId("pr-task-icon");
+    const label = icon.getAttribute(ARIA_LABEL_ATTRIBUTE);
+    expect(icon.getAttribute("role")).toBe("img");
+    expect(label).toContain("Pull request #8 status");
+    expect(label).toContain("Open");
+    expect(label).toContain("Pending");
+    expect(label).toContain("Conflicts");
+    expect(label).toContain("auto-fix enabled");
+    expect(label).toContain("auto-merge enabled");
   });
   // @covers AC-INTEGRATIONS-GITHUB-PR-MERGE-QUEUE-002.10
   it("renders independent automation dots from the bounded row projection", () => {

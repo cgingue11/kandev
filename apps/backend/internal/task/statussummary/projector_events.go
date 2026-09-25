@@ -3,6 +3,7 @@ package statussummary
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"strings"
 	"time"
 
@@ -835,21 +836,15 @@ func (p *Projector) applyPREventLocked(state *projectionState, data map[string]i
 	if value, ok := intValue(data["required_reviews"]); ok {
 		observation.requiredReviews = maxInt(value, 0)
 	}
-	if existing, ok := state.prs[key]; ok {
-		previousConflict := existing.hasMergeConflicts
-		nextConflict := observation.hasMergeConflicts
-		existing.hasMergeConflicts = nil
-		observation.hasMergeConflicts = nil
-		unchanged := existing == observation &&
-			(previousConflict == nil && nextConflict == nil ||
-				previousConflict != nil && nextConflict != nil && *previousConflict == *nextConflict)
-		observation.hasMergeConflicts = nextConflict
-		if unchanged {
-			return false
-		}
+	if existing, ok := state.prs[key]; ok && pullRequestObservationsEqual(existing, observation) {
+		return false
 	}
 	state.prs[key] = observation
 	return true
+}
+
+func pullRequestObservationsEqual(left, right pullRequestObservation) bool {
+	return reflect.DeepEqual(left, right)
 }
 
 func boolPointerField(data map[string]interface{}, key string) *bool {

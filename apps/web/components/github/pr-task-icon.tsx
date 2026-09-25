@@ -117,15 +117,24 @@ export function getPRStatusAccessibleLabels(
   else if (isPRDraft(pr)) labels.push(t("github:draft"));
   else if (pr.state === "open") labels.push(t("common:open"));
 
-  if (pr.checks_state === "failure") labels.push(t("github:checksFailed"));
-  else if (pr.checks_state === "success") labels.push(t("github:checksPassed"));
-  else if (pr.checks_state === "pending") {
-    labels.push(t("github:checksPendingCount", { count: 1 }));
-  }
+  if (pr.state === "open") {
+    if (pr.checks_state === "failure") labels.push(t("github:checksFailed"));
+    else if (pr.checks_state === "success") labels.push(t("github:checksPassed"));
+    else if (hasPRChecksInProgressForDisplay(pr)) {
+      const pendingCount =
+        pr.checks_total > 0 ? Math.max(1, pr.checks_total - pr.checks_passing) : 1;
+      labels.push(t("github:checksPendingCount", { count: pendingCount }));
+    }
 
-  if (pr.review_state === "changes_requested") labels.push(t("github:changesRequested"));
-  else if (pr.review_state === "approved") labels.push(t("github:approved"));
-  else if (pr.review_state === "pending") labels.push(t("github:pendingReview"));
+    if (pr.mergeable_state === "behind") labels.push(t("github:behindBase"));
+    else if (isPRWaitingOnBranchProtection(pr)) {
+      labels.push(t("github:blockedByBranchProtection"));
+    }
+
+    if (pr.review_state === "changes_requested") labels.push(t("github:changesRequested"));
+    else if (pr.review_state === "approved") labels.push(t("github:approved"));
+    else if (pr.review_state === "pending") labels.push(t("github:pendingReview"));
+  }
   return labels;
 }
 
@@ -177,7 +186,7 @@ function compactPRAggregateLabel(
   }
 }
 
-function getCompactPRStatusAccessibleLabels(
+export function getCompactPRStatusAccessibleLabels(
   prInfo: TaskPRInfo,
   t: ReturnType<typeof useTranslation>["t"],
 ): string[] {

@@ -54,6 +54,7 @@ export function PRStatusGlyph({
         autoFixEnabled={autoFixEnabled}
         autoMergeEnabled={autoMergeEnabled}
       />
+      {/* Reserve top-right for conflict warnings; auto-merge dots occupy lower-right. */}
       {hasMergeConflicts && (
         <span
           data-testid="pr-merge-conflict-warning"

@@ -149,11 +149,15 @@ test.describe("PR top-bar CI popover", () => {
     );
     await associatePR(apiClient, seed.taskId, {
       checks_state: "failure",
-      mergeable_state: "dirty",
+      mergeable_state: "blocked",
+      has_merge_conflicts: true,
       checks_total: 2,
       checks_passing: 1,
       review_state: "changes_requested",
     });
+    await expect
+      .poll(async () => (await apiClient.getTaskPR(seed.taskId))?.has_merge_conflicts)
+      .toBe(true);
     const session = await openTaskAndWait(testPage, seed, title);
     const badge = session.prTopbarButton();
     await expect(badge).toHaveText("#42");

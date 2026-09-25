@@ -98,3 +98,9 @@ result into a confirmed false. SQLite migration and round-trip paths must agree.
 The GitHub sync/store, status-summary, and backend app packages pass. Tests
 cover draft plus dirty, initial draft association, unknown preservation,
 authoritative clearing, and open-PR aggregation.
+
+PR fixup also covers conflict evidence carried by passive draft snapshots and
+conflict updates and clearing on unwatched PRs without replacing their richer
+check and review aggregates. The mock provider also carries explicit conflict
+observations through synthetic PR hydration. Verification passed with
+`cd apps/backend && go test ./internal/github ./internal/task/statussummary ./internal/backendapp`.

@@ -865,6 +865,8 @@ func (c *MockController) ensureMockPRForRequest(ctx context.Context, req *associ
 		BaseBranch:                            req.BaseBranch,
 		AuthorLogin:                           req.AuthorLogin,
 		MergeableState:                        req.MergeableState,
+		HasMergeConflicts:                     req.HasMergeConflicts,
+		HasMergeConflictsObserved:             req.HasMergeConflicts != nil,
 		RepoOwner:                             req.Owner,
 		RepoName:                              req.Repo,
 		Additions:                             req.Additions,

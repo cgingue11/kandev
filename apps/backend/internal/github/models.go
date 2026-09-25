@@ -297,6 +297,10 @@ type PR struct {
 	Draft               bool   `json:"draft"`
 	Mergeable           bool   `json:"mergeable"`
 	MergeableState      string `json:"mergeable_state"` // clean, blocked, behind, dirty, has_hooks, unstable, draft, unknown, ""
+	// HasMergeConflicts is the nullable raw value carried by a status snapshot.
+	HasMergeConflicts *bool `json:"-"`
+	// HasMergeConflictsObserved distinguishes an explicit nil observation from no snapshot override.
+	HasMergeConflictsObserved bool `json:"-"`
 	// The mock provider uses these optional fields to reproduce GraphQL merge
 	// queue observations through its REST-shaped status path. Production REST
 	// payloads leave them empty; GraphQL remains the authoritative queue source.

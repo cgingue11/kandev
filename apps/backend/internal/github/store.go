@@ -3100,7 +3100,7 @@ func (s *Store) RestoreTaskPR(ctx context.Context, taskID, repositoryID string, 
 			auto_merge_observed_at = COALESCE(auto_merge_observed_at, ?), workflow_attention = ?
 		 WHERE task_id = ? AND repository_id = ? AND pr_number = ?`),
 		pr.RepoOwner, pr.RepoName, pr.HTMLURL, pr.Title, pr.HeadBranch, pr.BaseBranch, headSHA, pr.AuthorLogin,
-		pr.State, effectivePRMergeableState(pr), observedPRMergeConflict(outgoing.HasMergeConflicts, pr.MergeableState), queue.state, queue.position, queue.entryID, queue.entryHeadSHA, queue.estimate,
+		pr.State, effectivePRMergeableState(pr), observedTaskPRMergeConflict(outgoing.HasMergeConflicts, pr, pr.MergeableState), queue.state, queue.position, queue.entryID, queue.entryHeadSHA, queue.estimate,
 		queue.lastRemovalID, queue.lastRemovedAt, queue.lastRemovalReason, queue.lastRemovalBeforeSHA,
 		pr.Additions, pr.Deletions, pr.MergedAt, pr.ClosedAt, time.Now().UTC(),
 		isDraft, changedFiles, mergedByLogin, closedByLogin, autoMergeObservedAt,
@@ -3267,7 +3267,7 @@ func (s *Store) ReplaceTaskPR(ctx context.Context, tp *TaskPR, status *PRStatus)
 		resolveTaskPROutcomeFields(outgoing, status)
 	if status != nil && status.PR != nil {
 		tp.MergeableState = effectivePRMergeableState(status.PR)
-		tp.HasMergeConflicts = observedPRMergeConflict(outgoing.HasMergeConflicts, status.PR.MergeableState)
+		tp.HasMergeConflicts = observedTaskPRMergeConflict(outgoing.HasMergeConflicts, status.PR, status.PR.MergeableState)
 	}
 	queueSource := tp
 	if outgoing.ID != "" {

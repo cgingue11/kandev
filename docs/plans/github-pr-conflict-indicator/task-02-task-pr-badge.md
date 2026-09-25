@@ -139,3 +139,25 @@ build, and specification validation pass. Desktop single- and multi-PR
 Playwright scenarios pass. Phone drawer and task-switcher scenarios pass,
 including conflict and automation coexistence, detail disclosure, focus
 return, and conflict cleanup.
+
+PR fixup keeps checks and review claims on fully hydrated PRs only while they
+are open. It also announces known pending-check counts, count-only check
+progress, branch-protection blocking, and behind-base status. The compact
+fallback exposes localized status, conflict, and automation labels while
+keeping bounded wording. Verification passed with
+`cd apps/web && pnpm exec vitest run components/github/pr-task-icon.render.test.tsx components/github/pr-task-icon.test.ts components/github/pr-task-icon-conflicts.test.ts`
+(95 tests), `pnpm run typecheck`, ESLint on the changed components and PR specs,
+and `pnpm run i18n:check && pnpm run i18n:ratchet`. The documentation-coverage
+test suite passed (82 tests), and all specifications passed validation.
+
+PR fixup browser checks passed in the managed harness:
+
+- `pnpm e2e:run --project chromium tests/pr/pr-topbar-popover.spec.ts -- --grep 'single badge shows a conflict bubble'`
+- `pnpm e2e:run --project chromium tests/pr/pr-status-badge.spec.ts -- --grep 'shows and clears one conflict warning'`
+- `pnpm e2e:run --project mobile-chrome tests/pr/mobile-pr-sidebar-automation-indicators.spec.ts`
+
+The top-bar scenario confirms an explicit conflict observation survives mock
+PR hydration. The cross-surface scenario confirms conflict appears and clears
+in the task sidebar, Home card, and pipeline row. The phone scenario confirms
+automation indicators, conflict state, detail disclosure, and focus behavior
+remain intact.

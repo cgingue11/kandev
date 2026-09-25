@@ -629,7 +629,7 @@ func (s *Service) associatePRWithTaskForSession(
 		MergedAt:          pr.MergedAt,
 		ClosedAt:          pr.ClosedAt,
 		Source:            source,
-		HasMergeConflicts: observedPRMergeConflict(nil, pr.MergeableState),
+		HasMergeConflicts: observedTaskPRMergeConflict(nil, pr, pr.MergeableState),
 	}
 	// ReplaceTaskPR upserts the row matching (task, repository, pr_number)
 	// and resolves the five outcome-attribution columns itself, inside its
@@ -1178,6 +1178,8 @@ func prStatusFromTaskPRSnapshot(snapshot *TaskPR) *PRStatus {
 		pr.Draft = *snapshot.IsDraft
 		pr.IsDraftObserved = true
 	}
+	pr.HasMergeConflicts = snapshot.HasMergeConflicts
+	pr.HasMergeConflictsObserved = true
 	return &PRStatus{
 		PR:                                    pr,
 		WorkflowAttention:                     snapshot.WorkflowAttention,
@@ -1517,7 +1519,7 @@ func (s *Service) prepareTaskPRSyncState(ctx context.Context, tp *TaskPR, status
 		checksTotal: nextChecksTotal, checksPassing: nextChecksPassing,
 		unresolved: nextUnresolved, reviewCount: nextReviewCount, pendingReviewCount: nextPendingReviewCount,
 		requiredReviews: nextRequiredReviews, baseBranch: nextBaseBranch, mergeableState: nextMergeableState,
-		hasMergeConflicts: observedPRMergeConflict(tp.HasMergeConflicts, status.MergeableState),
+		hasMergeConflicts: observedTaskPRMergeConflict(tp.HasMergeConflicts, status.PR, status.MergeableState),
 		mergeQueueState:   queue.state, mergeQueuePosition: queue.position, mergeQueueEstimate: queue.estimate,
 		mergeQueueEntryID: queue.entryID, mergeQueueEntryHeadSHA: queue.entryHeadSHA,
 		mergeQueueLastRemovalID: queue.lastRemovalID, mergeQueueLastRemovalReason: queue.lastRemovalReason,
@@ -1542,6 +1544,18 @@ func observedPRMergeConflict(previous *bool, mergeableState string) *bool {
 		value := false
 		return &value
 	}
+}
+
+// observedTaskPRMergeConflict prefers independent snapshot evidence over effective mergeability.
+func observedTaskPRMergeConflict(previous *bool, pr *PR, mergeableState string) *bool {
+	if pr != nil && pr.HasMergeConflictsObserved {
+		if pr.HasMergeConflicts == nil {
+			return previous
+		}
+		value := *pr.HasMergeConflicts
+		return &value
+	}
+	return observedPRMergeConflict(previous, mergeableState)
 }
 
 func effectivePRMergeableState(pr *PR) string {
