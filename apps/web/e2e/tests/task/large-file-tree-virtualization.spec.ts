@@ -1,4 +1,5 @@
 import { test, expect } from "../../fixtures/test-base";
+import { watchWs } from "../../helpers/causal-waits";
 import {
   LARGE_FILE_TREE_FOLDER,
   LARGE_FILE_TREE_COUNT,
@@ -19,6 +20,7 @@ test.describe("Large file tree virtualization", () => {
     backend,
   }) => {
     test.setTimeout(120_000);
+    const gateway = watchWs(testPage);
     const session = await setupLargeFileTreeTask({
       testPage,
       apiClient,
@@ -27,9 +29,11 @@ test.describe("Large file tree virtualization", () => {
       title: "Large file tree virtualization",
     });
 
+    const treeResponse = gateway.waitForResponse("workspace.tree.get");
     await session.clickTab("Files");
+    await treeResponse;
     const folder = session.fileTreeNode(LARGE_FILE_TREE_FOLDER);
-    await expect(folder).toBeVisible({ timeout: 15_000 });
+    await expect(folder).toBeVisible();
     await expect(session.fileTreeNode(largeFileTreePath(0))).toHaveCount(0);
 
     await folder.click();

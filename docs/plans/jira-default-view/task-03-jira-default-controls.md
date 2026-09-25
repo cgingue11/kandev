@@ -162,3 +162,9 @@ PASS
 ```
 
 The live Office run-list response now includes its existing causation ID so the E2E can require an exact match with the RoutineRun returned by the manual fire. `TestRunToListItemPreservesCausationID` covers this response contract. The corrected PR head's CI will provide final shared-runner confirmation.
+
+## PR #3936 CI retry remediation
+
+The PR #3936 retry artifact reported nine retry-only E2E failures. The fixes add causal waits for cancellation, file-tree, reload readiness, and persisted responses; select the seeded repository by ID; open the created task directly for the terminal check; and tolerate subpixel representation at the 44px touch-target boundary. A backend regression reproduces worktree cleanup failing when a checkout disappears between the path check and `git rev-parse`; cleanup now uses the branch commit only after confirming that disappearance.
+
+Focused no-retry repetitions pass for all changed desktop and mobile cases (10 desktop, 8 mobile). `go test ./internal/worktree ./internal/task/service ./internal/backendapp`, web typecheck, focused ESLint, E2E sleep ratchet, and `git diff --check` pass. The updated PR head's CI and retry artifact remain the final shared-runner verification.
