@@ -73,7 +73,7 @@ closing one leaves the others running.
    and primary grid color. The grid becomes static for reduced motion and is
    absent on a failure or conflict screen.
 5. Conflict copy identifies the locked resource for in-home SQLite, external
-   SQLite, and PostgreSQL. A failed test launch displays its allocated home,
+   SQLite, and PostgreSQL. A failed test launch displays and retains its home,
    including at a narrow window width.
 
 ## ASCII UI preview
@@ -159,7 +159,11 @@ node scripts/validate-public-docs.mjs
 
 The rendered startup check covers light, dark, and reduced-motion first paint,
 resource-specific conflict copy, retained failure path, narrow-window
-containment, nine grid cells, and hiding the grid after failure.
+containment, nine grid cells, and hiding the grid after failure. Conflict and
+failure panels announce terminal state assertively; launch-action errors are
+assertive while starting feedback remains polite. Traditional Chinese locale
+tags map to the matching Hong Kong or Taiwan catalog, with a Traditional
+Chinese fallback for other `zh-Hant` tags.
 
 ## Files likely touched
 
@@ -205,3 +209,10 @@ the localized data-folder rule, preserves the database rule for database
 targets, and displays the failed test home's path at a 390px viewport. Public
 docs validation passed (62 validator tests and 47 published pages). Native
 macOS titlebar behavior is tracked in Task 04.
+
+The review follow-up adds assertive terminal announcements and assertive
+temporary-launch errors, plus Traditional Chinese script-tag selection. The
+smoke tests also verify non-OK retry backoff. The shared Home confirmation
+control keeps its accessible name stable and exposes a separate polite status
+message while saving; the existing mobile discovery flow retains the same
+button and touch target.

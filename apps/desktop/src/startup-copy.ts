@@ -36,8 +36,9 @@ function resolveStartupLocale(languages: readonly string[]): StartupLocale {
     if (normalized.startsWith("pt")) return "pt-pt";
     if (normalized.startsWith("ja")) return "ja";
     if (normalized.startsWith("zh")) {
-      if (/^zh-(hk|mo)(-|$)/.test(normalized)) return "zh-hk";
-      if (/^zh-(tw)(-|$)/.test(normalized)) return "zh-tw";
+      if (/^zh-(?:hant-)?(?:hk|mo)(-|$)/.test(normalized)) return "zh-hk";
+      if (/^zh-(?:hant-)?tw(-|$)/.test(normalized)) return "zh-tw";
+      if (/^zh-hant(?:-|$)/.test(normalized)) return "zh-tw";
       return "zh-cn";
     }
   }

@@ -96,10 +96,16 @@ across desktop processes and remain inactive in test mode.
 
 ## Results
 
-Passed `cargo test --features desktop-runtime --lib` (81 tests),
+Passed `cargo test --features desktop-runtime --lib` (97 tests),
 `cargo check --features desktop-runtime --bin kandev-desktop`, and
-`cargo fmt --all -- --check` from `apps/desktop/src-tauri`. The launcher now
-returns a nonzero exit after forced, failed, nonzero, or uncertain descendant
-shutdown. Focused launcher regressions and `go test ./internal/launcher
--count=1` pass; `make lint` reports zero issues. The Linux packaged desktop
-smoke also passes after rebuilding `apps/backend/bin/kandev`.
+`cargo fmt --all -- --check` from `apps/desktop/src-tauri`. The desktop now
+waits beyond the launcher's graceful and forced-cleanup bounds and removes a
+temporary home only when the launcher exits successfully. Startup conflict
+classification waits for captured output streams to finish before using a
+typed marker. Focused tests cover nonzero launcher exits, retained homes,
+shutdown timing, delayed stderr, and retention after initial-navigation
+failure. The launcher returns nonzero after forced, failed, nonzero, or
+uncertain descendant shutdown. Focused launcher regressions and
+`go test ./internal/launcher -count=1` pass; `make lint` reports zero issues.
+The Linux packaged desktop smoke also passes after rebuilding
+`apps/backend/bin/kandev`.

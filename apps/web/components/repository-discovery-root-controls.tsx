@@ -123,8 +123,13 @@ export function RepositoryDiscoveryRootControls({
               aria-busy={isConfirmingHomeDiscovery}
               onClick={onConfirmHomeDiscovery}
             >
-              {t(isConfirmingHomeDiscovery ? "common:loading" : "workspaces:continueHomeDiscovery")}
+              {t("workspaces:continueHomeDiscovery")}
             </Button>
+            {isConfirmingHomeDiscovery && (
+              <span className="sr-only" role="status">
+                {t("common:loading")}
+              </span>
+            )}
           </div>
         </div>
       )}

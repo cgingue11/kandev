@@ -223,6 +223,7 @@ async function startTemporaryInstance() {
     await invoke("start_temporary_test_instance");
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
+    actionFeedback.setAttribute("aria-live", "assertive");
     setText(actionFeedback, `${text("spawnError")} ${detail}`);
   } finally {
     temporaryButton.disabled = false;

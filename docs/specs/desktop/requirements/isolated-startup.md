@@ -77,8 +77,9 @@ desktop test instances run concurrently without sharing mutable runtime state.
   crashes, the directory shall be left intact rather than deleting potentially
   live data. Another test window and the normal instance shall remain running.
 - **AC-DESKTOP-ISOLATED-STARTUP-002.4:** A failed test-window start shall show
-  its own error and directory path without changing the conflict launcher or
-  another running instance. The launcher shall allow another explicit attempt.
+  its own error and retained directory path without changing the conflict
+  launcher or another running instance. The launcher shall allow another
+  explicit attempt.
 - **AC-DESKTOP-ISOLATED-STARTUP-002.5:** Normal desktop launches shall retain
   the existing shared-data and single-instance focus behavior, including an
   explicit `KANDEV_HOME_DIR`. Temporary data isolation shall not silently

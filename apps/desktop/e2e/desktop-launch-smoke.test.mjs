@@ -111,6 +111,23 @@ test("waitForFile calls tick on every poll and surfaces a tick failure immediate
   });
 });
 
+test("waitForHttp backs off after an unsuccessful HTTP response", async () => {
+  const originalFetch = globalThis.fetch;
+  const pauses = [];
+  let attempts = 0;
+  globalThis.fetch = async () => ({ ok: ++attempts > 1 });
+  try {
+    await waitForHttp("http://unused.test", 1_000, undefined, async (duration) => {
+      pauses.push(duration);
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(attempts, 2);
+  assert.deepEqual(pauses, [100]);
+});
+
 test("health-requested timeout stays above the Rust backend's own HEALTH_TIMEOUT", async () => {
   const source = await readFile(backendRsPath, "utf8");
   const match = source.match(/const HEALTH_TIMEOUT: Duration = Duration::from_secs\((\d+)\);/);
@@ -197,13 +214,22 @@ test("startup conflict UI keeps the database rule prominent and isolates the tem
   assert.match(source, /temporaryAction/);
 });
 
+test("terminal startup panels announce conflict and failure assertively", async () => {
+  const html = await readFile(startupHtmlPath, "utf8");
+
+  assert.match(html, /<section[^>]*id="conflict-panel"[^>]*aria-live="assertive"/s);
+  assert.match(html, /<section[^>]*id="failure-panel"[^>]*aria-live="assertive"/s);
+});
+
 test("the recovery command is granted only to the bundled startup page and Vite startup origin", async () => {
-  const [configSource, capabilitySource] = await Promise.all([
+  const [configSource, capabilitySource, defaultCapabilitySource] = await Promise.all([
     readFile(tauriConfigPath, "utf8"),
     readFile(startupCapabilityPath, "utf8"),
+    readFile(resolve(desktopRoot, "src-tauri/capabilities/default.json"), "utf8"),
   ]);
   const config = JSON.parse(configSource);
   const capability = JSON.parse(capabilitySource);
+  const defaultCapability = JSON.parse(defaultCapabilitySource);
 
   assert.ok(config.app.security.capabilities.includes("startup"));
   assert.equal(config.app.windows[0].decorations, true);
@@ -213,6 +239,7 @@ test("the recovery command is granted only to the bundled startup page and Vite 
   assert.deepEqual(capability.remote.urls, ["http://127.0.0.1:1420"]);
   assert.deepEqual(capability.windows, ["main"]);
   assert.equal(capability.local, true);
+  assert.ok(defaultCapability.permissions.includes("core:window:allow-start-dragging"));
 });
 
 test("first-paint and loaded startup styles use Kandev theme colors and the nine-square grid", async () => {
@@ -304,6 +331,25 @@ test(
       assert.match(firstPaint.primary, /oklch|rgb|color/i);
       await firstPaintContext.close();
 
+      for (const [language, expectedLocale] of [
+        ["zh-Hant-HK", "zh-hk"],
+        ["zh-Hant-MO", "zh-hk"],
+        ["zh-Hant-TW", "zh-tw"],
+        ["zh-Hant", "zh-tw"],
+      ]) {
+        const localeContext = await browser.newContext();
+        await localeContext.addInitScript((languages) => {
+          Object.defineProperty(navigator, "languages", {
+            configurable: true,
+            value: languages,
+          });
+        }, [language]);
+        const localePage = await localeContext.newPage();
+        await localePage.goto("http://127.0.0.1:4178", { waitUntil: "networkidle" });
+        assert.equal(await localePage.locator("html").getAttribute("lang"), expectedLocale);
+        await localeContext.close();
+      }
+
       const lightContext = await browser.newContext({
         colorScheme: "light",
         reducedMotion: "reduce",
@@ -317,6 +363,9 @@ test(
         window.__TAURI_INTERNALS__ = {
           invoke: async (command) => {
             (window.__startupInvocations ??= []).push(command);
+            if (command === "start_temporary_test_instance") {
+              throw new Error("temporary launcher unavailable");
+            }
           },
         };
       });
@@ -423,6 +472,14 @@ test(
         "start_temporary_test_instance",
         "start_temporary_test_instance",
       ]);
+      assert.equal(
+        await lightPage.locator("#temporary-action-feedback").getAttribute("aria-live"),
+        "assertive",
+      );
+      assert.match(
+        await lightPage.locator("#temporary-action-feedback").innerText(),
+        /temporary launcher unavailable/,
+      );
       await lightContext.close();
     } finally {
       await browser?.close();
@@ -431,16 +488,19 @@ test(
   },
 );
 
-async function waitForHttp(url, timeoutMs, tick) {
+async function waitForHttp(url, timeoutMs, tick, pause = delay) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     tick?.();
+    let ready = false;
     try {
       const response = await fetch(url);
-      if (response.ok) return;
+      ready = response.ok;
     } catch {
-      await delay(100);
+      // Retry after the common delay below.
     }
+    if (ready) return;
+    await pause(100);
   }
   throw new Error(`Timed out waiting for ${url}`);
 }

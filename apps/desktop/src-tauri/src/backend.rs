@@ -21,6 +21,8 @@ use url::Url;
 use tauri::{AppHandle, Manager, State, WebviewWindow};
 
 const HEALTH_TIMEOUT: Duration = Duration::from_secs(60);
+// Keep this above the Go launcher's graceful stop and forced-exit bounds.
+const DESKTOP_LAUNCHER_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(80);
 const LOOPBACK_HOST: &str = "127.0.0.1";
 const DEFAULT_DESKTOP_PORT: u16 = 38430;
 const DESKTOP_PORT_ENV: &str = "KANDEV_DESKTOP_PORT";
@@ -46,12 +48,14 @@ const REMOTE_AGENTCTL_HELPERS: [(&str, &str); 4] = [
 pub struct BackendState {
     child: Arc<Mutex<Option<Child>>>,
     startup_output: Arc<Mutex<StartupOutput>>,
+    startup_output_readers: Arc<Mutex<Vec<std::sync::mpsc::Receiver<()>>>>,
     startup_conflict: Arc<Mutex<Option<StartupConflict>>>,
     shutdown_started: Arc<AtomicBool>,
     owned_origin: Arc<Mutex<Option<String>>>,
     temporary_test: bool,
     temporary_home: Arc<Mutex<Option<TemporaryHome>>>,
     temporary_home_error: Arc<Mutex<Option<String>>>,
+    retain_temporary_home: Arc<AtomicBool>,
     backend_ready: Arc<AtomicBool>,
 }
 
@@ -60,12 +64,14 @@ impl Default for BackendState {
         Self {
             child: Arc::new(Mutex::new(None)),
             startup_output: Arc::new(Mutex::new(StartupOutput::default())),
+            startup_output_readers: Arc::new(Mutex::new(Vec::new())),
             startup_conflict: Arc::new(Mutex::new(None)),
             shutdown_started: Arc::new(AtomicBool::new(false)),
             owned_origin: Arc::new(Mutex::new(None)),
             temporary_test: false,
             temporary_home: Arc::new(Mutex::new(None)),
             temporary_home_error: Arc::new(Mutex::new(None)),
+            retain_temporary_home: Arc::new(AtomicBool::new(false)),
             backend_ready: Arc::new(AtomicBool::new(false)),
         }
     }
@@ -214,7 +220,11 @@ impl BackendState {
     }
 
     fn cleanup_temporary_home_after_stop(&self, clean_stop: bool) -> bool {
-        if !self.temporary_test || !clean_stop || !self.backend_ready.load(Ordering::SeqCst) {
+        if !self.temporary_test
+            || !clean_stop
+            || !self.backend_ready.load(Ordering::SeqCst)
+            || self.retain_temporary_home.load(Ordering::SeqCst)
+        {
             return false;
         }
         let mut home = self
@@ -229,6 +239,10 @@ impl BackendState {
         }
         home.take();
         true
+    }
+
+    fn retain_temporary_home(&self) {
+        self.retain_temporary_home.store(true, Ordering::SeqCst);
     }
 
     fn has_live_child(&self) -> bool {
@@ -255,6 +269,10 @@ impl BackendState {
             .lock()
             .expect("startup output mutex poisoned")
             .clear();
+        self.startup_output_readers
+            .lock()
+            .expect("startup output reader mutex poisoned")
+            .clear();
         *self
             .startup_conflict
             .lock()
@@ -272,13 +290,24 @@ impl BackendState {
         let mut guard = self.child.lock().expect("backend child mutex poisoned");
         if let Some(child) = guard.as_mut() {
             if let Some(status) = child.try_wait().map_err(|err| err.to_string())? {
-                thread::sleep(Duration::from_millis(50));
+                let output_drained = wait_for_startup_output_readers(
+                    std::mem::take(
+                        &mut *self
+                            .startup_output_readers
+                            .lock()
+                            .expect("startup output reader mutex poisoned"),
+                    ),
+                    Duration::from_secs(2),
+                );
                 let (output, conflict) = {
                     let output = self
                         .startup_output
                         .lock()
                         .expect("startup output mutex poisoned");
-                    (output.text(), output.startup_conflict())
+                    (
+                        output.text(),
+                        output_drained.then(|| output.startup_conflict()).flatten(),
+                    )
                 };
                 *self
                     .startup_conflict
@@ -630,6 +659,7 @@ pub fn start_desktop_backend(app: AppHandle, window: WebviewWindow) {
                     .and_then(|_| navigate_to_backend(&window, &url))
                 {
                     state.clear_owned_origin();
+                    state.retain_temporary_home();
                     state.stop();
                     let detail =
                         format!("Backend started, but the window could not navigate: {err}");
@@ -699,7 +729,11 @@ fn launch_and_wait(app: &AppHandle, state: &BackendState) -> Result<String, Stri
         return Err("Desktop startup cancelled".to_string());
     }
     let mut child = spawn_backend_command(&spec)?;
-    capture_child_output(&mut child, state.startup_output.clone());
+    let output_readers = capture_child_output(&mut child, state.startup_output.clone());
+    *state
+        .startup_output_readers
+        .lock()
+        .expect("startup output reader mutex poisoned") = output_readers;
     if !state.set_child(child) {
         return Err("Desktop startup cancelled".to_string());
     }
@@ -922,33 +956,62 @@ fn spawn_backend_command(spec: &BackendCommandSpec) -> Result<Child, String> {
     })
 }
 
-fn capture_child_output(child: &mut Child, output: Arc<Mutex<StartupOutput>>) {
+fn capture_child_output(
+    child: &mut Child,
+    output: Arc<Mutex<StartupOutput>>,
+) -> Vec<std::sync::mpsc::Receiver<()>> {
+    let mut readers = Vec::new();
     if let Some(stdout) = child.stdout.take() {
-        capture_stream("stdout", stdout, output.clone());
+        readers.push(capture_stream("stdout", stdout, output.clone()));
     }
     if let Some(stderr) = child.stderr.take() {
-        capture_stream("stderr", stderr, output);
+        readers.push(capture_stream("stderr", stderr, output));
     }
+    readers
 }
 
-fn capture_stream<R>(stream: &'static str, mut reader: R, output: Arc<Mutex<StartupOutput>>)
+fn capture_stream<R>(
+    stream: &'static str,
+    mut reader: R,
+    output: Arc<Mutex<StartupOutput>>,
+) -> std::sync::mpsc::Receiver<()>
 where
     R: Read + Send + 'static,
 {
+    let (finished_tx, finished_rx) = std::sync::mpsc::channel();
     thread::spawn(move || {
         let mut buffer = [0_u8; 1024];
         loop {
             match reader.read(&mut buffer) {
-                Ok(0) => return,
+                Ok(0) => break,
                 Err(err) if err.kind() == ErrorKind::Interrupted => continue,
-                Err(_) => return,
+                Err(_) => break,
                 Ok(n) => output
                     .lock()
                     .expect("startup output mutex poisoned")
                     .push(stream, &buffer[..n]),
             }
         }
+        drop(finished_tx);
     });
+    finished_rx
+}
+
+fn wait_for_startup_output_readers(
+    readers: Vec<std::sync::mpsc::Receiver<()>>,
+    timeout: Duration,
+) -> bool {
+    let deadline = Instant::now() + timeout;
+    for reader in readers {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if matches!(
+            reader.recv_timeout(remaining),
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout)
+        ) {
+            return false;
+        }
+    }
+    true
 }
 
 fn wait_for_backend(
@@ -1245,12 +1308,12 @@ fn navigate_to_backend(window: &WebviewWindow, url: &str) -> Result<(), String> 
 
 #[cfg(unix)]
 fn terminate_child(child: &mut Child) -> bool {
-    terminate_child_with_timeout(child, Duration::from_secs(5))
+    terminate_child_with_timeout(child, DESKTOP_LAUNCHER_SHUTDOWN_TIMEOUT)
 }
 
 #[cfg(windows)]
 fn terminate_child(child: &mut Child) -> bool {
-    terminate_child_with_timeout(child, Duration::from_secs(5))
+    terminate_child_with_timeout(child, DESKTOP_LAUNCHER_SHUTDOWN_TIMEOUT)
 }
 
 #[cfg(not(any(unix, windows)))]
@@ -1302,7 +1365,7 @@ fn wait_or_kill(child: &mut Child, graceful_timeout: Duration) -> bool {
     let deadline = Instant::now() + graceful_timeout;
     loop {
         match child.try_wait() {
-            Ok(Some(_)) => return true,
+            Ok(Some(status)) => return status.success(),
             Ok(None) if Instant::now() < deadline => thread::sleep(Duration::from_millis(100)),
             Ok(None) | Err(_) => break,
         }
@@ -1878,6 +1941,53 @@ mod tests {
         assert!(!home.exists());
     }
 
+    #[test]
+    fn temporary_home_is_retained_after_navigation_failure() {
+        let state = BackendState::temporary_test_instance();
+        let home = state
+            .temporary_home_path()
+            .expect("temporary test home path");
+        state.mark_backend_ready();
+        state.retain_temporary_home();
+
+        assert!(!state.cleanup_temporary_home_after_stop(true));
+        assert!(
+            home.exists(),
+            "failed navigation must retain temporary data"
+        );
+        fs::remove_dir_all(home).expect("remove retained test home");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn temporary_home_is_retained_when_launcher_exits_unsuccessfully() {
+        let state = BackendState::temporary_test_instance();
+        let home = state
+            .temporary_home_path()
+            .expect("temporary test home path");
+        state.mark_backend_ready();
+        assert!(state.set_child(child_with_term_handler("exit 1")));
+
+        state.stop();
+
+        assert!(
+            home.exists(),
+            "failed launcher shutdown must retain its home"
+        );
+        fs::remove_dir_all(home).expect("remove retained test home");
+    }
+
+    #[test]
+    fn desktop_stop_deadline_exceeds_the_launcher_shutdown_budget() {
+        let launcher_grace = Duration::from_secs(75);
+        let launcher_force_kill_wait = Duration::from_secs(2);
+
+        assert!(
+            DESKTOP_LAUNCHER_SHUTDOWN_TIMEOUT > launcher_grace + launcher_force_kill_wait,
+            "desktop must allow the launcher to finish graceful and forced cleanup"
+        );
+    }
+
     #[cfg(unix)]
     #[test]
     fn temporary_home_cleanup_does_not_follow_a_replaced_symlink() {
@@ -1941,25 +2051,74 @@ mod tests {
     fn capture_stream_retries_interrupted_reads() {
         let output = Arc::new(Mutex::new(StartupOutput::default()));
 
-        capture_stream(
+        let reader_finished = capture_stream(
             "stdout",
             InterruptedThenData::new(b"backend ready"),
             output.clone(),
         );
 
-        let deadline = Instant::now() + Duration::from_secs(1);
-        while Instant::now() < deadline {
-            if output
-                .lock()
-                .expect("startup output mutex poisoned")
-                .text()
-                .is_some_and(|text| text.contains("backend ready"))
-            {
-                return;
-            }
-            thread::sleep(Duration::from_millis(10));
-        }
-        panic!("capture_stream did not retry interrupted read");
+        assert!(wait_for_startup_output_readers(
+            vec![reader_finished],
+            Duration::from_secs(1)
+        ));
+        assert!(output
+            .lock()
+            .expect("startup output mutex poisoned")
+            .text()
+            .is_some_and(|text| text.contains("backend ready")));
+    }
+
+    #[test]
+    fn startup_conflict_waits_until_stderr_capture_finishes() {
+        let output = Arc::new(Mutex::new(StartupOutput::default()));
+        let marker = concat!(
+            "KANDEV_DESKTOP_CONFLICT_V1 {\"version\":1,\"target_kind\":\"home\",",
+            "\"target_path\":\"/tmp/kandev-home\",\"storage_kind\":\"sqlite_in_home\",",
+            "\"database_path\":\"/tmp/kandev-home/data/kandev.db\"}\n"
+        );
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let (reader_started_tx, reader_started_rx) = std::sync::mpsc::sync_channel(0);
+        let reader_finished = capture_stream(
+            "stderr",
+            GatedReader {
+                release: release_rx,
+                started: Some(reader_started_tx),
+                delivered: false,
+            },
+            output.clone(),
+        );
+        reader_started_rx
+            .recv_timeout(Duration::from_secs(1))
+            .expect("stderr reader should wait for its final chunk");
+
+        let (drained_tx, drained_rx) = std::sync::mpsc::channel();
+        let waiter = thread::spawn(move || {
+            let drained =
+                wait_for_startup_output_readers(vec![reader_finished], Duration::from_secs(1));
+            drained_tx.send(drained).expect("send drain result");
+        });
+        assert!(
+            matches!(
+                drained_rx.recv_timeout(Duration::from_millis(50)),
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout)
+            ),
+            "conflict classification must wait for stderr EOF"
+        );
+
+        release_tx
+            .send(marker.as_bytes().to_vec())
+            .expect("release stderr");
+        assert!(drained_rx
+            .recv_timeout(Duration::from_secs(1))
+            .expect("reader drain result"));
+        waiter.join().expect("join output reader waiter");
+        let output = output.lock().expect("startup output mutex poisoned");
+        assert_eq!(
+            output
+                .startup_conflict()
+                .map(|conflict| conflict.target_path),
+            Some("/tmp/kandev-home".to_string())
+        );
     }
 
     #[test]
@@ -2156,6 +2315,30 @@ mod tests {
         data: &'static [u8],
         position: usize,
         chunk_size: usize,
+    }
+
+    struct GatedReader {
+        release: std::sync::mpsc::Receiver<Vec<u8>>,
+        started: Option<std::sync::mpsc::SyncSender<()>>,
+        delivered: bool,
+    }
+
+    impl Read for GatedReader {
+        fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+            if self.delivered {
+                return Ok(0);
+            }
+            self.started
+                .take()
+                .expect("reader start sender")
+                .send(())
+                .expect("notify reader start");
+            let bytes = self.release.recv().expect("release gated reader");
+            let length = buffer.len().min(bytes.len());
+            buffer[..length].copy_from_slice(&bytes[..length]);
+            self.delivered = true;
+            Ok(length)
+        }
     }
 
     impl ShortReader {

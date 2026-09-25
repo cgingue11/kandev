@@ -11,7 +11,10 @@ import (
 )
 
 func TestDesktopDiscoveryConfirmHomeAddsCanonicalHomeAndScansOnce(t *testing.T) {
-	targetHome := t.TempDir()
+	targetHome, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatalf("resolve target Home: %v", err)
+	}
 	homeAlias := filepath.Join(t.TempDir(), "home")
 	if err := os.Symlink(targetHome, homeAlias); err != nil {
 		t.Skipf("create Home symlink: %v", err)
@@ -62,9 +65,60 @@ func TestDesktopDiscoveryConfirmHomeAddsCanonicalHomeAndScansOnce(t *testing.T) 
 	}
 }
 
+func TestDesktopDiscoveryConfirmHomeRecoversDisconnectedSavedHome(t *testing.T) {
+	home, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatalf("resolve Home path: %v", err)
+	}
+	t.Setenv("HOME", home)
+	svc, _, repo := createTestService(t)
+	svc.discoveryConfig = RepositoryDiscoveryConfig{DesktopRuntime: true, MaxDepth: 6}
+	svc.desktopRootStore = repo
+	root := &models.DesktopDiscoveryRoot{
+		ID:          "home-root",
+		Path:        home,
+		DisplayPath: "~",
+		State:       models.DesktopDiscoveryRootReconnectRequired,
+	}
+	if err := repo.CreateDesktopDiscoveryRoot(context.Background(), root); err != nil {
+		t.Fatalf("create disconnected Home root: %v", err)
+	}
+	if err := repo.SetDesktopDiscoveryMigration(context.Background(), &models.DesktopDiscoveryMigration{
+		HomeConfirmationRequired: true,
+	}); err != nil {
+		t.Fatalf("set migration state: %v", err)
+	}
+	var scanCalls int
+	svc.discoveryScanRoot = func(_ context.Context, path string, _ int) (repositoryDiscoveryScanResult, error) {
+		scanCalls++
+		if path != home {
+			t.Fatalf("scan root = %q, want Home %q", path, home)
+		}
+		return repositoryDiscoveryScanResult{}, nil
+	}
+
+	confirmed, err := svc.ConfirmHomeDesktopDiscovery(context.Background())
+	if err != nil {
+		t.Fatalf("confirm disconnected Home: %v", err)
+	}
+	if confirmed.State != models.DesktopDiscoveryRootConnected || scanCalls != 1 {
+		t.Fatalf("confirmed root/scan calls = %+v/%d, want connected root and one scan", confirmed, scanCalls)
+	}
+	migration, err := repo.GetDesktopDiscoveryMigration(context.Background())
+	if err != nil {
+		t.Fatalf("read migration state: %v", err)
+	}
+	if migration == nil || migration.HomeConfirmationRequired {
+		t.Fatalf("migration = %+v, want confirmation cleared after recovery", migration)
+	}
+}
+
 func TestDesktopDiscoveryConfirmHomeRejectsStaleAndNonDesktopRequests(t *testing.T) {
 	t.Run("another root cleared the migration", func(t *testing.T) {
-		home := t.TempDir()
+		home, err := filepath.EvalSymlinks(t.TempDir())
+		if err != nil {
+			t.Fatalf("resolve Home: %v", err)
+		}
 		t.Setenv("HOME", home)
 		svc, _, repo := createTestService(t)
 		svc.discoveryConfig = RepositoryDiscoveryConfig{DesktopRuntime: true, MaxDepth: 6}
@@ -74,7 +128,10 @@ func TestDesktopDiscoveryConfirmHomeRejectsStaleAndNonDesktopRequests(t *testing
 		}); err != nil {
 			t.Fatalf("set migration state: %v", err)
 		}
-		otherRoot := t.TempDir()
+		otherRoot, err := filepath.EvalSymlinks(t.TempDir())
+		if err != nil {
+			t.Fatalf("resolve other root: %v", err)
+		}
 		var scanCalls int
 		svc.discoveryScanRoot = func(_ context.Context, root string, _ int) (repositoryDiscoveryScanResult, error) {
 			scanCalls++

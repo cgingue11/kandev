@@ -52,8 +52,9 @@ appear in the critical CSS as well as the loaded stylesheet, preventing a
 ring or unstyled intermediate frame. Reduced-motion mode leaves a visible
 static grid. On a terminal startup failure, including a confirmed conflict,
 the loading grid is hidden so the failure message is not mistaken for an
-ongoing load. The status text remains the accessible loading announcement;
-the decorative grid is hidden from assistive technology.
+ongoing load. Loading uses a polite live region. Conflict and failure panels
+use assertive live regions, as do errors from opening another temporary test
+window. The decorative grid is hidden from assistive technology.
 
 ## macOS window chrome
 
@@ -149,8 +150,9 @@ normal desktop environment still supplies executable discovery, bundled
 runtime, loopback host, native notification flag, per-launch health token, and
 the desktop-to-launcher parent PID. Backend startup still acquires its home
 lock and passes token-verified `/health` followed by `/ready` before WebView
-navigation. Port selection uses the existing stable-port-with-random-fallback
-rule separately in every process.
+navigation. Temporary windows use `pick_loopback_port()` for a kernel-assigned
+port. Normal launches use `pick_desktop_port()`, which prefers the configured
+desktop port and falls back to another available loopback port.
 
 ## Shutdown
 
@@ -159,12 +161,14 @@ stops and reaps the launcher/backend tree. The launcher exits with status zero
 only when every supervised process exited gracefully with status zero and no
 forced cleanup, failure, or uncertain process status. The desktop removes its
 recorded temporary directory only after that confirmed launcher result and
-backend readiness. A forced kill, uncertain stop, unexpected process exit, or
-crash leaves the directory intact; a later launch does not assume a leftover
-directory is active or delete it opportunistically. The operating system or
-the user may clean such leftovers later. Directory removal verifies the
-stored canonical path is the exact random directory the process created under
-its temp root; it never follows a replaced root symlink.
+backend readiness. Startup or initial-navigation failure retains the home for
+inspection even if the backend reached readiness. A forced kill, uncertain
+stop, unexpected process exit, or crash also leaves the directory intact; a
+later launch does not assume a leftover directory is active or delete it
+opportunistically. The operating system or the user may clean such leftovers
+later. Directory removal verifies the stored canonical path is the exact
+random directory the process created under its temp root; it never follows a
+replaced root symlink.
 
 The conflict launcher never stops the terminal backend, removes a lock
 sidecar, copies production data, or releases another process's lock. The

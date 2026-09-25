@@ -81,7 +81,7 @@ describe("RepositoryDiscoveryRootControls", () => {
     expect(baseProps.onChooseDiscoveryRoot).not.toHaveBeenCalled();
   });
 
-  it("disables Home confirmation while it is saving", () => {
+  it("keeps the Home confirmation name stable and announces while saving", () => {
     render(
       <RepositoryDiscoveryRootControls
         {...baseProps}
@@ -90,8 +90,11 @@ describe("RepositoryDiscoveryRootControls", () => {
       />,
     );
 
-    const button = screen.getByRole("button", { name: "common:loading" }) as HTMLButtonElement;
+    const button = screen.getByRole("button", {
+      name: "workspaces:continueHomeDiscovery",
+    }) as HTMLButtonElement;
     expect(button.disabled).toBe(true);
     expect(button.getAttribute("aria-busy")).toBe("true");
+    expect(screen.getByRole("status").textContent).toBe("common:loading");
   });
 });

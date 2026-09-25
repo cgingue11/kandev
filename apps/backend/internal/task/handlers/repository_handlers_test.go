@@ -470,7 +470,10 @@ func TestHTTPDesktopDiscoveryRootLifecycle(t *testing.T) {
 }
 
 func TestConfirmHomeDiscoveryHTTPUsesBackendHomeAndIsIdempotent(t *testing.T) {
-	home := t.TempDir()
+	home, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatalf("resolve Home: %v", err)
+	}
 	t.Setenv("HOME", home)
 	router, repo, _ := newDesktopRepositoryHTTPTestRouter(t)
 	if err := repo.SetDesktopDiscoveryMigration(context.Background(), &models.DesktopDiscoveryMigration{

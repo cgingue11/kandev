@@ -73,7 +73,7 @@ test.describe("Desktop repository discovery consent", () => {
             total: 0,
             desktop_runtime: true,
             root_states: [],
-            home_confirmation_required: true,
+            home_confirmation_required: confirmationRequests === 0,
           },
         });
         return;
@@ -109,7 +109,7 @@ test.describe("Desktop repository discovery consent", () => {
       await continueHome.click();
 
       await expect.poll(() => confirmationRequests).toBe(1);
-      await expect(continueHome).toBeVisible();
+      await expect(continueHome).toBeHidden();
       expect(confirmationBody).toBeNull();
       expect(directoryListingRequests).toBe(0);
       expect(

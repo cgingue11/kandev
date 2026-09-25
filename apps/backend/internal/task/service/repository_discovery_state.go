@@ -549,24 +549,39 @@ func (s *Service) ConfirmHomeDesktopDiscovery(ctx context.Context) (*models.Desk
 	if err != nil {
 		return nil, fmt.Errorf("could not resolve the backend Home directory: %w", err)
 	}
-	if root, err := s.desktopRootStore.GetDesktopDiscoveryRoot(ctx, canonicalHome); err != nil {
+	root, err := s.desktopRootStore.GetDesktopDiscoveryRoot(ctx, canonicalHome)
+	if err != nil {
 		return nil, err
-	} else if root != nil {
-		if pending {
-			if err := s.clearHomeConfirmation(ctx); err != nil {
-				return nil, err
-			}
-			s.invalidateDiscoveryCache()
-		}
-		return root, nil
+	}
+	if savedRoot, confirmed, err := s.confirmedHomeDiscoveryRoot(ctx, root, pending); err != nil {
+		return nil, err
+	} else if confirmed {
+		return savedRoot, nil
 	}
 	if !pending {
 		return nil, ErrHomeDiscoveryConfirmationStale
 	}
-	if len(roots) > 0 {
+	if root == nil && len(roots) > 0 {
 		return nil, ErrHomeDiscoveryConfirmationStale
 	}
 	return s.addDesktopDiscoveryRoot(ctx, canonicalHome)
+}
+
+func (s *Service) confirmedHomeDiscoveryRoot(
+	ctx context.Context,
+	root *models.DesktopDiscoveryRoot,
+	pending bool,
+) (*models.DesktopDiscoveryRoot, bool, error) {
+	if root == nil || root.State == models.DesktopDiscoveryRootReconnectRequired {
+		return nil, false, nil
+	}
+	if pending {
+		if err := s.clearHomeConfirmation(ctx); err != nil {
+			return nil, false, err
+		}
+		s.invalidateDiscoveryCache()
+	}
+	return root, true, nil
 }
 
 // ReconnectDesktopDiscoveryRoot replaces the path for an inaccessible root,
