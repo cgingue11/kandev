@@ -3,7 +3,18 @@ id: selected-feature-graduation-04
 title: Promote dynamic agent routing
 status: pending
 wave: 4
-depends_on: []
+depends_on:
+  - "04-core-route-engine"
+  - "05-acp-conductor"
+  - "06-logical-session-integration"
+  - "07-utility-profile-integration"
+  - "09-routed-chat-presentation"
+  - "10-office-routing-handoff"
+  - "11-core-routing-observability"
+  - "12-profile-settings-e2e"
+  - "13-routed-session-e2e"
+  - "14-caller-selection-e2e"
+  - "16-office-rollout-e2e"
 plan: plan.md
 requirements:
   - REQ-AGENTS-DYNAMIC-ROUTING-GRADUATION-001

@@ -126,6 +126,7 @@ export class LspClientEditorState {
   handleDiagnostics(connection: ManagedLspConnection, params: PublishDiagnosticsParams): void {
     const uri = canonicalFileUri(params.uri);
     if (!uri) return;
+    if (connection.closedDocuments.has(uri)) return;
     const canonicalParams = { ...params, uri };
     connection.diagnosticsByUri.set(uri, canonicalParams);
     const monaco = getMonacoInstance();

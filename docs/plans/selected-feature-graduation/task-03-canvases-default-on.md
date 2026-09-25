@@ -3,7 +3,7 @@ id: selected-feature-graduation-03
 title: Promote canvases
 status: pending
 wave: 3
-depends_on: []
+depends_on: ["07-authoring-bundle-and-scaffold"]
 plan: plan.md
 requirements:
   - REQ-CANVASES-DEFAULT-AVAILABILITY-001
