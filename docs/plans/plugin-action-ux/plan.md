@@ -310,10 +310,13 @@ triaged separately below:
 
 The backend SQLite retry test failed once in CI, with no backend diff in this
 PR. It passed 20 consecutive race-enabled exact-test runs and the full package
-race suite passed three times. The PR documentation coverage job failed when
-GitHub code search returned HTTP 429. Backend and documentation failed-job
-reruns are underway to confirm those two as transient. The E2E aggregate is
-expected to remain red until the updated tests run on the next PR head.
+race suite passed three times. The documentation coverage job's rerun passed
+after GitHub code search returned HTTP 429 on the original attempt. The
+backend job rerun did not execute tests because the Go proxy failed to fetch
+`k8s.io/kube-openapi` with an HTTP/2 stream error. The latest original-head
+snapshot after reruns was 52 passed, 9 failed, and 0 pending; remaining failures
+are the original-head E2E/frontend assertions plus the backend download error
+and aggregate. The updated tests and checks will run on the next PR head.
 
 ## Risks
 
