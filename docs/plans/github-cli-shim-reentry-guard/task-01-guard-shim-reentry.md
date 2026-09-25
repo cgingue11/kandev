@@ -6,14 +6,12 @@ wave: 1
 depends_on: []
 plan: "plan.md"
 requirements:
-  - REQ-PLATFORM-GITHUB-CLI-SHIM-REENTRY-GUARD-001
+  - REQ-INTEGRATIONS-GITHUB-AUTHENTICATION-001
 acceptance_criteria:
-  - AC-PLATFORM-GITHUB-CLI-SHIM-REENTRY-GUARD-001.1
-  - AC-PLATFORM-GITHUB-CLI-SHIM-REENTRY-GUARD-001.2
-  - AC-PLATFORM-GITHUB-CLI-SHIM-REENTRY-GUARD-001.3
-  - AC-PLATFORM-GITHUB-CLI-SHIM-REENTRY-GUARD-001.4
+  - AC-INTEGRATIONS-GITHUB-AUTHENTICATION-001.14
 system_design:
-  - ../../specs/platform/system-design/github-cli-shim-reentry-guard.md
+  - ../../specs/integrations/system-design/github-authentication-01.md
+  - ../../specs/integrations/system-design/github-authentication-03.md
 ---
 
 # Task 01: Guard the gh shim against re-entry
@@ -56,6 +54,9 @@ command instead of exhausting the host.
 - `apps/backend/cmd/agentctl/github_cli_shim.go`
 - `apps/backend/cmd/agentctl/github_cli_shim_test.go`
 - `apps/backend/cmd/agentctl/main.go`
+- `docs/specs/integrations/requirements/github-authentication.md`
+- `docs/specs/integrations/system-design/github-authentication-01.md`
+- `docs/specs/integrations/system-design/github-authentication-03.md`
 
 ## Dependencies
 
@@ -72,7 +73,7 @@ None.
 
 ## Inputs
 
-- `REQ-PLATFORM-GITHUB-CLI-SHIM-REENTRY-GUARD-001` and its system design.
+- `AC-INTEGRATIONS-GITHUB-AUTHENTICATION-001.14` and the managed-routing design in parts 1 and 3.
 
 ## Results
 

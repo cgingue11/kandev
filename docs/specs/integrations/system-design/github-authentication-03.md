@@ -176,6 +176,12 @@ This design preserves the technical source detail for `REQ-INTEGRATIONS-GITHUB-A
   non-interactive login shell replaces `PATH`, **THEN** the existing hook still runs and the
   Kandev-managed `agentctl` and `gh` shims are restored ahead of ambient tools before the requested
   command starts.
+- **GIVEN** a broker-enabled managed task whose `PATH` still carries a shim directory from an
+  earlier `agentctl`, or whose `KANDEV_GITHUB_CLI_SHIM_DIR` names a different directory, **WHEN**
+  the `gh` shim resolves the real CLI, **THEN** it skips every candidate that is the running
+  `agentctl` or a link to it and launches the real CLI once.
+- **GIVEN** a `gh` shim started with `KANDEV_GITHUB_CLI_SHIM_ACTIVE` already set, **WHEN** it
+  runs, **THEN** it exits non-zero with an error naming the re-entry and launches no process.
 - **GIVEN** that existing Bash environment hook is expressed as `$HOME/hook.sh` or
   `${KANDEV_HOOK_ROOT}/hook.sh`, **WHEN** Kandev composes its managed startup fragment, **THEN** it
   resolves the reference from the effective child environment and sources the intended hook rather
@@ -220,6 +226,8 @@ This design preserves the technical source detail for `REQ-INTEGRATIONS-GITHUB-A
 - A real Git subprocess test proves that host/executor indexed hooks and notes config survive
   managed credential injection, and focused tests prove ordered composition and overlap handling
   across standalone, container, and remote launch shapes.
+- A shim lookup test proves that a symlinked shim ahead of the real `gh` on `PATH` is skipped, and
+  a marked environment is refused before any launch.
 
 ## Out Of Scope
 

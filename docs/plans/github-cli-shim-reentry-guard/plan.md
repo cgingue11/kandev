@@ -2,9 +2,10 @@
 created: 2026-09-25
 status: implemented
 requirements:
-  - REQ-PLATFORM-GITHUB-CLI-SHIM-REENTRY-GUARD-001
+  - REQ-INTEGRATIONS-GITHUB-AUTHENTICATION-001
 system_design:
-  - ../../specs/platform/system-design/github-cli-shim-reentry-guard.md
+  - ../../specs/integrations/system-design/github-authentication-01.md
+  - ../../specs/integrations/system-design/github-authentication-03.md
 legacy_specs: []
 ---
 
@@ -26,6 +27,7 @@ processes, filled RAM and swap, and took Kandev down.
 - Skip the running `agentctl` binary, and links to it, during the real-CLI
   lookup.
 - Mark the child environment and refuse to run when the marker is already set.
+- Record the guard in the managed-routing design and scenarios.
 
 ### Out of scope
 
@@ -42,10 +44,7 @@ marker before any other work and sets it on the child it launches.
 
 | Acceptance criterion | Evidence |
 | --- | --- |
-| `AC-PLATFORM-GITHUB-CLI-SHIM-REENTRY-GUARD-001.1` | `TestLookPathSkippingExecutableIgnoresLinksToSelf` in `github_cli_shim_test.go`: a symlinked shim ahead of the real CLI on `PATH` is skipped. |
-| `AC-PLATFORM-GITHUB-CLI-SHIM-REENTRY-GUARD-001.2` | `TestGitHubCLIShimMarksChildEnvironment`: the launched CLI sees the marker. |
-| `AC-PLATFORM-GITHUB-CLI-SHIM-REENTRY-GUARD-001.3` | `TestGitHubCLIShimRefusesToReenterItself`: a marked environment errors before any launch. |
-| `AC-PLATFORM-GITHUB-CLI-SHIM-REENTRY-GUARD-001.4` | Existing `TestGitHubCLIShim*` cases in `github_cli_shim_test.go` keep passing. |
+| `AC-INTEGRATIONS-GITHUB-AUTHENTICATION-001.14` | `TestLookPathSkippingExecutableIgnoresLinksToSelf`, `TestGitHubCLIShimMarksChildEnvironment`, and `TestGitHubCLIShimRefusesToReenterItself` in `github_cli_shim_test.go`; existing `TestGitHubCLIShim*` cases keep passing for a real CLI. |
 
 ## Work orders
 
