@@ -575,3 +575,11 @@ controls and causal details. Local Kind verification was attempted twice but
 blocked before assertions by image-load timeouts; the second cleanup also hit
 a Docker container exit-event error. Remote container CI must verify this test
 correction. No runtime or Kubernetes fixture behavior was changed.
+
+### September 25 translation conflict resolution
+
+The preceding PR head completed all 53 GitHub checks with no unresolved review
+threads. Integrated current main and preserved both the Japanese recovery keys
+and its new workflow-change keys. All task catalogs parse without duplicate
+keys; localization, type checking and 55 focused recovery tests pass. Fresh
+exact-head CI and review verification remain pending after this merge push.
