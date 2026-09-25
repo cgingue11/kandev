@@ -9,7 +9,10 @@ import (
 	protocol "github.com/kandev/kandev/pkg/codexappserver"
 )
 
-const nativeUsageSchemaVersion = 1
+const (
+	nativeUsageSchemaVersion      = 1
+	nativeUsageSourceTurnFallback = "turn_fallback"
+)
 
 func (a *Adapter) handleTokenUsageNotification(params map[string]any) {
 	var notification protocol.ThreadTokenUsageUpdatedNotification
@@ -141,7 +144,7 @@ func (a *Adapter) emitFallbackObservation(threadID, turnID string, baseline, cur
 		return
 	}
 	usage.Estimated = true
-	observation.Source = "turn_fallback"
+	observation.Source = nativeUsageSourceTurnFallback
 	observation.Completeness = "estimated"
 	a.emit(streams.AgentEvent{
 		Type:             streams.EventTypeUsageObservation,

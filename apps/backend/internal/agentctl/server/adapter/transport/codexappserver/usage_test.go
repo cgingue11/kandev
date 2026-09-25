@@ -114,7 +114,7 @@ func TestTokenUsageReplayBaselineDoesNotEmitHistoricalDelta(t *testing.T) {
 	a.latestTokenTotals["thread-1"] = protocol.TokenUsageBreakdown{InputTokens: 150, CachedInputTokens: 30, OutputTokens: 45, TotalTokens: 195}
 	a.finalizeProviderTurn("thread-1", "new-turn")
 	event := <-a.Updates()
-	if event.Type != streams.EventTypeUsageObservation || event.UsageObservation.Source != "turn_fallback" {
+	if event.Type != streams.EventTypeUsageObservation || event.UsageObservation.Source != nativeUsageSourceTurnFallback {
 		t.Fatalf("fallback event = %#v", event)
 	}
 	if event.Usage.InputTokens != 40 || event.Usage.CachedReadTokens != 10 || event.Usage.OutputTokens != 15 {
@@ -178,7 +178,7 @@ func TestFallbackUsageRetainsTurnModelAfterSwitch(t *testing.T) {
 	a.finalizeProviderTurn("thread-1", "turn-1")
 
 	event := <-a.Updates()
-	if event.Type != streams.EventTypeUsageObservation || event.UsageObservation.Source != "turn_fallback" {
+	if event.Type != streams.EventTypeUsageObservation || event.UsageObservation.Source != nativeUsageSourceTurnFallback {
 		t.Fatalf("event = %#v, want turn fallback observation", event)
 	}
 	if event.UsageObservation.Model != "model-before-switch" || event.PromptGeneration != 21 {

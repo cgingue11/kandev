@@ -80,7 +80,7 @@ Record the exact scenario paths and commands used. Do not claim browser coverage
 
 - [ ] [01: Approval concurrency and offered decisions](task-01-approval-lifecycle.md)
 - [x] [02: Reconnect and usage identity](task-02-reconnect-and-usage.md)
-- [x] [03: Protocol conformance and PR delivery](task-03-conformance-and-delivery.md)
+- [ ] [03: Protocol conformance and PR delivery](task-03-conformance-and-delivery.md)
 
 The primary session executed the work orders in order and recorded any incomplete acceptance criteria.
 This follow-up does not authorize more implementation subagents.
@@ -89,7 +89,9 @@ This follow-up does not authorize more implementation subagents.
 
 Planning validation passed: catalog validation (306 decisions, 1146 specifications), full specification lint, and local link, requirement-ID, and whitespace checks for all four files.
 
-Tasks 02 and 03 are complete. Their fake-server tests preserve reconnect identity, usage attribution, and pinned protocol coverage. Commit `afbfafe5a898c2f77a82ac4af5c87c499da772c6` reached the existing PR #3916. Task 01 remains pending because direct native question requests do not have a reply route into Kandev clarification.
+Task 02 is complete. Task 03's protocol coverage and fixtures are complete, but PR fixup is in progress. CI on head `0a974dec628d13a4addb977b1791e4c244800a6` found a repeated `turn_fallback` string in backend static checks. The backend test shards passed, and the E2E workflow had 11 checks pending when `scripts/pr-await` reached its deadline. The local lint and race tests now pass after replacing the string with a constant.
+
+Task 01 remains pending because direct native question requests do not have a reply route into Kandev clarification.
 
 The original Task 07 remains pending. Its live run did not observe an approval request, exact response usage, or child-to-collaboration-call correlation. Docker, SSH, and Kind tests use a fake app-server and do not prove upstream Codex compatibility inside those executors.
 Reconcile affected results in the original package without overwriting unrelated work or claiming a full rerun.
