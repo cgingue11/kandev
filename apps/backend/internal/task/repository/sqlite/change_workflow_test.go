@@ -13,10 +13,10 @@ func seedWorkflowChangeRows(t *testing.T, repo *Repository, taskID string) *mode
 	t.Helper()
 	ctx := context.Background()
 	seedWorkspace(t, repo, "workspace-workflow-change")
-	if _, err := repo.db.ExecContext(ctx, `
+	if _, err := repo.db.ExecContext(ctx, repo.db.Rebind(`
 		INSERT INTO agent_projects (id, workspace_id, name)
 		VALUES (?, ?, ?)
-	`, "project-workflow-change", "workspace-workflow-change", "Workflow change project"); err != nil {
+	`), "project-workflow-change", "workspace-workflow-change", "Workflow change project"); err != nil {
 		t.Fatalf("insert project: %v", err)
 	}
 	for _, workflow := range []*models.Workflow{
