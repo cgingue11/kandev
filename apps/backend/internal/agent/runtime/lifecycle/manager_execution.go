@@ -1058,6 +1058,7 @@ func (m *Manager) prepareExecutionCreateRequest(
 	preparation := &executionCreatePreparation{
 		request: &ExecutorCreateRequest{
 			InstanceID:                     executionID,
+			ExecutorType:                   info.ExecutorType,
 			TaskID:                         taskID,
 			SessionID:                      info.SessionID,
 			TaskEnvironmentID:              info.TaskEnvironmentID,
