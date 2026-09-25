@@ -613,6 +613,7 @@ type TaskPR struct {
 	ReviewState                           string     `json:"review_state" db:"review_state"`       // approved, changes_requested, pending, ""
 	ChecksState                           string     `json:"checks_state" db:"checks_state"`       // success, failure, pending, ""
 	MergeableState                        string     `json:"mergeable_state" db:"mergeable_state"` // clean, blocked, behind, dirty, has_hooks, unstable, draft, unknown, ""
+	HasMergeConflicts                     *bool      `json:"has_merge_conflicts" db:"has_merge_conflicts"`
 	HeadSHA                               string     `json:"head_sha" db:"head_sha"`
 	MergeQueueState                       string     `json:"merge_queue_state" db:"merge_queue_state"`
 	MergeQueuePosition                    *int       `json:"merge_queue_position" db:"merge_queue_position"`

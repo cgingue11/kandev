@@ -810,6 +810,7 @@ func (p *Projector) applyPREventLocked(state *projectionState, data map[string]i
 		reviewState:           stringField(data, "review_state"),
 		checksState:           stringField(data, "checks_state"),
 		mergeableState:        stringField(data, "mergeable_state"),
+		hasMergeConflicts:     boolPointerField(data, "has_merge_conflicts"),
 		mergeQueueState:       stringField(data, "merge_queue_state"),
 		unresolvedReviewCount: intValueOrZero(data["unresolved_review_threads"]),
 		pendingReviewCount:    intValueOrZero(data["pending_review_count"]),
@@ -834,11 +835,29 @@ func (p *Projector) applyPREventLocked(state *projectionState, data map[string]i
 	if value, ok := intValue(data["required_reviews"]); ok {
 		observation.requiredReviews = maxInt(value, 0)
 	}
-	if existing, ok := state.prs[key]; ok && existing == observation {
-		return false
+	if existing, ok := state.prs[key]; ok {
+		previousConflict := existing.hasMergeConflicts
+		nextConflict := observation.hasMergeConflicts
+		existing.hasMergeConflicts = nil
+		observation.hasMergeConflicts = nil
+		unchanged := existing == observation &&
+			(previousConflict == nil && nextConflict == nil ||
+				previousConflict != nil && nextConflict != nil && *previousConflict == *nextConflict)
+		observation.hasMergeConflicts = nextConflict
+		if unchanged {
+			return false
+		}
 	}
 	state.prs[key] = observation
 	return true
+}
+
+func boolPointerField(data map[string]interface{}, key string) *bool {
+	value, ok := data[key].(bool)
+	if !ok {
+		return nil
+	}
+	return &value
 }
 
 func pullRequestObservationKey(data map[string]interface{}) string {

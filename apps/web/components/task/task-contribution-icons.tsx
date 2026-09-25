@@ -1,13 +1,12 @@
 "use client";
 
-import { IconGitPullRequest } from "@tabler/icons-react";
 import {
-  AutomationIndicatorDots,
   getPRAggregateStatusColor,
   getTaskPRAutomationSummary,
   PRTaskIcon,
   type TaskPRInfo,
 } from "@/components/github/pr-task-icon";
+import { PRStatusGlyph } from "@/components/github/pr-status-glyph";
 import { MRTaskIcon } from "@/components/gitlab/mr-task-icon";
 import { cn } from "@/lib/utils";
 
@@ -23,13 +22,11 @@ function TaskPRIcon({ taskId, prInfo }: { taskId?: string; prInfo?: TaskPRInfo }
       data-pr-state={prInfo.state}
       className={cn("inline-flex items-center shrink-0", color)}
     >
-      <span className="relative inline-flex h-3.5 w-3.5 shrink-0">
-        <IconGitPullRequest className="h-3.5 w-3.5" />
-        <AutomationIndicatorDots
-          autoFixEnabled={automation.autoFixEnabled}
-          autoMergeEnabled={automation.autoMergeEnabled}
-        />
-      </span>
+      <PRStatusGlyph
+        hasMergeConflicts={prInfo.hasMergeConflicts}
+        autoFixEnabled={automation.autoFixEnabled}
+        autoMergeEnabled={automation.autoMergeEnabled}
+      />
     </span>
   );
 }

@@ -13,6 +13,8 @@ const listTaskPRsMock = vi.hoisted(() => vi.fn());
 const getTaskCIAutomationOptionsMock = vi.hoisted(() => vi.fn());
 const TASK_ID = "task-1";
 const WORKSPACE_ID = "workspace-1";
+const OPEN_STATUS_LABEL = "Open";
+const ARIA_LABEL_ATTRIBUTE = "aria-label";
 
 vi.mock("@/lib/api/domains/github-api", () => ({
   listTaskPRs: listTaskPRsMock,
@@ -218,7 +220,109 @@ describe("PRTaskIcon corrupted store entry", () => {
   });
 });
 
+describe("PRTaskIcon accessible status", () => {
+  it("names draft, failing checks, and conflict for a complete task indicator", () => {
+    renderWithStore(
+      {
+        taskPRs: {
+          byTaskId: {
+            [TASK_ID]: [
+              makePR({
+                mergeable_state: "draft",
+                checks_state: "failure",
+                has_merge_conflicts: true,
+              }),
+            ],
+          },
+        },
+      },
+      <PRTaskIcon taskId={TASK_ID} />,
+    );
+    const label = screen.getByTestId(`pr-task-icon-${TASK_ID}`).getAttribute(ARIA_LABEL_ATTRIBUTE);
+    expect(label).toContain("Draft");
+    expect(label).toContain("Checks failed");
+    expect(label).toContain("Conflicts");
+  });
+
+  it("uses neutral wording for compact failure that may be review-only", () => {
+    renderWithStore(
+      {},
+      <PRTaskIcon
+        taskId={TASK_ID}
+        prInfo={{ number: 84, state: OPEN_STATUS_LABEL, aggregateState: "failure" }}
+      />,
+    );
+    const label = screen.getByTestId(`pr-task-icon-${TASK_ID}`).getAttribute(ARIA_LABEL_ATTRIBUTE);
+    expect(label).toContain(OPEN_STATUS_LABEL);
+    expect(label).toContain("Needs attention");
+    expect(label).not.toContain("Checks failed");
+  });
+
+  it("does not claim merge readiness for an open PR with unknown checks", () => {
+    renderWithStore(
+      {},
+      <PRTaskIcon
+        taskId={TASK_ID}
+        prInfo={{ number: 85, state: OPEN_STATUS_LABEL, aggregateState: "ready" }}
+      />,
+    );
+
+    const label = screen.getByTestId(`pr-task-icon-${TASK_ID}`).getAttribute(ARIA_LABEL_ATTRIBUTE);
+    expect(label).toContain(OPEN_STATUS_LABEL);
+    expect(label).not.toContain("Ready to merge");
+  });
+
+  it("uses a neutral pending label when compact state cannot distinguish CI from review", () => {
+    renderWithStore(
+      {},
+      <PRTaskIcon
+        taskId={TASK_ID}
+        prInfo={{ number: 86, state: OPEN_STATUS_LABEL, aggregateState: "pending" }}
+      />,
+    );
+
+    const label = screen.getByTestId(`pr-task-icon-${TASK_ID}`).getAttribute(ARIA_LABEL_ATTRIBUTE);
+    expect(label).toContain("Pending");
+    expect(label).not.toContain("Checks pending");
+    expect(label).not.toContain("Pending review");
+  });
+
+  it("uses review wording only when the compact aggregate confirms awaiting review", () => {
+    renderWithStore(
+      {},
+      <PRTaskIcon
+        taskId={TASK_ID}
+        prInfo={{ number: 87, state: OPEN_STATUS_LABEL, aggregateState: "awaiting_review" }}
+      />,
+    );
+
+    const label = screen.getByTestId(`pr-task-icon-${TASK_ID}`).getAttribute(ARIA_LABEL_ATTRIBUTE);
+    expect(label).toContain("Pending review");
+    expect(label).not.toContain("Checks pending");
+  });
+});
+
 describe("PRTaskIcon automation indicators", () => {
+  it("shows the conflict warning with both automation dots on a compact row", () => {
+    renderWithStore(
+      { workspaces: { items: [], activeId: WORKSPACE_ID } },
+      <TaskContributionIcons
+        taskId={TASK_ID}
+        prInfo={{
+          number: 7,
+          state: "open",
+          hasMergeConflicts: true,
+          autoFixEnabled: true,
+          autoMergeEnabled: true,
+        }}
+      />,
+    );
+    const icon = screen.getByTestId(`pr-task-icon-${TASK_ID}`);
+    expect(icon.querySelector('[data-testid="pr-merge-conflict-warning"]')).not.toBeNull();
+    expect(icon.querySelector('[data-testid="pr-task-automation-auto-fix"]')).not.toBeNull();
+    expect(icon.querySelector('[data-testid="pr-task-automation-auto-merge"]')).not.toBeNull();
+    expect(icon.getAttribute(ARIA_LABEL_ATTRIBUTE)).toContain("Conflicts");
+  });
   // @covers AC-INTEGRATIONS-GITHUB-PR-MERGE-QUEUE-002.10
   it("renders independent automation dots from the bounded row projection", () => {
     renderWithStore(

@@ -610,25 +610,26 @@ func (s *Service) associatePRWithTaskForSession(
 		return existing, nil
 	}
 	tp := &TaskPR{
-		WorkspaceID:  workspaceID,
-		TaskID:       taskID,
-		RepositoryID: repositoryID,
-		Owner:        pr.RepoOwner,
-		Repo:         pr.RepoName,
-		PRNumber:     pr.Number,
-		PRURL:        pr.HTMLURL,
-		PRTitle:      pr.Title,
-		HeadBranch:   pr.HeadBranch,
-		BaseBranch:   pr.BaseBranch,
-		HeadSHA:      pr.HeadSHA,
-		AuthorLogin:  pr.AuthorLogin,
-		State:        pr.State,
-		Additions:    pr.Additions,
-		Deletions:    pr.Deletions,
-		CreatedAt:    pr.CreatedAt,
-		MergedAt:     pr.MergedAt,
-		ClosedAt:     pr.ClosedAt,
-		Source:       source,
+		WorkspaceID:       workspaceID,
+		TaskID:            taskID,
+		RepositoryID:      repositoryID,
+		Owner:             pr.RepoOwner,
+		Repo:              pr.RepoName,
+		PRNumber:          pr.Number,
+		PRURL:             pr.HTMLURL,
+		PRTitle:           pr.Title,
+		HeadBranch:        pr.HeadBranch,
+		BaseBranch:        pr.BaseBranch,
+		HeadSHA:           pr.HeadSHA,
+		AuthorLogin:       pr.AuthorLogin,
+		State:             pr.State,
+		Additions:         pr.Additions,
+		Deletions:         pr.Deletions,
+		CreatedAt:         pr.CreatedAt,
+		MergedAt:          pr.MergedAt,
+		ClosedAt:          pr.ClosedAt,
+		Source:            source,
+		HasMergeConflicts: observedPRMergeConflict(nil, pr.MergeableState),
 	}
 	// ReplaceTaskPR upserts the row matching (task, repository, pr_number)
 	// and resolves the five outcome-attribution columns itself, inside its
@@ -1300,6 +1301,7 @@ type taskPRSyncState struct {
 	unresolved, reviewCount, pendingReviewCount          int
 	requiredReviews                                      *int
 	baseBranch, mergeableState, state                    string
+	hasMergeConflicts                                    *bool
 	mergeQueueState                                      string
 	mergeQueuePosition, mergeQueueEstimate               *int
 	mergeQueueEntryID, mergeQueueEntryHeadSHA            string
@@ -1515,7 +1517,8 @@ func (s *Service) prepareTaskPRSyncState(ctx context.Context, tp *TaskPR, status
 		checksTotal: nextChecksTotal, checksPassing: nextChecksPassing,
 		unresolved: nextUnresolved, reviewCount: nextReviewCount, pendingReviewCount: nextPendingReviewCount,
 		requiredReviews: nextRequiredReviews, baseBranch: nextBaseBranch, mergeableState: nextMergeableState,
-		mergeQueueState: queue.state, mergeQueuePosition: queue.position, mergeQueueEstimate: queue.estimate,
+		hasMergeConflicts: observedPRMergeConflict(tp.HasMergeConflicts, status.MergeableState),
+		mergeQueueState:   queue.state, mergeQueuePosition: queue.position, mergeQueueEstimate: queue.estimate,
 		mergeQueueEntryID: queue.entryID, mergeQueueEntryHeadSHA: queue.entryHeadSHA,
 		mergeQueueLastRemovalID: queue.lastRemovalID, mergeQueueLastRemovalReason: queue.lastRemovalReason,
 		mergeQueueLastRemovalBeforeSHA: queue.lastRemovalBeforeSHA, mergeQueueLastRemovedAt: queue.lastRemovedAt,
@@ -1526,6 +1529,26 @@ func (s *Service) prepareTaskPRSyncState(ctx context.Context, tp *TaskPR, status
 		autoMergeObservedAt: nextAutoMergeObservedAt,
 		workflowAttention:   nextWorkflowAttention,
 	}
+}
+
+func observedPRMergeConflict(previous *bool, mergeableState string) *bool {
+	switch strings.ToLower(strings.TrimSpace(mergeableState)) {
+	case "dirty":
+		value := true
+		return &value
+	case "", "unknown":
+		return previous
+	default:
+		value := false
+		return &value
+	}
+}
+
+func effectivePRMergeableState(pr *PR) string {
+	if pr.Draft {
+		return "draft"
+	}
+	return pr.MergeableState
 }
 
 func taskPRChangedFields(tp *TaskPR, status *PRStatus, next taskPRSyncState) []string {
@@ -1541,6 +1564,7 @@ func taskPRChangedFields(tp *TaskPR, status *PRStatus, next taskPRSyncState) []s
 	changed = appendChangedField(changed, "review_state", tp.ReviewState != status.ReviewState)
 	changed = appendChangedField(changed, "checks_state", tp.ChecksState != status.ChecksState)
 	changed = appendChangedField(changed, "mergeable_state", tp.MergeableState != next.mergeableState)
+	changed = appendChangedField(changed, "has_merge_conflicts", !boolPtrEqual(tp.HasMergeConflicts, next.hasMergeConflicts))
 	changed = appendChangedField(changed, "merge_queue_state", tp.MergeQueueState != next.mergeQueueState)
 	changed = appendChangedField(changed, "merge_queue_position", !intPtrEqual(tp.MergeQueuePosition, next.mergeQueuePosition))
 	changed = appendChangedField(changed, "merge_queue_entry_id", tp.MergeQueueEntryID != next.mergeQueueEntryID)
@@ -1627,6 +1651,7 @@ func (s *Service) SyncTaskPR(ctx context.Context, taskID string, status *PRStatu
 	tp.ReviewState = status.ReviewState
 	tp.ChecksState = status.ChecksState
 	tp.MergeableState = next.mergeableState
+	tp.HasMergeConflicts = next.hasMergeConflicts
 	tp.MergeQueueState = next.mergeQueueState
 	tp.MergeQueuePosition = next.mergeQueuePosition
 	tp.MergeQueueEntryID = next.mergeQueueEntryID

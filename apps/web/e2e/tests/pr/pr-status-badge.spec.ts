@@ -112,6 +112,85 @@ test.describe("PR status badge", () => {
     });
   });
 
+  test("shows and clears one conflict warning across sidebar, Home card, and pipeline row", async ({
+    testPage,
+    apiClient,
+    seedData,
+  }) => {
+    test.setTimeout(120_000);
+    const title = "Cross-surface PR conflict";
+    const { task, inboxStep } = await seedBadgeTest(
+      apiClient,
+      seedData.workspaceId,
+      seedData.agentProfileId,
+      seedData.repositoryId,
+      title,
+    );
+    const pr = {
+      task_id: task.id,
+      workspace_id: seedData.workspaceId,
+      repository_id: seedData.repositoryId,
+      owner: "testorg",
+      repo: "testrepo",
+      pr_number: 191,
+      pr_url: "https://github.com/testorg/testrepo/pull/191",
+      pr_title: "Conflicted checks",
+      head_branch: "feat/conflicted-checks",
+      base_branch: "main",
+      author_login: "test-user",
+      state: "open",
+      review_state: "changes_requested",
+      checks_state: "failure",
+      mergeable_state: "dirty",
+      has_merge_conflicts: true,
+    };
+    await apiClient.mockGitHubAssociateTaskPR(pr);
+    await expect
+      .poll(async () => {
+        const response = await apiClient.listTasks(seedData.workspaceId);
+        return response.tasks.find((candidate) => candidate.id === task.id)?.status_summary
+          ?.pull_request?.has_merge_conflicts;
+      })
+      .toBe(true);
+
+    await testPage.goto("/tasks");
+    const sidebar = testPage.getByTestId("app-sidebar");
+    const sidebarIcon = sidebar
+      .getByTestId("sidebar-task-item")
+      .filter({ hasText: title })
+      .getByTestId(`pr-task-icon-${task.id}`);
+    await expect(sidebarIcon.getByTestId("pr-merge-conflict-warning")).toBeVisible();
+    await expect(sidebarIcon).toHaveAttribute("aria-label", /Conflicts/);
+
+    const kanban = new KanbanPage(testPage);
+    await kanban.goto();
+    const cardIcon = kanban
+      .taskCardInColumn(title, inboxStep.id)
+      .getByTestId(`pr-task-icon-${task.id}`);
+    await expect(cardIcon.getByTestId("pr-merge-conflict-warning")).toBeVisible();
+    await kanban.switchToPipelineView();
+    const pipelineIcon = kanban.pipelineTask(task.id).getByTestId(`pr-task-icon-${task.id}`);
+    await expect(pipelineIcon.getByTestId("pr-merge-conflict-warning")).toBeVisible();
+
+    await apiClient.mockGitHubAssociateTaskPR({
+      ...pr,
+      mergeable_state: "clean",
+      has_merge_conflicts: false,
+    });
+    await expect
+      .poll(async () => {
+        const response = await apiClient.listTasks(seedData.workspaceId);
+        return (
+          response.tasks.find((candidate) => candidate.id === task.id)?.status_summary?.pull_request
+            ?.has_merge_conflicts ?? false
+        );
+      })
+      .toBe(false);
+    await expect(pipelineIcon.getByTestId("pr-merge-conflict-warning")).toHaveCount(0);
+    await kanban.viewToggleKanban.first().click();
+    await expect(cardIcon.getByTestId("pr-merge-conflict-warning")).toHaveCount(0);
+  });
+
   test("hydrates the sidebar PR badge on /tasks when details are off", async ({
     testPage,
     apiClient,

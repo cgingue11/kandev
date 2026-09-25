@@ -2081,6 +2081,7 @@ export class ApiClient {
     review_state?: string;
     checks_state?: string;
     mergeable_state?: string;
+    has_merge_conflicts?: boolean;
     merge_queue_state?: string;
     merge_queue_position?: number | null;
     merge_queue_entry_id?: string;
