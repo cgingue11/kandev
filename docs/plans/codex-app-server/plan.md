@@ -214,3 +214,9 @@ The Docker, SSH, and Kind matrix passed with a fake app-server. These tests cove
 - Additive observation handling must reach both task and Office consumers before native usage publication.
 - Resume can replay historical token snapshots. Baselines and durable observation IDs prevent duplicate charges.
 - Live tests require an authenticated disposable runtime. Record a blocker rather than claiming fake-server results prove native availability.
+
+## Final PR delivery (2026-09-25)
+
+The user-authorized protocol follow-up is implemented in PR #3916. Commit `4795ed8244184e421d3a7d2a6b8379e1f15628f9` merged the current `main`, resolved the LSP release-order conflict, and included the final plan/work-order reconciliation. The WebSocket race suite, full i18n check, focused E2E lint, and commit hooks passed. Exact-head `scripts/pr-await 3916` reported 60 passed, 0 failed, and 0 pending; review threads are empty and GitHub reports mergeable/clean. The PR remains open.
+
+Task 07 remains pending. The authenticated Codex 0.154.0 run did not produce an approval or direct-question request, exact response usage, child-to-collaboration-call correlation, or provider thread estimate. Docker, SSH, and Kind coverage used a fake app-server and does not establish live Codex compatibility in those executors.
