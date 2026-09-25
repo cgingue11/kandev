@@ -1,7 +1,7 @@
 ---
 id: "03-conformance-and-delivery"
 title: "Protocol conformance and PR delivery"
-status: pending
+status: complete
 wave: 3
 depends_on:
   - "01-approval-lifecycle"
@@ -111,6 +111,6 @@ The following PR attempt is historical and superseded by later heads. Commit `af
 
 The fix uses `nativeUsageSourceTurnFallback`. Local race tests and backend lint passed. That `scripts/pr-await` attempt reached its 45-minute deadline with 11 E2E checks pending.
 
-Direct `item/tool/requestUserInput` requests now route through the existing Kandev clarification controls. Desktop and mobile E2E cover the choice-only UI; the mobile clarification suite passed all 11 cases, and the focused desktop and mobile capture scenarios passed. The PR follow-up also passed focused Go unit/race tests, backend lint, public-doc validation, specification validation, and `git diff --check`. The screenshots are prepared for the PR description and are not committed to the product branch.
+Direct `item/tool/requestUserInput` requests now route through the existing Kandev clarification controls. Desktop and mobile E2E cover the choice-only UI; the mobile clarification suite passed all 11 cases, and the focused desktop and mobile capture scenarios passed. The PR follow-up also passed focused Go unit/race tests, backend lint, public-doc validation, specification validation, and `git diff --check`. The desktop and phone screenshots are published on the PR media branch and linked from the PR description; they are not committed to the product branch.
 
-Task 01 is complete for implementation. This work order remains pending until the direct-question changes and screenshots reach PR #3916 and checks finish on the exact current head. Live Codex 0.154.0 question invocation and the native executor matrix remain unverified under original Task 07.
+Task 01 and this work order are complete for implementation and delivery. The direct-question changes and screenshots are in PR #3916. After the final PR-description refresh, `scripts/pr-await 3916` confirmed 60 checks passed, 0 failed, and 0 pending on code head `9a7df89752ea0bdabeb07850de767fdcab590231`; `scripts/pr-resolve list 3916` returned no unresolved threads, and GitHub reported mergeable/clean. A documentation-only plan-status commit will receive a fresh exact-head check. Live Codex 0.154.0 direct-question invocation and native Codex behavior inside Docker, SSH, and Kind remain unverified under original Task 07.

@@ -202,7 +202,7 @@ Run managed E2E commands from each work order to build fresh assets and limit wo
 Design validation: catalog validation, all 36 specification-linter tests, and full specification lint passed.
 Local link, acceptance-reference, and whitespace checks passed for all 13 design artifacts.
 Tasks 02-06: scoped backend, frontend, unit, race, and desktop/mobile E2E checks passed. PostgreSQL usage/migration coverage passed against a temporary PostgreSQL 16 container. Web typecheck, lint, i18n check, and ratchet passed.
-Tasks 01-06 are complete. Task 07 remains pending. The authenticated Codex 0.154.0 run covered initialization, prompt, resume, fork, shared-workspace behavior, and background completion. It did not observe an approval request or exact response usage, and it did not establish child-to-collaboration-call correlation.
+Tasks 01-06 are complete. Task 07 remains pending. The authenticated Codex 0.154.0 run covered initialization, prompt, resume, fork, shared-workspace behavior, and background completion. It did not observe an approval request or exact response usage, and it did not establish child-to-collaboration-call correlation. A later follow-up added fake-server and desktop/mobile coverage for native `item/tool/requestUserInput` clarification routing; direct live question behavior remains unverified.
 The Docker, SSH, and Kind matrix passed with a fake app-server. These tests cover executor launch and profile gating, not live Codex compatibility inside each executor. PostgreSQL usage and migration coverage passed on PostgreSQL 16.
 
 ## Risks and bounded choices

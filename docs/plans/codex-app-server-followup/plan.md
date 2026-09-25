@@ -1,6 +1,6 @@
 ---
 created: 2026-09-24
-status: in_progress
+status: complete
 requirements:
   - REQ-AGENTS-CODEX-NATIVE-002
   - REQ-AGENTS-CODEX-NATIVE-003
@@ -80,7 +80,7 @@ Record the exact scenario paths and commands used. Do not claim browser coverage
 
 - [x] [01: Approval concurrency and offered decisions](task-01-approval-lifecycle.md)
 - [x] [02: Reconnect and usage identity](task-02-reconnect-and-usage.md)
-- [ ] [03: Protocol conformance and PR delivery](task-03-conformance-and-delivery.md)
+- [x] [03: Protocol conformance and PR delivery](task-03-conformance-and-delivery.md)
 
 The primary session executed the work orders in order and recorded any incomplete acceptance criteria.
 This follow-up does not authorize more implementation subagents.
@@ -89,11 +89,11 @@ This follow-up does not authorize more implementation subagents.
 
 Planning validation passed: catalog validation (306 decisions, 1146 specifications), full specification lint, and local link, requirement-ID, and whitespace checks for all four files.
 
-Task 02 is complete. Task 03's protocol coverage and fixtures are complete, but PR fixup is in progress. CI on head `0a974dec628d13a4addb977b1791e4c244800a6` found a repeated `turn_fallback` string in backend static checks. The backend test shards passed, and the E2E workflow had 11 checks pending when `scripts/pr-await` reached its deadline. The local lint and race tests now pass after replacing the string with a constant.
+Task 02 is complete. An earlier PR fixup on `0a974dec628d13a4addb977b1791e4c244800a6` found a repeated `turn_fallback` string in backend static checks. The backend test shards passed, and the E2E workflow had 11 checks pending when `scripts/pr-await` reached its deadline. Replacing the string with a constant fixed the lint failure; this earlier result is superseded by the exact-head results below.
 
 Task 01 implementation is complete. Direct native question requests now use Kandev clarification controls, with secret questions rejected and provider resolution closing the waiting clarification. Live Codex 0.154.0 question behavior remains unverified.
 
-Task 03 remains pending while the direct-question follow-up is pushed to PR #3916 and current-head CI/review state is refreshed. Local validation for this follow-up passed focused Go unit/race tests, backend lint, mobile clarification E2E, public-doc checks, and specification validation. The native executor matrix remains part of the original Task 07 and is still outstanding.
+Task 03 is complete. The direct-question behavior and desktop/mobile screenshots are on PR #3916. The final PR-description refresh was followed by `scripts/pr-await 3916`, which confirmed 60 checks passed, 0 failed, and 0 pending on code head `9a7df89752ea0bdabeb07850de767fdcab590231`; the PR had no unresolved review threads and was mergeable/clean. The screenshots are published and linked from the PR description. A final plan-status commit will receive its own exact-head checks. The original Task 07 remains pending for live direct-question, approval, exact-usage, child-correlation, and native-executor compatibility evidence.
 
 The original Task 07 remains pending. Its live run did not observe an approval request, exact response usage, or child-to-collaboration-call correlation. Docker, SSH, and Kind tests use a fake app-server and do not prove upstream Codex compatibility inside those executors.
 Reconcile affected results in the original package without overwriting unrelated work or claiming a full rerun.
