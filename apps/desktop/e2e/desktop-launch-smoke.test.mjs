@@ -158,6 +158,19 @@ test("generic app activation never consumes a pending notification route", async
   assert.match(mainSource, /RunEvent::Reopen[\s\S]*activate_main_window/);
 });
 
+test("main window registers download handling before its configured WebView is created", async () => {
+  const [mainSource, configSource] = await Promise.all([
+    readFile(mainRsPath, "utf8"),
+    readFile(tauriConfigPath, "utf8"),
+  ]);
+  const mainWindow = JSON.parse(configSource).app.windows.find(({ label }) => label === "main");
+
+  assert.ok(mainWindow, "the configured main window must exist");
+  assert.equal(mainWindow.create, false, "Tauri must leave creation to the configured callback builder");
+  assert.match(mainSource, /WebviewWindowBuilder::from_config[\s\S]*?\.on_download\([\s\S]*?\)\s*\.build\(\)/);
+  assert.match(mainSource, /downloads::handle_download_event/);
+});
+
 test("fullscreen uses the platform-native desktop accelerators", async () => {
   const mainSource = await readFile(mainRsPath, "utf8");
 

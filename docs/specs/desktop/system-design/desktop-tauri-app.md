@@ -8,6 +8,7 @@ updated: 2026-09-25
 owners:
   - tbd
 ---
+
 # Tauri Desktop App System Design
 
 ## Purpose and boundaries
@@ -235,8 +236,9 @@ unrestricted URL opening. Its directory command only returns a folder selected t
 system panel.
 
 External `http`, `https`, and `mailto` links open in the system browser/client. Internal loopback
-navigation, downloads, and blob URLs remain in the WebView unless an existing workflow specifies
-otherwise.
+navigation and blob URLs remain in the WebView. In-app file downloads use the
+[native download contract](native-downloads.md) for destination and completion;
+the WebView still transfers their bytes.
 
 The launch boundary remains:
 
