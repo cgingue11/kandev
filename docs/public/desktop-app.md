@@ -200,7 +200,7 @@ Linux `.deb` and `.rpm` installations must be updated through their package mana
 
 Kandev has no registered public URL scheme, file association, or command-line deep-link protocol. A second application launch only activates the existing window. Links and routes inside the Kandev UI still work normally, but an external `kandev://…` link is not a supported product path.
 
-External `http`, `https`, and `mailto` destinations open through the system browser or mail client. The desktop bridge rejects URLs with embedded credentials, unsupported schemes, `localhost`/subdomains of `localhost`, loopback IPs, and unspecified IPs; Kandev routes, previews, downloads, and blob URLs remain in the WebView. RFC 1918/private-LAN hosts are not categorically blocked by this validator.
+External `http`, `https`, and `mailto` destinations open in the system browser or mail client. The desktop bridge blocks links with embedded credentials and unsupported schemes. It keeps `localhost` names, loopback IPs, and unspecified IPs in the WebView. It does not block all private-LAN hosts. Kandev routes, previews, and downloads stay in the WebView. Downloads that you start inside the desktop app open the system Save dialog. Kandev reports whether the transfer succeeds. The WebView transfers the file data.
 
 Native notifications are limited to selected agent-turn-finished and
 agent-needs-an-answer events, plus session failures. Semantic session events

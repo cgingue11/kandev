@@ -19,6 +19,7 @@ const backendRsPath = resolve(__dirname, "../src-tauri/src/backend.rs");
 const mainRsPath = resolve(__dirname, "../src-tauri/src/main.rs");
 const shellRsPath = resolve(__dirname, "../src-tauri/src/shell.rs");
 const smokeScriptPath = resolve(__dirname, "desktop-launch-smoke.mjs");
+const tauriConfigPath = resolve(__dirname, "../src-tauri/tauri.conf.json");
 
 async function withTempDir(run) {
   const dir = await mkdtemp(join(tmpdir(), "wait-for-file-"));
@@ -198,6 +199,19 @@ test("generic app activation never consumes a pending notification route", async
   assert.doesNotMatch(mainSource, /emit_pending_notification_route/);
   assert.match(mainSource, /tauri_plugin_single_instance::init\([\s\S]*activate_main_window/);
   assert.match(mainSource, /RunEvent::Reopen[\s\S]*activate_main_window/);
+});
+
+test("main window registers download handling before its configured WebView is created", async () => {
+  const [mainSource, configSource] = await Promise.all([
+    readFile(mainRsPath, "utf8"),
+    readFile(tauriConfigPath, "utf8"),
+  ]);
+  const mainWindow = JSON.parse(configSource).app.windows.find(({ label }) => label === "main");
+
+  assert.ok(mainWindow, "the configured main window must exist");
+  assert.equal(mainWindow.create, false, "Tauri must leave creation to the configured callback builder");
+  assert.match(mainSource, /WebviewWindowBuilder::from_config[\s\S]*?\.on_download\([\s\S]*?\)\s*\.build\(\)/);
+  assert.match(mainSource, /downloads::handle_download_event/);
 });
 
 test("fullscreen uses the platform-native desktop accelerators", async () => {
