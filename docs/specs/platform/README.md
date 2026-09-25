@@ -84,7 +84,6 @@ retains ownership of its values, validation, authority, and persistence.
 - [Session Config Reconciliation Across Agent Types](requirements/session-config-cross-agent-reconcile.md)
 - [Session subscription recovery](requirements/session-subscription-recovery.md)
 - [Setup and Launch Timeout](requirements/setup-launch-timeout.md)
-- [Managed credential launch environment](requirements/managed-credential-launch-environment.md)
 - [Quiet benign teardown log noise on shutdown](requirements/shutdown-log-noise.md)
 - [Do not surface backend-shutdown turn aborts as agent failures](requirements/shutdown-turn-failure-suppression.md)
 - [Background subsystem context-cancellation log severity](requirements/shutdown-background-canceled-logs.md)
@@ -99,7 +98,6 @@ retains ownership of its values, validation, authority, and persistence.
 - [CI performance](system-design/ci-performance.md)
 
 - [Startup lifecycle](system-design/startup-lifecycle.md)
-- [Managed credential launch environment](system-design/managed-credential-launch-environment.md)
 - [Startup progress visibility](system-design/startup-progress-visibility.md)
 
 - [Agent-accessible Kandev settings](system-design/agent-settings-parity.md)

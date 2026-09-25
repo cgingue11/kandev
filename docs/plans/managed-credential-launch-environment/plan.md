@@ -2,9 +2,9 @@
 created: 2026-09-25
 status: implemented
 requirements:
-  - REQ-PLATFORM-MANAGED-CREDENTIAL-LAUNCH-ENVIRONMENT-001
+  - REQ-INTEGRATIONS-GITHUB-AUTHENTICATION-001
 system_design:
-  - ../../specs/platform/system-design/managed-credential-launch-environment.md
+  - ../../specs/integrations/system-design/github-authentication-02.md
 legacy_specs: []
 ---
 
@@ -28,6 +28,7 @@ the only credential the task has.
 ### In scope
 
 - Send the runtime snapshot unchanged when no per-run overlay exists.
+- Record the overlay-free launch path in the configure-boundary design.
 
 ### Out of scope
 
@@ -44,8 +45,7 @@ branch. Nothing else changes.
 
 | Acceptance criterion | Evidence |
 | --- | --- |
-| `AC-PLATFORM-MANAGED-CREDENTIAL-LAUNCH-ENVIRONMENT-001.1` | `TestConfigureAndStartAgentKeepsLaunchManagedGitCredentials` in `manager_launch_credentials_test.go`: a snapshot with broker values and a managed helper entry reaches agentctl intact. |
-| `AC-PLATFORM-MANAGED-CREDENTIAL-LAUNCH-ENVIRONMENT-001.2` | Existing `configureAndStartAgent` and `composeExecutionRuntimeEnvironment` tests in the lifecycle package keep passing. |
+| `AC-INTEGRATIONS-GITHUB-AUTHENTICATION-001.15` | `TestConfigureAndStartAgentKeepsLaunchManagedGitCredentials` in `manager_launch_credentials_test.go`: a snapshot with broker values and a managed helper entry reaches agentctl intact. Existing `configureAndStartAgent` and `composeExecutionRuntimeEnvironment` tests keep passing for the overlay path. |
 
 ## Work orders
 

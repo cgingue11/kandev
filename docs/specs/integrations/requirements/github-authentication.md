@@ -32,6 +32,7 @@ GitHub credentials must not silently cross workspace boundaries. A local workspa
 - **AC-INTEGRATIONS-GITHUB-AUTHENTICATION-001.11:** When a Local or Worktree task launches or resumes, the system shall inspect each attached Kandev-managed GitHub checkout before the agent starts. This behavior includes a prepared workspace that the task reuses.
 - **AC-INTEGRATIONS-GITHUB-AUTHENTICATION-001.12:** The system shall reconcile each managed checkout to the canonical transport for the current task policy. It shall not rewrite an already-canonical origin or a user-managed local checkout.
 - **AC-INTEGRATIONS-GITHUB-AUTHENTICATION-001.13:** The public guide shall explain historical managed defaults, preserved upgrade policies, and recovery through explicit task-access selection. It shall distinguish managed checkouts, user-managed checkouts, and remote executors.
+- **AC-INTEGRATIONS-GITHUB-AUTHENTICATION-001.15:** When a managed task launches and no per-run environment overlay has been delivered for the execution, the agent subprocess shall receive the launch-composed environment unchanged, including the managed helper path, broker URL, and lease that its generated credential helper entries expand.
 
 ### REQ-INTEGRATIONS-GITHUB-AUTHENTICATION-002: Executor HTTPS access through host GitHub CLI
 

@@ -6,12 +6,11 @@ wave: 1
 depends_on: []
 plan: "plan.md"
 requirements:
-  - REQ-PLATFORM-MANAGED-CREDENTIAL-LAUNCH-ENVIRONMENT-001
+  - REQ-INTEGRATIONS-GITHUB-AUTHENTICATION-001
 acceptance_criteria:
-  - AC-PLATFORM-MANAGED-CREDENTIAL-LAUNCH-ENVIRONMENT-001.1
-  - AC-PLATFORM-MANAGED-CREDENTIAL-LAUNCH-ENVIRONMENT-001.2
+  - AC-INTEGRATIONS-GITHUB-AUTHENTICATION-001.15
 system_design:
-  - ../../specs/platform/system-design/managed-credential-launch-environment.md
+  - ../../specs/integrations/system-design/github-authentication-02.md
 ---
 
 # Task 01: Keep managed credentials on an overlay-free launch
@@ -49,6 +48,8 @@ overlay, which strips the managed credential values the helper entries need.
 
 - `apps/backend/internal/agent/runtime/lifecycle/manager_launch.go`
 - `apps/backend/internal/agent/runtime/lifecycle/manager_launch_credentials_test.go`
+- `docs/specs/integrations/requirements/github-authentication.md`
+- `docs/specs/integrations/system-design/github-authentication-02.md`
 
 ## Dependencies
 
@@ -66,8 +67,7 @@ None.
 
 ## Inputs
 
-- `REQ-PLATFORM-MANAGED-CREDENTIAL-LAUNCH-ENVIRONMENT-001` and its system
-  design.
+- `AC-INTEGRATIONS-GITHUB-AUTHENTICATION-001.15` and the configure-boundary design in part 2.
 
 ## Results
 
