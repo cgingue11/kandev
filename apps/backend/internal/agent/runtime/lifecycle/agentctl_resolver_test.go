@@ -511,7 +511,7 @@ func TestAgentctlResolverPrunesOldCacheOnVerifiedHelperResolution(t *testing.T) 
 	}
 }
 
-func TestAgentctlResolverCachePruneDoesNotDelayCanceledLaunch(t *testing.T) {
+func TestAgentctlResolverCachePruneDoesNotDelayDeadlineBoundLaunch(t *testing.T) {
 	const version = "1.4.0"
 	const commit = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	platform := SSHRemotePlatform{GOOS: "linux", GOARCH: "amd64"}
@@ -554,7 +554,8 @@ func TestAgentctlResolverCachePruneDoesNotDelayCanceledLaunch(t *testing.T) {
 		}
 	})
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
+	defer cancel()
 	type resolution struct {
 		path string
 		err  error
@@ -574,15 +575,15 @@ func TestAgentctlResolverCachePruneDoesNotDelayCanceledLaunch(t *testing.T) {
 		cancel()
 		t.Fatal("background mount inventory has no time bound")
 	}
-	cancel()
 	select {
 	case got := <-resolved:
 		if got.err != nil || got.path != cachePath {
 			t.Fatalf("resolution = %q, %v; want %q", got.path, got.err, cachePath)
 		}
-	case <-time.After(250 * time.Millisecond):
-		t.Fatal("helper resolution waited for background cache cleanup after launch cancellation")
+	case <-ctx.Done():
+		t.Fatal("helper resolution waited for background cache cleanup until the launch deadline")
 	}
+	cancel()
 	select {
 	case <-inventoryFinished:
 		t.Fatal("caller cancellation unexpectedly canceled the owned background sweep")
