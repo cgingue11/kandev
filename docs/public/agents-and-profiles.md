@@ -44,6 +44,8 @@ Native sessions show response and turn token usage in the chat footer. A provide
 
 After a completed turn, use **Fork conversation** to create another session through that turn. The new session keeps the task and executor, and files remain shared in the workspace. It does not create a branch or worktree. Native Codex subagents and background commands stay within the session; they do not become separate Kandev tasks.
 
+Codex questions sent through Kandev's `ask_user_question_kandev` MCP tool use the normal clarification UI. Direct app-server `item/tool/requestUserInput` requests are not supported yet.
+
 ### Muse command surfaces
 
 Muse Code has no native ACP server, so Kandev runs it through the community

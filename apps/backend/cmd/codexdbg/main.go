@@ -447,25 +447,28 @@ func runInspect(args []string, stdout, stderr io.Writer) error {
 }
 
 type inspectedEntry struct {
-	Sequence   uint64          `json:"sequence"`
-	Kind       string          `json:"kind"`
-	Direction  string          `json:"direction,omitempty"`
-	Method     string          `json:"method,omitempty"`
-	RequestID  json.RawMessage `json:"request_id,omitempty"`
-	ResponseTo string          `json:"response_to,omitempty"`
-	ThreadID   string          `json:"thread_id,omitempty"`
-	TurnID     string          `json:"turn_id,omitempty"`
-	Scope      string          `json:"usage_scope,omitempty"`
-	Usage      map[string]any  `json:"usage,omitempty"`
-	Event      string          `json:"event,omitempty"`
-	Meta       map[string]any  `json:"meta,omitempty"`
+	Sequence          uint64          `json:"sequence"`
+	Kind              string          `json:"kind"`
+	Direction         string          `json:"direction,omitempty"`
+	Method            string          `json:"method,omitempty"`
+	RequestID         json.RawMessage `json:"request_id,omitempty"`
+	ResolvesRequestID json.RawMessage `json:"resolves_request_id,omitempty"`
+	ResponseTo        string          `json:"response_to,omitempty"`
+	ThreadID          string          `json:"thread_id,omitempty"`
+	TurnID            string          `json:"turn_id,omitempty"`
+	ResponseID        string          `json:"response_id,omitempty"`
+	ItemType          string          `json:"item_type,omitempty"`
+	Scope             string          `json:"usage_scope,omitempty"`
+	Usage             map[string]any  `json:"usage,omitempty"`
+	Event             string          `json:"event,omitempty"`
+	Meta              map[string]any  `json:"meta,omitempty"`
 }
 
 func inspectEntries(entries []codexdbg.CaptureEntry, threadID, turnID string) []inspectedEntry {
-	requestMethods, requestParams := indexCapturedRequests(entries)
+	requestMethods, requestParams, serverRequestMethods, serverRequestParams := indexCapturedRequests(entries)
 	out := make([]inspectedEntry, 0, len(entries))
 	for _, entry := range entries {
-		item := inspectCaptureEntry(entry, requestMethods, requestParams)
+		item := inspectCaptureEntry(entry, requestMethods, requestParams, serverRequestMethods, serverRequestParams)
 		if matchesInspectFilter(item, threadID, turnID) {
 			out = append(out, item)
 		}
@@ -478,24 +481,32 @@ type capturedFrame struct {
 	Result json.RawMessage `json:"result"`
 }
 
-func indexCapturedRequests(entries []codexdbg.CaptureEntry) (map[string]string, map[string]json.RawMessage) {
+func indexCapturedRequests(entries []codexdbg.CaptureEntry) (map[string]string, map[string]json.RawMessage, map[string]string, map[string]json.RawMessage) {
 	methods := make(map[string]string)
 	params := make(map[string]json.RawMessage)
+	serverMethods := make(map[string]string)
+	serverParams := make(map[string]json.RawMessage)
 	for _, entry := range entries {
-		if entry.Kind != "frame" || entry.Direction != codexappserver.FrameSent || entry.Method == "" || len(entry.RequestID) == 0 {
+		if entry.Kind != "frame" || entry.Method == "" || len(entry.RequestID) == 0 {
 			continue
 		}
 		key := jsonIDKey(entry.RequestID)
-		methods[key] = entry.Method
 		var frame capturedFrame
 		if json.Unmarshal(entry.Frame, &frame) == nil {
-			params[key] = frame.Params
+			switch entry.Direction {
+			case codexappserver.FrameSent:
+				methods[key] = entry.Method
+				params[key] = frame.Params
+			case codexappserver.FrameReceived:
+				serverMethods[key] = entry.Method
+				serverParams[key] = frame.Params
+			}
 		}
 	}
-	return methods, params
+	return methods, params, serverMethods, serverParams
 }
 
-func inspectCaptureEntry(entry codexdbg.CaptureEntry, methods map[string]string, requestParams map[string]json.RawMessage) inspectedEntry {
+func inspectCaptureEntry(entry codexdbg.CaptureEntry, methods map[string]string, requestParams map[string]json.RawMessage, serverMethods map[string]string, serverRequestParams map[string]json.RawMessage) inspectedEntry {
 	item := inspectedEntry{Sequence: entry.Sequence, Kind: entry.Kind, Direction: string(entry.Direction), Method: entry.Method, RequestID: entry.RequestID, ResponseTo: entry.ResponseTo, Event: entry.Event, Meta: entry.Meta}
 	if entry.Kind != "frame" {
 		return item
@@ -509,16 +520,58 @@ func inspectCaptureEntry(entry codexdbg.CaptureEntry, methods map[string]string,
 		target = frame.Result
 	}
 	item.ThreadID, item.TurnID = captureIDs(target)
-	if entry.Method == "" && entry.ResponseTo == codexappserver.MethodAccountUsageRead {
-		if params := requestParams[jsonIDKey(entry.RequestID)]; len(params) != 0 {
-			item.ThreadID, _ = captureIDs(params)
-		}
-	}
+	setInspectNativeIdentity(&item, entry, frame, serverMethods)
+	setInspectRequestContext(&item, entry, requestParams, serverRequestParams)
 	setInspectUsage(&item, entry, frame, methods)
 	if item.Method == "" {
 		item.Method = entry.Method
 	}
 	return item
+}
+
+func setInspectNativeIdentity(item *inspectedEntry, entry codexdbg.CaptureEntry, frame capturedFrame, serverMethods map[string]string) {
+	if entry.Method == codexappserver.NotificationRawResponse {
+		var response struct {
+			ResponseID string `json:"responseId"`
+		}
+		if json.Unmarshal(frame.Params, &response) == nil {
+			item.ResponseID = response.ResponseID
+		}
+	}
+	if entry.Method == "item/started" || entry.Method == "item/completed" {
+		var notification struct {
+			Item struct {
+				Type string `json:"type"`
+			} `json:"item"`
+		}
+		if json.Unmarshal(frame.Params, &notification) == nil {
+			item.ItemType = notification.Item.Type
+		}
+	}
+	if entry.Method == codexappserver.NotificationServerRequestResolved {
+		var notification struct {
+			RequestID json.RawMessage `json:"requestId"`
+		}
+		if json.Unmarshal(frame.Params, &notification) == nil {
+			item.ResolvesRequestID = notification.RequestID
+			item.ResponseTo = serverMethods[jsonIDKey(notification.RequestID)]
+		}
+	}
+	if item.Method == "" && entry.ResponseTo != "" {
+		item.Method = entry.ResponseTo
+	}
+}
+
+func setInspectRequestContext(item *inspectedEntry, entry codexdbg.CaptureEntry, requestParams, serverRequestParams map[string]json.RawMessage) {
+	if entry.Method == "" && entry.ResponseTo == codexappserver.MethodAccountUsageRead {
+		if params := requestParams[jsonIDKey(entry.RequestID)]; len(params) != 0 {
+			item.ThreadID, _ = captureIDs(params)
+		}
+	} else if entry.Method == "" && entry.Direction == codexappserver.FrameSent && entry.ResponseTo != "" {
+		if params := serverRequestParams[jsonIDKey(entry.RequestID)]; len(params) != 0 {
+			item.ThreadID, item.TurnID = captureIDs(params)
+		}
+	}
 }
 
 func setInspectUsage(item *inspectedEntry, entry codexdbg.CaptureEntry, frame capturedFrame, methods map[string]string) {
@@ -536,6 +589,8 @@ func setInspectUsage(item *inspectedEntry, entry codexdbg.CaptureEntry, frame ca
 		if entry.ResponseTo == codexappserver.MethodAccountUsageRead {
 			item.Scope = "provider_thread_estimate"
 			item.Usage = usageFields(frame.Result)
+		} else if entry.ResponseTo != "" {
+			item.Method = entry.ResponseTo
 		} else if method := methods[jsonIDKey(entry.RequestID)]; method != "" {
 			item.Method = method
 		}

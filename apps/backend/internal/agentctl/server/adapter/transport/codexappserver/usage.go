@@ -37,13 +37,24 @@ func (a *Adapter) beginProviderTurn(threadID, turnID string) {
 	if threadID == "" || turnID == "" {
 		return
 	}
+	key := nativeTurnKey(threadID, turnID)
 	a.mu.Lock()
+	if _, exists := a.turnModels[key]; exists {
+		a.mu.Unlock()
+		return
+	}
+	model := a.modelID
+	generation := a.activeGeneration
+	if child, ok := a.children[threadID]; ok {
+		model = child.model
+		generation = child.generation
+	}
+	a.turnModels[key] = model
+	a.turnGenerations[key] = generation
 	if total, ok := a.latestTokenTotals[threadID]; ok {
-		key := nativeTurnKey(threadID, turnID)
 		a.turnTokenBaselines[key] = total
 		a.turnHasTokenBaseline[key] = true
 	} else {
-		key := nativeTurnKey(threadID, turnID)
 		a.turnHasTokenBaseline[key] = false
 	}
 	a.mu.Unlock()
@@ -68,13 +79,8 @@ func (a *Adapter) handleRawResponseCompleted(params map[string]any) {
 		return
 	}
 	a.turnResponseObserved[key] = true
-	model := a.modelID
-	generation := a.activeGeneration
-	if isChild {
-		binding := a.children[notification.ThreadID]
-		model = binding.model
-		generation = binding.generation
-	}
+	model := a.turnModels[key]
+	generation := a.turnGenerations[key]
 	a.mu.Unlock()
 
 	usage, observation, ok := normalizeRawResponseUsage(*notification.Usage, notification.ThreadID, notification.TurnID, notification.ResponseID, isChild, model)
@@ -127,13 +133,8 @@ func (a *Adapter) emitFallbackObservation(threadID, turnID string, baseline, cur
 		return
 	}
 	a.turnFallbackSelected[key] = true
-	model := a.modelID
-	generation := a.activeGeneration
-	if isChild {
-		binding := a.children[threadID]
-		model = binding.model
-		generation = binding.generation
-	}
+	model := a.turnModels[key]
+	generation := a.turnGenerations[key]
 	a.mu.Unlock()
 	usage, observation, ok := normalizeRawResponseUsage(delta, threadID, turnID, "", isChild, model)
 	if !ok {

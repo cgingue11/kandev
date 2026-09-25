@@ -118,6 +118,10 @@ Public docs must describe verified behavior, not this package's intended behavio
 
 ## Results
 
-Documentation and scoped harness guidance are updated. Native E2E tests compile with the `e2e` build tag, and PostgreSQL usage/migration tests passed on PostgreSQL 16.
+The native Codex E2E suite passed against Codex 0.154.0. It covered initialization, prompt, resume, fork, fork workspace, and background completion. PostgreSQL usage and migration tests passed on PostgreSQL 16.
 
-This work order remains pending. No authenticated Codex prompt or live native conversation was run. Dedicated native Codex Docker, SSH, and Kind scenarios do not exist in the E2E tree, so the corresponding matrix was not run. The feature has not yet been validated against a live 0.154.0 runtime for child-after-parent activity, provider estimate availability, or the complete fork and approval flows. Keep the requirements and system designs in draft until this evidence is recorded.
+Docker, SSH, and Kind executor tests passed with a fake app-server. They check native command launch and profile gating through each executor. They do not run Codex inside those executors.
+
+The live run did not observe an approval request from a disposable write. Usage fell back to `turn_fallback`; exact response usage was not observed. A second provider thread appeared, but the run did not establish child-to-collaboration-call correlation. Live tests therefore do not establish approval, exact response usage, child correlation, or all fork and background behavior.
+
+This work order remains pending. No live runtime check established provider-estimate availability for the tested thread. Direct app-server `item/tool/requestUserInput` remains unsupported by the native adapter. Keep the requirements and system designs in draft until the remaining acceptance evidence is recorded.

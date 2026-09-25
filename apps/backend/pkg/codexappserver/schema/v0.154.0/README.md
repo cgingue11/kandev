@@ -16,3 +16,10 @@ The generating executable was the Linux x86-64 musl standalone release with SHA-
 Go's small typed surface in `pkg/codexappserver/types.go` uses this generated
 schema for the methods and notifications Kandev currently needs. The schema is
 kept as review evidence and is not embedded in production binaries.
+
+The CLI-generated schema omits the server-to-client request union. Its method
+inventory is tracked separately in `server-requests.json`, copied from Codex's
+generated [`ServerRequest.ts`](https://github.com/openai/codex/blob/36eab01061df3cde5f95ec20a526777b430091ba/codex-rs/app-server-protocol/schema/typescript/ServerRequest.ts)
+at upstream commit `36eab01061df3cde5f95ec20a526777b430091ba`. The protocol and
+adapter tests require an explicit supported or rejected disposition for every
+method in that inventory.

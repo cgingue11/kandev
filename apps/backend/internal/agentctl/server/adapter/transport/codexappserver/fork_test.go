@@ -66,3 +66,22 @@ func TestForkSessionPreservesSourceAndRejectsActiveWork(t *testing.T) {
 		t.Fatalf("provider fork calls = %d, want no RPC for the refused request", forkCalls)
 	}
 }
+
+func TestUnboundChildTurnDoesNotSetRootTurnID(t *testing.T) {
+	adapter := NewAdapter(&shared.Config{}, logger.Default())
+	defer func() { _ = adapter.Close() }()
+	adapter.threadID = "root-thread"
+
+	adapter.handleNotification(context.Background(), "turn/started", json.RawMessage(`{"threadId":"child-thread","turn":{"id":"child-turn","status":"inProgress"}}`))
+	if got := adapter.GetOperationID(); got != "" {
+		t.Fatalf("root turn ID after unbound child turn started = %q, want empty", got)
+	}
+
+	adapter.handleNotification(context.Background(), "turn/completed", json.RawMessage(`{"threadId":"child-thread","turn":{"id":"child-turn","status":"completed"}}`))
+	adapter.mu.RLock()
+	activeChild := hasActiveChild(adapter.childStatuses, adapter.earlyChildActivities)
+	adapter.mu.RUnlock()
+	if activeChild {
+		t.Fatal("completed unbound child remained active")
+	}
+}

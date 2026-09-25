@@ -65,6 +65,11 @@ func TestInspectScopesAndFiltersUsageWithoutPrintingRawFrames(t *testing.T) {
 		frame     string
 	}{
 		{codexappserver.FrameReceived, `{"jsonrpc":"2.0","method":"rawResponse/completed","params":{"threadId":"thread-1","turnId":"turn-1","responseId":"response-1","usage":{"input_tokens":1000,"cached_input_tokens":600,"output_tokens":200}}}`},
+		{codexappserver.FrameReceived, `{"jsonrpc":"2.0","method":"rawResponse/completed","params":{"threadId":"thread-1","turnId":"turn-1","responseId":"response-1","usage":{"input_tokens":1000,"cached_input_tokens":600,"output_tokens":200}}}`},
+		{codexappserver.FrameReceived, `{"jsonrpc":"2.0","id":"permission-9","method":"item/commandExecution/requestApproval","params":{"threadId":"thread-1","turnId":"turn-1","itemId":"item-9","command":"secret-command"}}`},
+		{codexappserver.FrameReceived, `{"jsonrpc":"2.0","method":"item/started","params":{"threadId":"thread-1","turnId":"turn-1","item":{"id":"child-activity-1","type":"subAgentActivity","childThreadId":"child-thread-1"}}}`},
+		{codexappserver.FrameReceived, `{"jsonrpc":"2.0","method":"serverRequest/resolved","params":{"threadId":"thread-1","requestId":"permission-9"}}`},
+		{codexappserver.FrameSent, `{"jsonrpc":"2.0","id":"permission-9","result":{"decision":"decline"}}`},
 		{codexappserver.FrameReceived, `{"jsonrpc":"2.0","method":"thread/tokenUsage/updated","params":{"threadId":"thread-1","tokenUsage":{"total":{"inputTokens":1200,"outputTokens":200}}}}`},
 		{codexappserver.FrameReceived, `{"jsonrpc":"2.0","method":"turn/completed","params":{"threadId":"thread-1","turn":{"id":"turn-1","status":"completed"}}}`},
 		{codexappserver.FrameSent, `{"jsonrpc":"2.0","id":19,"method":"account/usage/read","params":{"threadId":"thread-1"}}`},
@@ -106,6 +111,22 @@ func TestInspectScopesAndFiltersUsageWithoutPrintingRawFrames(t *testing.T) {
 	}
 	if bytes.Contains(output.Bytes(), []byte("\"jsonrpc\"")) || bytes.Contains(output.Bytes(), []byte("\"params\"")) {
 		t.Fatalf("inspect emitted a raw JSON-RPC frame: %s", output.String())
+	}
+	for _, field := range [][]byte{
+		[]byte(`"response_id": "response-1"`),
+		[]byte(`"response_to": "item/commandExecution/requestApproval"`),
+		[]byte(`"resolves_request_id": "permission-9"`),
+		[]byte(`"item_type": "subAgentActivity"`),
+	} {
+		if !bytes.Contains(output.Bytes(), field) {
+			t.Errorf("inspect output is missing correlation field %s: %s", field, output.String())
+		}
+	}
+	if got := bytes.Count(output.Bytes(), []byte(`"response_id": "response-1"`)); got != 2 {
+		t.Errorf("inspect returned %d observations for replayed response ID, want 2", got)
+	}
+	if bytes.Contains(output.Bytes(), []byte("secret-command")) {
+		t.Fatalf("inspect emitted the raw approval request payload: %s", output.String())
 	}
 }
 

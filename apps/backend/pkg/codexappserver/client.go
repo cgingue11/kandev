@@ -28,8 +28,9 @@ var (
 // Options bounds individual frames and queued server events. Zero values use
 // the protocol client's defaults.
 type Options struct {
-	MaxFrameBytes int
-	QueueSize     int
+	MaxFrameBytes         int
+	QueueSize             int
+	MaxConcurrentRequests int
 }
 
 // RPCError is an error returned by a JSON-RPC peer.
@@ -46,8 +47,16 @@ func (e *RPCError) Error() string {
 	return fmt.Sprintf("Codex app-server RPC error %d: %s", e.Code, e.Message)
 }
 
+// ServerRequest is a JSON-RPC request initiated by the app-server. ID preserves
+// its original JSON type so numeric and string request IDs remain distinct.
+type ServerRequest struct {
+	ID     json.RawMessage
+	Method string
+	Params json.RawMessage
+}
+
 // RequestHandler answers JSON-RPC requests initiated by the app-server.
-type RequestHandler func(context.Context, string, json.RawMessage) (any, error)
+type RequestHandler func(context.Context, ServerRequest) (any, error)
 
 // NotificationHandler receives notifications initiated by the app-server.
 type NotificationHandler func(context.Context, string, json.RawMessage)
@@ -83,11 +92,29 @@ type outboundFrame struct {
 }
 
 type inboundMessage struct {
-	id      json.RawMessage
-	method  string
-	params  json.RawMessage
-	request bool
-	barrier chan struct{}
+	id            json.RawMessage
+	method        string
+	params        json.RawMessage
+	request       bool
+	serverRequest *serverRequestState
+	barrier       chan struct{}
+}
+
+type serverRequestStatus uint8
+
+const (
+	serverRequestPending serverRequestStatus = iota
+	serverRequestResponding
+	serverRequestResolved
+	serverRequestReplied
+)
+
+type serverRequestState struct {
+	key    string
+	id     json.RawMessage
+	ctx    context.Context
+	cancel context.CancelFunc
+	status serverRequestStatus
 }
 
 type wireMessage struct {
@@ -112,6 +139,7 @@ type Client struct {
 	maxFrameBytes int
 	outbound      chan outboundFrame
 	inbound       chan inboundMessage
+	requestSlots  chan struct{}
 	done          chan struct{}
 	ctx           context.Context
 	cancel        context.CancelFunc
@@ -125,6 +153,7 @@ type Client struct {
 	notifyHandler   NotificationHandler
 	frameObserver   FrameObserver
 	pending         map[string]pendingCall
+	serverRequests  map[string]*serverRequestState
 	nextID          uint64
 	unknownResponse atomic.Uint64
 }
@@ -138,18 +167,23 @@ func NewClient(stdin io.Writer, stdout io.Reader, options Options) *Client {
 	if options.QueueSize <= 0 {
 		options.QueueSize = defaultQueueSize
 	}
+	if options.MaxConcurrentRequests <= 0 {
+		options.MaxConcurrentRequests = options.QueueSize
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	c := &Client{
-		stdout:        stdout,
-		stdin:         stdin,
-		reader:        bufio.NewReaderSize(stdout, 64*1024),
-		maxFrameBytes: options.MaxFrameBytes,
-		outbound:      make(chan outboundFrame, options.QueueSize),
-		inbound:       make(chan inboundMessage, options.QueueSize),
-		done:          make(chan struct{}),
-		ctx:           ctx,
-		cancel:        cancel,
-		pending:       make(map[string]pendingCall),
+		stdout:         stdout,
+		stdin:          stdin,
+		reader:         bufio.NewReaderSize(stdout, 64*1024),
+		maxFrameBytes:  options.MaxFrameBytes,
+		outbound:       make(chan outboundFrame, options.QueueSize),
+		inbound:        make(chan inboundMessage, options.QueueSize),
+		requestSlots:   make(chan struct{}, options.MaxConcurrentRequests),
+		done:           make(chan struct{}),
+		ctx:            ctx,
+		cancel:         cancel,
+		pending:        make(map[string]pendingCall),
+		serverRequests: make(map[string]*serverRequestState),
 	}
 	go c.readLoop()
 	go c.writeLoop()
@@ -357,6 +391,36 @@ func (c *Client) send(ctx context.Context, frame any) error {
 	}
 }
 
+func (c *Client) sendAsync(ctx context.Context, frame any) error {
+	if ctx == nil {
+		return errors.New("JSON-RPC write context is required")
+	}
+	if err := c.terminalError(); err != nil {
+		return err
+	}
+	data, err := json.Marshal(frame)
+	if err != nil {
+		return fmt.Errorf("encode JSON-RPC frame: %w", err)
+	}
+	if len(data) > c.maxFrameBytes {
+		return fmt.Errorf("JSON-RPC frame exceeds %d bytes", c.maxFrameBytes)
+	}
+	write := outboundFrame{
+		ctx: ctx, data: append(data, '\n'), done: make(chan error, 1),
+		started: make(chan struct{}), written: make(chan struct{}),
+	}
+	select {
+	case c.outbound <- write:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-c.done:
+		return c.terminalError()
+	default:
+		return fmt.Errorf("app-server write queue exceeds %d messages", cap(c.outbound))
+	}
+}
+
 func (c *Client) interruptWrite(write outboundFrame, cause error) error {
 	select {
 	case err := <-write.done:
@@ -480,9 +544,34 @@ func decodeWireMessage(line []byte) (wireMessage, error) {
 }
 
 func (c *Client) handleWireMessage(message wireMessage) error {
-	if message.Method != "" {
-		return c.enqueueInbound(inboundMessage{method: message.Method, params: message.Params, id: message.ID, request: len(message.ID) != 0})
+	if message.Method == "" {
+		return c.handleRPCResponse(message)
 	}
+	return c.handleServerNotification(message)
+}
+
+func (c *Client) handleServerNotification(message wireMessage) error {
+	inbound := inboundMessage{method: message.Method, params: message.Params, id: message.ID, request: len(message.ID) != 0}
+	if inbound.request {
+		state, err := c.registerServerRequest(message.ID)
+		if err != nil {
+			return err
+		}
+		inbound.serverRequest = state
+	}
+	if message.Method == NotificationServerRequestResolved {
+		c.resolveServerRequest(message.Params)
+	}
+	if err := c.enqueueInbound(inbound); err != nil {
+		if inbound.serverRequest != nil {
+			c.finishServerRequest(inbound.serverRequest)
+		}
+		return err
+	}
+	return nil
+}
+
+func (c *Client) handleRPCResponse(message wireMessage) error {
 	key, err := responseIDKey(message.ID)
 	if err != nil {
 		return err
@@ -503,6 +592,70 @@ func (c *Client) handleWireMessage(message wireMessage) error {
 	}
 	pending.response <- response{result: message.Result, err: rpcErr}
 	return nil
+}
+
+func (c *Client) registerServerRequest(id json.RawMessage) (*serverRequestState, error) {
+	key, err := responseIDKey(id)
+	if err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithCancel(c.ctx)
+	state := &serverRequestState{key: key, id: append(json.RawMessage(nil), id...), ctx: ctx, cancel: cancel}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if _, exists := c.serverRequests[key]; exists {
+		cancel()
+		return nil, fmt.Errorf("duplicate outstanding app-server request id %s", id)
+	}
+	c.serverRequests[key] = state
+	return state, nil
+}
+
+func (c *Client) resolveServerRequest(params json.RawMessage) {
+	var notification struct {
+		RequestID json.RawMessage `json:"requestId"`
+	}
+	if json.Unmarshal(params, &notification) != nil || len(notification.RequestID) == 0 {
+		return
+	}
+	key, err := responseIDKey(notification.RequestID)
+	if err != nil {
+		return
+	}
+	c.mu.Lock()
+	state := c.serverRequests[key]
+	if state != nil && state.status == serverRequestPending {
+		state.status = serverRequestResolved
+		delete(c.serverRequests, key)
+		state.cancel()
+		state = nil
+	}
+	c.mu.Unlock()
+}
+
+func (c *Client) beginServerRequestResponse(state *serverRequestState) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if state == nil || state.status != serverRequestPending {
+		return false
+	}
+	state.status = serverRequestResponding
+	return true
+}
+
+func (c *Client) finishServerRequest(state *serverRequestState) {
+	if state == nil {
+		return
+	}
+	c.mu.Lock()
+	if c.serverRequests[state.key] == state {
+		delete(c.serverRequests, state.key)
+	}
+	if state.status != serverRequestResolved {
+		state.status = serverRequestReplied
+	}
+	c.mu.Unlock()
+	state.cancel()
 }
 
 func (c *Client) enqueueInbound(message inboundMessage) error {
@@ -541,26 +694,69 @@ func (c *Client) dispatchLoop() {
 }
 
 func (c *Client) dispatchRequest(message inboundMessage) {
+	if !c.serverRequestPending(message.serverRequest) {
+		return
+	}
+	select {
+	case c.requestSlots <- struct{}{}:
+		if !c.serverRequestPending(message.serverRequest) {
+			<-c.requestSlots
+			return
+		}
+		go c.handleRequest(message)
+	default:
+		if !c.beginServerRequestResponse(message.serverRequest) {
+			return
+		}
+		frame := serverResponseFrame(message.id, nil, &RPCError{
+			Code: -32000, Message: "too many concurrent app-server requests",
+		})
+		if err := c.sendAsync(c.ctx, frame); err != nil {
+			c.terminate(err)
+		}
+		c.finishServerRequest(message.serverRequest)
+	}
+}
+
+func (c *Client) handleRequest(message inboundMessage) {
+	defer func() { <-c.requestSlots }()
 	c.mu.Lock()
 	requestHandler := c.requestHandler
 	c.mu.Unlock()
-	result, rpcErr := executeServerRequest(c.ctx, requestHandler, message)
-	frame := map[string]any{"jsonrpc": "2.0", "id": message.id}
+	result, rpcErr := executeServerRequest(message.serverRequest.ctx, requestHandler, ServerRequest{
+		ID: message.id, Method: message.method, Params: message.params,
+	})
+	if !c.beginServerRequestResponse(message.serverRequest) {
+		return
+	}
+	frame := serverResponseFrame(message.id, result, rpcErr)
+	if err := c.send(c.ctx, frame); err != nil && !errors.Is(err, ErrClosed) {
+		c.terminate(err)
+	}
+	c.finishServerRequest(message.serverRequest)
+}
+
+func (c *Client) serverRequestPending(state *serverRequestState) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return state != nil && state.status == serverRequestPending
+}
+
+func serverResponseFrame(id json.RawMessage, result any, rpcErr *RPCError) map[string]any {
+	frame := map[string]any{"jsonrpc": "2.0", "id": id}
 	if rpcErr != nil {
 		frame["error"] = rpcErr
 	} else {
 		frame["result"] = result
 	}
-	if err := c.send(c.ctx, frame); err != nil && !errors.Is(err, ErrClosed) {
-		c.terminate(err)
-	}
+	return frame
 }
 
-func executeServerRequest(ctx context.Context, handler RequestHandler, message inboundMessage) (any, *RPCError) {
+func executeServerRequest(ctx context.Context, handler RequestHandler, request ServerRequest) (any, *RPCError) {
 	if handler == nil {
-		return nil, &RPCError{Code: -32601, Message: "method not found: " + message.method}
+		return nil, &RPCError{Code: -32601, Message: "method not found: " + request.Method}
 	}
-	result, err := handler(ctx, message.method, message.params)
+	result, err := handler(ctx, request)
 	if err == nil {
 		return result, nil
 	}
@@ -610,11 +806,19 @@ func (c *Client) terminate(err error) {
 		c.closeErr = err
 		pending := c.pending
 		c.pending = make(map[string]pendingCall)
+		serverRequests := c.serverRequests
+		c.serverRequests = make(map[string]*serverRequestState)
+		for _, request := range serverRequests {
+			request.status = serverRequestResolved
+		}
 		c.mu.Unlock()
 		c.cancel()
 		close(c.done)
 		for _, call := range pending {
 			call.response <- response{err: err}
+		}
+		for _, request := range serverRequests {
+			request.cancel()
 		}
 		_ = c.closeStreams()
 	})

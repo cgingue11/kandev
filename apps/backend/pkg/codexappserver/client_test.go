@@ -246,8 +246,8 @@ func TestClientAcceptsCodexAppServerRequestWithoutJSONRPCVersion(t *testing.T) {
 		_ = serverOutput.Close()
 		_ = serverInput.Close()
 	})
-	client.SetRequestHandler(func(_ context.Context, method string, _ json.RawMessage) (any, error) {
-		return map[string]string{"handled": method}, nil
+	client.SetRequestHandler(func(_ context.Context, request ServerRequest) (any, error) {
+		return map[string]string{"handled": request.Method}, nil
 	})
 
 	if _, err := io.WriteString(serverOutput, `{"id":"request-1","method":"item/commandExecution/requestApproval"}`+"\n"); err != nil {
@@ -314,8 +314,8 @@ func TestClientServerRequestsKeepStringAndNumericIDsDistinct(t *testing.T) {
 		_ = serverInput.Close()
 	})
 
-	client.SetRequestHandler(func(_ context.Context, method string, _ json.RawMessage) (any, error) {
-		return map[string]string{"method": method}, nil
+	client.SetRequestHandler(func(_ context.Context, request ServerRequest) (any, error) {
+		return map[string]string{"method": request.Method, "requestID": string(request.ID)}, nil
 	})
 
 	for _, id := range []string{`"7"`, `7`} {
@@ -326,7 +326,8 @@ func TestClientServerRequestsKeepStringAndNumericIDsDistinct(t *testing.T) {
 	}
 
 	reader := bufio.NewReader(serverInput)
-	for _, wantID := range []string{`"7"`, `7`} {
+	seen := make(map[string]bool)
+	for range 2 {
 		line, err := reader.ReadBytes('\n')
 		if err != nil {
 			t.Fatalf("read server response: %v", err)
@@ -338,12 +339,20 @@ func TestClientServerRequestsKeepStringAndNumericIDsDistinct(t *testing.T) {
 		if err := json.Unmarshal(line, &response); err != nil {
 			t.Fatalf("decode response: %v", err)
 		}
-		if string(response.ID) != wantID {
-			t.Errorf("response id = %s, want %s", response.ID, wantID)
+		key, err := responseIDKey(response.ID)
+		if err != nil {
+			t.Fatalf("decode response id key: %v", err)
 		}
-		if response.Result["method"] != "client/test" {
+		if seen[key] {
+			t.Errorf("duplicate response id key %q", key)
+		}
+		seen[key] = true
+		if response.Result["method"] != "client/test" || response.Result["requestID"] != string(response.ID) {
 			t.Errorf("response result = %#v", response.Result)
 		}
+	}
+	if !seen["s:7"] || !seen["n:7"] {
+		t.Fatalf("responses did not preserve string/numeric identities: %v", seen)
 	}
 }
 

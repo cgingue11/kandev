@@ -2415,5 +2415,8 @@
   "conversationUsage.responseCount_one": "{{count}} resposta",
   "conversationUsage.responseCount_other": "{{count}} respostas",
   "conversationUsage.estimatedCount_one": "{{count}} evento estimado",
-  "conversationUsage.estimatedCount_other": "{{count}} eventos estimados"
+  "conversationUsage.estimatedCount_other": "{{count}} eventos estimados",
+  "allowNetworkAccess": "Permitir acesso à rede",
+  "approveWithCommandPolicy": "Aprovar com regra de comandos",
+  "blockNetworkAccess": "Bloquear acesso à rede"
 }

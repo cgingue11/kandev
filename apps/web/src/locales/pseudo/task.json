@@ -2415,5 +2415,8 @@
   "conversationUsage.responseCount_one": "{{count}} ŕēśƥōńśē",
   "conversationUsage.responseCount_other": "{{count}} ŕēśƥōńśēś",
   "conversationUsage.estimatedCount_one": "{{count}} ēśţĩḿàţēď ēvēńţ",
-  "conversationUsage.estimatedCount_other": "{{count}} ēśţĩḿàţēď ēvēńţś"
+  "conversationUsage.estimatedCount_other": "{{count}} ēśţĩḿàţēď ēvēńţś",
+  "allowNetworkAccess": "Àĺĺōŵ ńēţŵōŕķ àććēśś",
+  "approveWithCommandPolicy": "Àƥƥŕōvē ŵĩţĥ ćōḿḿàńď ŕũĺē",
+  "blockNetworkAccess": "Ɓĺōćķ ńēţŵōŕķ àććēśś"
 }

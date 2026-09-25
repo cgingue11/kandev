@@ -91,6 +91,12 @@ Reject unsupported mandatory methods. Ignore unknown optional notifications with
 Request deadlines are independent from the full turn deadline.
 Never automatically retry `turn/start` or `thread/fork` after an ambiguous response loss.
 
+Admission for server-request handlers is bounded. Each admitted request has one terminal reply owner; user answers, `serverRequest/resolved`, cancellation, and close cannot produce a second reply.
+Resolving a request cancels its handler without blocking ordered notification dispatch. Overload returns an explicit JSON-RPC error.
+Approval options preserve the exact offered provider decisions, including structured values, and only the selected offered value is returned.
+The pinned v0.154.0 server-request method inventory is recorded separately from the CLI-generated v2 schema because that generated schema omits the server-to-client request union.
+Every inventory entry is classified as supported or deliberately rejected by the adapter and debugger.
+
 Initialize with Kandev client identity, then send `initialized`.
 Map `thread/start`, `thread/resume`, `turn/start`, `turn/interrupt`, and `turn/steer` to adapter operations.
 Expose steering and forks through optional capability interfaces, not agent-name checks in the UI.

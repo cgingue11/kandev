@@ -96,4 +96,4 @@ Native gateway settings must fail before launch when their translation is not su
 
 Implementation and targeted validation passed. Native lifecycle, MCP overlay, and approval mapping are covered by the fake-server adapter tests. Desktop and mobile profile E2E tests pass with deterministic model responses, and the feature flag remains off by default. The profile UI test checks that the model catalog resolves before capture.
 
-The Codex-specific chat E2E covers completed-turn forks. Fake-server adapter tests cover basic chat, resume, questions, and approval flows. The Task 07 compatibility gate still requires an authenticated native turn. We did not run that turn.
+The Codex-specific chat E2E covers completed-turn forks. Fake-server adapter tests cover basic chat, resume, questions through Kandev's injected `ask_user_question_kandev` MCP tool, and approval flows. Direct app-server `item/tool/requestUserInput` requests remain unsupported by the native adapter. The Task 07 compatibility gate still requires additional live-runtime evidence.

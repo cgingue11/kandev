@@ -2,8 +2,10 @@ package codexappserver
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"strings"
 	"sync"
@@ -14,6 +16,7 @@ import (
 	agenttypes "github.com/kandev/kandev/internal/agentctl/types"
 	"github.com/kandev/kandev/internal/agentctl/types/streams"
 	"github.com/kandev/kandev/internal/common/logger"
+	protocol "github.com/kandev/kandev/pkg/codexappserver"
 )
 
 func TestConversationLifecycleAndMCPOverlay(t *testing.T) {
@@ -48,13 +51,13 @@ func TestConversationLifecycleAndMCPOverlay(t *testing.T) {
 				"model":  "gpt-5",
 			}))
 		case "turn/start":
-			if err := write(map[string]any{"jsonrpc": "2.0", "method": "turn/started", "params": map[string]any{"threadId": "thread-1", "turnId": "turn-1"}}); err != nil {
+			if err := write(map[string]any{"jsonrpc": "2.0", "method": "turn/started", "params": map[string]any{"threadId": "thread-1", "turn": map[string]any{"id": "turn-1", "status": "inProgress"}}}); err != nil {
 				return err
 			}
 			if err := write(map[string]any{"jsonrpc": "2.0", "method": "item/agentMessage/delta", "params": map[string]any{"threadId": "thread-1", "turnId": "turn-1", "itemId": "message-1", "delta": "hello"}}); err != nil {
 				return err
 			}
-			if err := write(map[string]any{"jsonrpc": "2.0", "method": "turn/completed", "params": map[string]any{"threadId": "thread-1", "turnId": "turn-1", "turn": map[string]any{"id": "turn-1", "status": "completed"}}}); err != nil {
+			if err := write(map[string]any{"jsonrpc": "2.0", "method": "turn/completed", "params": map[string]any{"threadId": "thread-1", "turn": map[string]any{"id": "turn-1", "status": "completed"}}}); err != nil {
 				return err
 			}
 			return write(resultFrame(id, map[string]any{"turn": map[string]any{"id": "turn-1", "status": "completed"}}))
@@ -96,8 +99,15 @@ func TestConversationLifecycleAndMCPOverlay(t *testing.T) {
 				if event.PromptGeneration != 0 && event.PromptGeneration != 42 {
 					t.Errorf("prompt generation = %d, want 42", event.PromptGeneration)
 				}
+			case streams.EventTypeTurnStarted:
+				if event.OperationID != "turn-1" {
+					t.Fatalf("turn-start operation ID = %q, want turn-1", event.OperationID)
+				}
 			case streams.EventTypeComplete:
 				completeCount++
+				if event.OperationID != "turn-1" {
+					t.Fatalf("completion operation ID = %q, want turn-1", event.OperationID)
+				}
 				if event.PromptGeneration != 42 {
 					t.Errorf("completion generation = %d, want 42", event.PromptGeneration)
 				}
@@ -287,6 +297,158 @@ func TestApprovalResolutionMapsToNativeDecision(t *testing.T) {
 		}
 	case <-ctx.Done():
 		t.Fatal("timed out waiting for approval response")
+	}
+}
+
+func TestOfferedDecisionRoundTrip(t *testing.T) {
+	offeredDecision := json.RawMessage(`{"acceptWithExecpolicyAmendment":{"execpolicy_amendment":[{"command":"git status --short","large_number":9007199254740993}]}}`)
+	availableDecisions := json.RawMessage(`["accept",` + string(offeredDecision) + `,"decline"]`)
+	server := newProtocolServer(t, func(req map[string]json.RawMessage, write func(any) error) error {
+		method := readString(req, "method")
+		id := req["id"]
+		switch method {
+		case "initialize":
+			if err := write(resultFrame(id, map[string]any{"userAgent": "Codex"})); err != nil {
+				return err
+			}
+			return write(map[string]any{"id": 777, "method": "item/commandExecution/requestApproval", "params": map[string]any{
+				"threadId": "thread-offered", "turnId": "turn-offered", "itemId": "item-offered",
+				"command": []string{"git", "status", "--short"}, "cwd": "/workspace",
+				"availableDecisions": availableDecisions,
+			}})
+		case "initialized":
+			return nil
+		case "model/list":
+			return write(resultFrame(id, map[string]any{"data": []any{}}))
+		default:
+			return write(errorFrame(id, -32601, "unsupported"))
+		}
+	})
+	defer server.close()
+
+	adapter := NewAdapter(&shared.Config{}, logger.Default())
+	defer func() { _ = adapter.Close() }()
+	if err := adapter.Connect(server.clientWriter, server.clientReader); err != nil {
+		t.Fatal(err)
+	}
+	adapter.SetPermissionHandler(func(_ context.Context, req *agenttypes.PermissionRequest) (*agenttypes.PermissionResponse, error) {
+		if len(req.Options) != 3 {
+			t.Errorf("offered choices = %#v, want all three provider choices", req.Options)
+			return &agenttypes.PermissionResponse{OptionID: "not-offered"}, nil
+		}
+		if req.Options[0].Kind != streams.PermissionOptionKindAllowOnce || req.Options[2].Kind != streams.PermissionOptionKindRejectOnce {
+			t.Errorf("normalized offered options = %#v", req.Options)
+		}
+		if got := req.Options[1].Metadata["codex_decision"]; got != "accept_with_execpolicy_amendment" {
+			t.Errorf("structured decision metadata = %v", got)
+		}
+		return &agenttypes.PermissionResponse{OptionID: req.Options[1].OptionID}, nil
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	if err := adapter.Initialize(ctx); err != nil {
+		t.Fatalf("Initialize: %v", err)
+	}
+	select {
+	case frame := <-server.responses:
+		var result struct {
+			Decision json.RawMessage `json:"decision"`
+		}
+		if err := json.Unmarshal(frame["result"], &result); err != nil {
+			t.Fatalf("decode approval response: %v", err)
+		}
+		var got, want bytes.Buffer
+		if err := json.Compact(&got, result.Decision); err != nil {
+			t.Fatalf("compact selected decision: %v", err)
+		}
+		if err := json.Compact(&want, offeredDecision); err != nil {
+			t.Fatalf("compact offered decision: %v", err)
+		}
+		if got.String() != want.String() {
+			t.Fatalf("selected decision = %s, want original offered value %s", got.String(), want.String())
+		}
+	case <-ctx.Done():
+		t.Fatal("timed out waiting for offered decision response")
+	}
+}
+
+func TestUnofferedApprovalSelectionReturnsInvalidParams(t *testing.T) {
+	adapter := NewAdapter(&shared.Config{}, logger.Default())
+	defer func() { _ = adapter.Close() }()
+	adapter.SetPermissionHandler(func(_ context.Context, _ *agenttypes.PermissionRequest) (*agenttypes.PermissionResponse, error) {
+		return &agenttypes.PermissionResponse{OptionID: "stale-or-unoffered"}, nil
+	})
+	_, err := adapter.handleServerRequest(context.Background(), protocol.ServerRequest{
+		ID:     json.RawMessage(`"approval-id"`),
+		Method: "item/commandExecution/requestApproval",
+		Params: json.RawMessage(`{"threadId":"thread-1","itemId":"item-1","availableDecisions":["accept","decline"]}`),
+	})
+	var rpcErr *protocol.RPCError
+	if !errors.As(err, &rpcErr) || rpcErr.Code != -32602 {
+		t.Fatalf("unoffered selection error = %v, want invalid-params RPC error", err)
+	}
+}
+
+func TestNetworkPolicyDecisionRequiresRecognizedAction(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		action     string
+		wantKind   streams.PermissionOptionKind
+		wantLabel  string
+		wantKey    string
+		wantReject bool
+	}{
+		{name: "allow", action: "allow", wantKind: streams.PermissionOptionKindAllowAlways, wantLabel: "Allow network access", wantKey: "apply_network_policy_allow"},
+		{name: "deny", action: "deny", wantKind: streams.PermissionOptionKindRejectAlways, wantLabel: "Block network access", wantKey: "apply_network_policy_deny"},
+		{name: "unknown", action: "ask", wantReject: true},
+		{name: "missing", wantReject: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			raw := json.RawMessage(`{"applyNetworkPolicyAmendment":{"networkPolicyAmendment":{"action":"` + test.action + `"}}}`)
+			if test.action == "" {
+				raw = json.RawMessage(`{"applyNetworkPolicyAmendment":{"networkPolicyAmendment":{}}}`)
+			}
+			label, kind, key, err := codexApprovalDecisionPresentation(raw)
+			if test.wantReject {
+				if err == nil {
+					t.Fatalf("unknown network action produced choice %q (%s)", label, key)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("codexApprovalDecisionPresentation: %v", err)
+			}
+			if label != test.wantLabel || kind != test.wantKind || key != test.wantKey {
+				t.Fatalf("decision = (%q, %q, %q), want (%q, %q, %q)", label, kind, key, test.wantLabel, test.wantKind, test.wantKey)
+			}
+		})
+	}
+}
+
+func TestServerRequestCoverage(t *testing.T) {
+	methods := protocol.ServerRequestMethodsV0154()
+	seen := make(map[string]struct{}, len(methods))
+	for _, method := range methods {
+		if _, duplicate := seen[method]; duplicate {
+			t.Fatalf("server request inventory contains duplicate method %q", method)
+		}
+		seen[method] = struct{}{}
+		if disposition := serverRequestDispositions[method]; disposition == serverRequestUnknown {
+			t.Errorf("server request %q has no supported or rejected disposition", method)
+		}
+	}
+	if len(seen) != len(serverRequestDispositions) {
+		t.Fatalf("classified %d methods, pinned inventory has %d", len(serverRequestDispositions), len(seen))
+	}
+	for method := range serverRequestDispositions {
+		if _, exists := seen[method]; !exists {
+			t.Errorf("classified request %q is absent from the pinned inventory", method)
+		}
+	}
+	if serverRequestDispositions[protocol.ServerRequestCommandExecutionApproval] != serverRequestSupported ||
+		serverRequestDispositions[protocol.ServerRequestFileChangeApproval] != serverRequestSupported {
+		t.Fatal("command and file-change approvals must remain supported")
 	}
 }
 

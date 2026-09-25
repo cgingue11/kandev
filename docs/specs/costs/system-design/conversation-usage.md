@@ -94,6 +94,11 @@ Unbound events remain pending in a bounded buffer. On expiry, record a diagnosti
 Root-turn cost includes direct and attributable child observations, with separate subtotals.
 Session cost sums each observation once. Descendant rollups are display projections, not additional ledger rows.
 
+Capture the model and Kandev prompt generation when a provider turn is first bound.
+Delayed response observations and fallback snapshots use that captured attribution even if a later prompt changes the selected model or active generation.
+Child observations use the child binding's model and generation, while retaining the originating root Kandev turn.
+Duplicate start notifications must not replace an established attribution.
+
 `tokenUsage.total` is a cumulative snapshot, not an increment.
 `tokenUsage.last` is last-response/context detail, not whole-turn work.
 On resume or fork, use restored snapshots as baselines only.

@@ -31,6 +31,27 @@ const (
 
 var errNoActiveThread = errors.New("codex app-server thread is not active")
 
+type serverRequestDisposition uint8
+
+const (
+	serverRequestUnknown serverRequestDisposition = iota
+	serverRequestRejected
+	serverRequestSupported
+)
+
+var serverRequestDispositions = map[string]serverRequestDisposition{
+	protocol.ServerRequestCommandExecutionApproval: serverRequestSupported,
+	protocol.ServerRequestFileChangeApproval:       serverRequestSupported,
+	protocol.ServerRequestToolUserInput:            serverRequestRejected,
+	protocol.ServerRequestMCPElicitation:           serverRequestRejected,
+	protocol.ServerRequestPermissionsApproval:      serverRequestRejected,
+	protocol.ServerRequestDynamicToolCall:          serverRequestRejected,
+	protocol.ServerRequestAuthTokensRefresh:        serverRequestRejected,
+	protocol.ServerRequestAttestationGenerate:      serverRequestRejected,
+	protocol.ServerRequestApplyPatchApproval:       serverRequestRejected,
+	protocol.ServerRequestExecCommandApproval:      serverRequestRejected,
+}
+
 // AgentInfo is the connected provider identity. The adapter package wraps this
 // value at its boundary to avoid a transport-to-factory import cycle.
 type AgentInfo struct {
@@ -76,6 +97,8 @@ type Adapter struct {
 	latestContextWindows     map[string]int64
 	turnTokenBaselines       map[string]protocol.TokenUsageBreakdown
 	turnHasTokenBaseline     map[string]bool
+	turnModels               map[string]string
+	turnGenerations          map[string]uint64
 	turnResponseObserved     map[string]bool
 	turnFallbackSelected     map[string]bool
 	completedProviderTurns   map[string]bool
@@ -101,6 +124,8 @@ func NewAdapter(cfg *shared.Config, log *logger.Logger) *Adapter {
 		latestContextWindows:   make(map[string]int64),
 		turnTokenBaselines:     make(map[string]protocol.TokenUsageBreakdown),
 		turnHasTokenBaseline:   make(map[string]bool),
+		turnModels:             make(map[string]string),
+		turnGenerations:        make(map[string]uint64),
 		turnResponseObserved:   make(map[string]bool),
 		turnFallbackSelected:   make(map[string]bool),
 		completedProviderTurns: make(map[string]bool),
@@ -457,13 +482,15 @@ func (a *Adapter) handleNotification(_ context.Context, method string, raw json.
 		return
 	}
 	threadID := stringField(params, "threadId")
-	turnID := stringField(params, "turnId")
+	activeThreadID := a.GetSessionID()
+	turnID := notificationTurnID(params)
 	itemID := stringField(params, "itemId")
 	if threadID == "" {
-		threadID = a.GetSessionID()
+		threadID = activeThreadID
 	}
-	rootThreadID, parentToolCallID, isChild := a.eventScope(threadID)
-	if turnID != "" && !isChild {
+	isRootThread := threadID == activeThreadID
+	rootThreadID, parentToolCallID, _ := a.eventScope(threadID)
+	if turnID != "" && isRootThread {
 		a.mu.Lock()
 		a.turnID = turnID
 		a.promptPending = false
@@ -471,7 +498,7 @@ func (a *Adapter) handleNotification(_ context.Context, method string, raw json.
 	}
 	switch method {
 	case "turn/started":
-		a.handleTurnStarted(threadID, rootThreadID, turnID, isChild)
+		a.handleTurnStarted(threadID, rootThreadID, turnID, isRootThread)
 	case "item/agentMessage/delta":
 		a.emitTextDelta(params, rootThreadID, turnID, itemID, parentToolCallID, false)
 	case "item/reasoning/summaryTextDelta", "item/reasoning/textDelta":
@@ -481,7 +508,7 @@ func (a *Adapter) handleNotification(_ context.Context, method string, raw json.
 	case "item/completed":
 		a.emitItem(params, rootThreadID, threadID, parentToolCallID, turnID, true)
 	case "turn/completed":
-		a.handleTurnCompleted(params, threadID, rootThreadID, turnID, isChild)
+		a.handleTurnCompleted(params, threadID, rootThreadID, turnID, isRootThread)
 	case protocol.NotificationTokenUsage:
 		a.handleTokenUsageNotification(params)
 	case protocol.NotificationRawResponse:
@@ -489,9 +516,9 @@ func (a *Adapter) handleNotification(_ context.Context, method string, raw json.
 	}
 }
 
-func (a *Adapter) handleTurnStarted(threadID, rootThreadID, turnID string, isChild bool) {
+func (a *Adapter) handleTurnStarted(threadID, rootThreadID, turnID string, isRootThread bool) {
 	a.beginProviderTurn(threadID, turnID)
-	if isChild {
+	if !isRootThread {
 		a.emitChildStatus(threadID, childStatusRunning)
 		return
 	}
@@ -518,10 +545,10 @@ func (a *Adapter) emitTextDelta(params map[string]any, rootThreadID, turnID, ite
 	a.emit(event)
 }
 
-func (a *Adapter) handleTurnCompleted(params map[string]any, threadID, rootThreadID, turnID string, isChild bool) {
+func (a *Adapter) handleTurnCompleted(params map[string]any, threadID, rootThreadID, turnID string, isRootThread bool) {
 	turn := decodedCompletedTurn(params, turnID)
 	a.finalizeProviderTurn(threadID, turn.ID)
-	if isChild {
+	if !isRootThread {
 		a.emitChildStatus(threadID, turn.Status)
 		return
 	}
@@ -580,73 +607,6 @@ func (a *Adapter) emitItem(params map[string]any, rootThreadID, sourceThreadID, 
 	}
 	a.emit(event)
 	_ = sourceThreadID
-}
-
-func (a *Adapter) handleServerRequest(ctx context.Context, method string, raw json.RawMessage) (any, error) {
-	if method != "item/commandExecution/requestApproval" && method != "item/fileChange/requestApproval" {
-		return nil, &protocol.RPCError{Code: -32601, Message: "method not found"}
-	}
-	var params map[string]any
-	if err := json.Unmarshal(raw, &params); err != nil {
-		return nil, &protocol.RPCError{Code: -32602, Message: "invalid approval request"}
-	}
-	threadID := stringField(params, "threadId")
-	itemID := stringField(params, "itemId")
-	if threadID == "" || itemID == "" {
-		return nil, &protocol.RPCError{Code: -32602, Message: "approval request is missing its thread or item ID"}
-	}
-	request := codexApprovalPermissionRequest(params, method, threadID, itemID)
-	return a.resolvePermissionRequest(ctx, request)
-}
-
-func codexApprovalPermissionRequest(params map[string]any, method, threadID, itemID string) *agenttypes.PermissionRequest {
-	title := "Run command"
-	actionType := string(streams.ActionTypeCommand)
-	fields := []string{"command", "cwd", "reason", "commandActions"}
-	if method != "item/commandExecution/requestApproval" {
-		title = "Apply file changes"
-		actionType = string(streams.ActionTypeFileWrite)
-		fields = []string{"grantRoot", "reason", "fileChanges"}
-	}
-	actionDetails := make(map[string]any, len(fields))
-	for _, key := range fields {
-		if value, ok := params[key]; ok {
-			actionDetails[key] = value
-		}
-	}
-	return &agenttypes.PermissionRequest{
-		SessionID:     threadID,
-		ToolCallID:    itemID,
-		Title:         title,
-		ActionType:    actionType,
-		ActionDetails: actionDetails,
-		Options: []agenttypes.PermissionOption{
-			{OptionID: "allow-once", Name: "Allow once", Kind: streams.PermissionOptionKindAllowOnce},
-			{OptionID: "allow-always", Name: "Allow for this session", Kind: streams.PermissionOptionKindAllowAlways},
-			{OptionID: "reject-once", Name: "Reject", Kind: streams.PermissionOptionKindRejectOnce},
-		},
-	}
-}
-
-func (a *Adapter) resolvePermissionRequest(ctx context.Context, req *agenttypes.PermissionRequest) (any, error) {
-	a.mu.RLock()
-	handler := a.permission
-	a.mu.RUnlock()
-	if handler == nil {
-		return map[string]any{"decision": "decline"}, nil
-	}
-	response, err := handler(ctx, req)
-	if err != nil || response == nil || response.Cancelled {
-		return map[string]any{"decision": "cancel"}, nil
-	}
-	switch response.OptionID {
-	case "allow-once":
-		return map[string]any{"decision": "accept"}, nil
-	case "allow-always":
-		return map[string]any{"decision": "acceptForSession"}, nil
-	default:
-		return map[string]any{"decision": "decline"}, nil
-	}
 }
 
 func (a *Adapter) emitTerminal(threadID, turnID string, generation uint64, message string) {
@@ -727,6 +687,14 @@ func codexConfig(servers []agenttypes.McpServer) map[string]any {
 func stringField(values map[string]any, key string) string {
 	value, _ := values[key].(string)
 	return value
+}
+
+func notificationTurnID(params map[string]any) string {
+	if turnID := stringField(params, "turnId"); turnID != "" {
+		return turnID
+	}
+	turn, _ := params["turn"].(map[string]any)
+	return stringField(turn, "id")
 }
 
 func isTerminal(status string) bool {

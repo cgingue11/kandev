@@ -9,24 +9,54 @@ const (
 )
 
 const (
-	MethodInitialize              = "initialize"
-	MethodInitialized             = "initialized"
-	MethodModelList               = "model/list"
-	MethodExperimentalFeatureList = "experimentalFeature/list"
-	MethodThreadStart             = "thread/start"
-	MethodThreadRead              = "thread/read"
-	MethodThreadResume            = "thread/resume"
-	MethodThreadFork              = "thread/fork"
-	MethodBackgroundTerminalsList = "thread/backgroundTerminals/list"
-	MethodTurnStart               = "turn/start"
-	MethodTurnInterrupt           = "turn/interrupt"
-	MethodMCPStatusList           = "mcpServerStatus/list"
-	MethodMCPToolCall             = "mcpServer/tool/call"
-	MethodAccountUsageRead        = "account/usage/read"
-	NotificationTurnComplete      = "turn/completed"
-	NotificationTokenUsage        = "thread/tokenUsage/updated"
-	NotificationRawResponse       = "rawResponse/completed"
+	MethodInitialize                  = "initialize"
+	MethodInitialized                 = "initialized"
+	MethodModelList                   = "model/list"
+	MethodExperimentalFeatureList     = "experimentalFeature/list"
+	MethodThreadStart                 = "thread/start"
+	MethodThreadRead                  = "thread/read"
+	MethodThreadResume                = "thread/resume"
+	MethodThreadFork                  = "thread/fork"
+	MethodBackgroundTerminalsList     = "thread/backgroundTerminals/list"
+	MethodTurnStart                   = "turn/start"
+	MethodTurnInterrupt               = "turn/interrupt"
+	MethodMCPStatusList               = "mcpServerStatus/list"
+	MethodMCPToolCall                 = "mcpServer/tool/call"
+	MethodAccountUsageRead            = "account/usage/read"
+	NotificationTurnComplete          = "turn/completed"
+	NotificationTokenUsage            = "thread/tokenUsage/updated"
+	NotificationRawResponse           = "rawResponse/completed"
+	NotificationServerRequestResolved = "serverRequest/resolved"
+
+	ServerRequestCommandExecutionApproval = "item/commandExecution/requestApproval"
+	ServerRequestFileChangeApproval       = "item/fileChange/requestApproval"
+	ServerRequestToolUserInput            = "item/tool/requestUserInput"
+	ServerRequestMCPElicitation           = "mcpServer/elicitation/request"
+	ServerRequestPermissionsApproval      = "item/permissions/requestApproval"
+	ServerRequestDynamicToolCall          = "item/tool/call"
+	ServerRequestAuthTokensRefresh        = "account/chatgptAuthTokens/refresh"
+	ServerRequestAttestationGenerate      = "attestation/generate"
+	ServerRequestApplyPatchApproval       = "applyPatchApproval"
+	ServerRequestExecCommandApproval      = "execCommandApproval"
 )
+
+// ServerRequestMethodsV0154 is the complete pinned server-to-client method
+// union. Codex CLI's generated v2 JSON schema omits this union; the source is
+// the protocol file pinned in schema/v0.154.0/README.md.
+func ServerRequestMethodsV0154() []string {
+	return []string{
+		ServerRequestCommandExecutionApproval,
+		ServerRequestFileChangeApproval,
+		ServerRequestToolUserInput,
+		ServerRequestMCPElicitation,
+		ServerRequestPermissionsApproval,
+		ServerRequestDynamicToolCall,
+		ServerRequestAuthTokensRefresh,
+		ServerRequestAttestationGenerate,
+		ServerRequestApplyPatchApproval,
+		ServerRequestExecCommandApproval,
+	}
+}
 
 // InitializeParams is the client declaration accepted by the pinned schema.
 type InitializeParams struct {

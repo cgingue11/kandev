@@ -190,11 +190,11 @@ Run managed E2E commands from each work order to build fresh assets and limit wo
 ## Work orders
 
 - [x] [01: Shared native client and debugger](task-01-client-and-debugger.md)
-- [ ] [02: Gated native profiles and conversations](task-02-native-conversations.md)
-- [ ] [03: Child and background lifecycle](task-03-background-lifecycle.md)
-- [ ] [04: Attributed usage and cost accounting](task-04-usage-accounting.md)
-- [ ] [05: Built-in chat usage](task-05-usage-display.md)
-- [ ] [06: Native conversation forks](task-06-conversation-forks.md)
+- [x] [02: Gated native profiles and conversations](task-02-native-conversations.md)
+- [x] [03: Child and background lifecycle](task-03-background-lifecycle.md)
+- [x] [04: Attributed usage and cost accounting](task-04-usage-accounting.md)
+- [x] [05: Built-in chat usage](task-05-usage-display.md)
+- [x] [06: Native conversation forks](task-06-conversation-forks.md)
 - [ ] [07: Compatibility evidence and documentation](task-07-compatibility-and-docs.md)
 
 ## Verification results
@@ -202,7 +202,8 @@ Run managed E2E commands from each work order to build fresh assets and limit wo
 Design validation: catalog validation, all 36 specification-linter tests, and full specification lint passed.
 Local link, acceptance-reference, and whitespace checks passed for all 13 design artifacts.
 Tasks 02-06: scoped backend, frontend, unit, race, and desktop/mobile E2E checks passed. PostgreSQL usage/migration coverage passed against a temporary PostgreSQL 16 container. Web typecheck, lint, i18n check, and ratchet passed.
-Task 07 remains pending: no authenticated Codex prompt was run, and dedicated Codex Docker/SSH/Kind scenarios are not present. The live Codex test compiled with its e2e build tag but was not executed.
+Tasks 01-06 are complete. Task 07 remains pending. The authenticated Codex 0.154.0 run covered initialization, prompt, resume, fork, shared-workspace behavior, and background completion. It did not observe an approval request or exact response usage, and it did not establish child-to-collaboration-call correlation.
+The Docker, SSH, and Kind matrix passed with a fake app-server. These tests cover executor launch and profile gating, not live Codex compatibility inside each executor. PostgreSQL usage and migration coverage passed on PostgreSQL 16.
 
 ## Risks and bounded choices
 

@@ -2415,5 +2415,8 @@
   "conversationUsage.responseCount_one": "{{count}} 個回應",
   "conversationUsage.responseCount_other": "{{count}} 個回應",
   "conversationUsage.estimatedCount_one": "{{count}} 個預估事件",
-  "conversationUsage.estimatedCount_other": "{{count}} 個預估事件"
+  "conversationUsage.estimatedCount_other": "{{count}} 個預估事件",
+  "allowNetworkAccess": "允許網絡存取",
+  "approveWithCommandPolicy": "按命令規則核准",
+  "blockNetworkAccess": "封鎖網絡存取"
 }

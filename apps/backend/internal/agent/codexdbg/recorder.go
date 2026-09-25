@@ -40,17 +40,18 @@ type CaptureEntry struct {
 
 // Recorder writes ordered protocol frames to an owner-only JSONL file.
 type Recorder struct {
-	mu           sync.Mutex
-	file         *os.File
-	path         string
-	sequence     uint64
-	bytesWritten int64
-	maxBytes     int64
-	truncated    bool
-	closed       bool
-	closeOnce    sync.Once
-	closeErr     error
-	pendingNames map[string]string
+	mu                 sync.Mutex
+	file               *os.File
+	path               string
+	sequence           uint64
+	bytesWritten       int64
+	maxBytes           int64
+	truncated          bool
+	closed             bool
+	closeOnce          sync.Once
+	closeErr           error
+	pendingNames       map[string]string
+	pendingServerNames map[string]string
 }
 
 // NewRecorder creates a new capture file without following or overwriting an
@@ -75,10 +76,11 @@ func NewRecorderWithLimit(path, executableVersion string, maxBytes int64) (*Reco
 		return nil, fmt.Errorf("create capture file: %w", err)
 	}
 	recorder := &Recorder{
-		file:         file,
-		path:         path,
-		maxBytes:     maxBytes,
-		pendingNames: make(map[string]string),
+		file:               file,
+		path:               path,
+		maxBytes:           maxBytes,
+		pendingNames:       make(map[string]string),
+		pendingServerNames: make(map[string]string),
 	}
 	if err := recorder.writeLocked(CaptureEntry{
 		Kind:  "meta",
@@ -126,11 +128,19 @@ func (r *Recorder) RecordFrame(direction codexappserver.FrameDirection, frame js
 		return errors.New("capture is closed")
 	}
 	key := captureIDKey(envelope.ID)
-	if direction == codexappserver.FrameSent && envelope.Method != "" && key != "" {
-		r.pendingNames[key] = envelope.Method
-	} else if direction == codexappserver.FrameReceived && envelope.Method == "" && key != "" {
-		entry.ResponseTo = r.pendingNames[key]
-		delete(r.pendingNames, key)
+	if key != "" {
+		switch {
+		case direction == codexappserver.FrameSent && envelope.Method != "":
+			r.pendingNames[key] = envelope.Method
+		case direction == codexappserver.FrameReceived && envelope.Method != "":
+			r.pendingServerNames[key] = envelope.Method
+		case direction == codexappserver.FrameReceived:
+			entry.ResponseTo = r.pendingNames[key]
+			delete(r.pendingNames, key)
+		case direction == codexappserver.FrameSent:
+			entry.ResponseTo = r.pendingServerNames[key]
+			delete(r.pendingServerNames, key)
+		}
 	}
 	return r.writeLocked(entry)
 }
