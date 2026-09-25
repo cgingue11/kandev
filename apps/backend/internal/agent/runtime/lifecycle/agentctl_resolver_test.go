@@ -499,6 +499,7 @@ func TestAgentctlResolverPrunesOldCacheOnVerifiedHelperResolution(t *testing.T) 
 	if _, err := resolver.ResolveRemoteBinaryContext(context.Background(), SSHRemotePlatform{GOOS: "linux", GOARCH: "amd64"}, nil); err != nil {
 		t.Fatalf("ResolveRemoteBinaryContext: %v", err)
 	}
+	waitForResolverCachePrune(t, resolver)
 	if !inventoryCalled {
 		t.Fatal("verified non-Docker helper resolution did not request the shared mount inventory")
 	}
@@ -507,6 +508,102 @@ func TestAgentctlResolverPrunesOldCacheOnVerifiedHelperResolution(t *testing.T) 
 	}
 	if _, err := os.Stat(pinnedPath); err != nil {
 		t.Fatalf("helper mounted by a reconnectable container was removed: %v", err)
+	}
+}
+
+func TestAgentctlResolverCachePruneDoesNotDelayCanceledLaunch(t *testing.T) {
+	const version = "1.4.0"
+	const commit = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	platform := SSHRemotePlatform{GOOS: "linux", GOARCH: "amd64"}
+	payload := []byte("current cached helper")
+	bundle, home := t.TempDir(), t.TempDir()
+	writeResolverManifest(t, bundle, version, commit, "standard", platform.String(), payload)
+	manifest, _, err := ReadRemoteHelperManifest(bundle, version, commit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	record, _ := remoteHelperForPlatform(manifest, platform)
+	cachePath := filepath.Join(home, "cache", remoteHelperCacheDir, version, "linux-amd64", record.SHA256, "agentctl")
+	if err := os.MkdirAll(filepath.Dir(cachePath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(cachePath, payload, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	resolver := NewAgentctlResolverWithOptions(newResolverTestLogger(t), AgentctlResolverOptions{
+		Version: version, Commit: commit, BundleDir: bundle, HomeDir: home,
+	})
+	inventoryStarted := make(chan struct{})
+	inventoryFinished := make(chan struct{})
+	releaseInventory := make(chan struct{})
+	var releaseOnce sync.Once
+	unblockInventory := func() { releaseOnce.Do(func() { close(releaseInventory) }) }
+	t.Cleanup(unblockInventory)
+	deadlineSeen := make(chan bool, 1)
+	resolver.SetCacheMountInventory(func(ctx context.Context) ([]string, error) {
+		_, hasDeadline := ctx.Deadline()
+		deadlineSeen <- hasDeadline
+		close(inventoryStarted)
+		defer close(inventoryFinished)
+		select {
+		case <-releaseInventory:
+			return nil, nil
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	type resolution struct {
+		path string
+		err  error
+	}
+	resolved := make(chan resolution, 1)
+	go func() {
+		path, err := resolver.ResolveRemoteBinaryContext(ctx, platform, nil)
+		resolved <- resolution{path: path, err: err}
+	}()
+	select {
+	case <-inventoryStarted:
+	case <-time.After(time.Second):
+		cancel()
+		t.Fatal("cache prune did not start its mount inventory")
+	}
+	if !<-deadlineSeen {
+		cancel()
+		t.Fatal("background mount inventory has no time bound")
+	}
+	cancel()
+	select {
+	case got := <-resolved:
+		if got.err != nil || got.path != cachePath {
+			t.Fatalf("resolution = %q, %v; want %q", got.path, got.err, cachePath)
+		}
+	case <-time.After(250 * time.Millisecond):
+		t.Fatal("helper resolution waited for background cache cleanup after launch cancellation")
+	}
+	select {
+	case <-inventoryFinished:
+		t.Fatal("caller cancellation unexpectedly canceled the owned background sweep")
+	default:
+	}
+	unblockInventory()
+	waitForResolverCachePrune(t, resolver)
+}
+
+func waitForResolverCachePrune(t *testing.T, resolver *AgentctlResolver) {
+	t.Helper()
+	resolver.cachePruneMu.Lock()
+	done := resolver.cachePruneDone
+	resolver.cachePruneMu.Unlock()
+	if done == nil {
+		t.Fatal("verified helper resolution did not schedule cache pruning")
+	}
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("background helper cache pruning did not finish")
 	}
 }
 
@@ -541,6 +638,7 @@ func TestAgentctlResolverDefersPruningWhenMountInventoryIsUncertain(t *testing.T
 	if _, err := resolver.ResolveRemoteBinaryContext(context.Background(), SSHRemotePlatform{GOOS: "linux", GOARCH: "amd64"}, nil); err != nil {
 		t.Fatalf("ResolveRemoteBinaryContext: %v", err)
 	}
+	waitForResolverCachePrune(t, resolver)
 	if _, err := os.Stat(oldVersion); err != nil {
 		t.Fatalf("old helper cache was pruned with an uncertain mount inventory: %v", err)
 	}
@@ -616,6 +714,7 @@ func TestAgentctlResolverKeepsHelperSelectedByPendingOlderLaunch(t *testing.T) {
 	if got, err := newResolver.ResolveRemoteBinaryContext(context.Background(), platform, nil); err != nil || got != newPath {
 		t.Fatalf("current launch helper = %q, err=%v; want %q", got, err, newPath)
 	}
+	waitForResolverCachePrune(t, newResolver)
 
 	if _, err := os.Stat(oldPath); err != nil {
 		t.Fatalf("pending older launch helper was pruned before container creation: %v", err)

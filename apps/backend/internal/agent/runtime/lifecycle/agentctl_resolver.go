@@ -51,10 +51,12 @@ type AgentctlResolver struct {
 	downloadMu sync.Mutex
 	downloads  map[string]*remoteHelperDownload
 
-	cacheInventoryMu sync.RWMutex
-	cacheInventory   RemoteHelperCacheMountInventory
-	cachePruneMu     sync.Mutex
-	lastCachePrune   time.Time
+	cacheInventoryMu  sync.RWMutex
+	cacheInventory    RemoteHelperCacheMountInventory
+	cachePruneMu      sync.Mutex
+	lastCachePrune    time.Time
+	cachePruneRunning bool
+	cachePruneDone    chan struct{}
 }
 
 type remoteHelperDownload struct {
@@ -274,7 +276,7 @@ func (r *AgentctlResolver) resolveStandardManifestHelper(ctx context.Context, ma
 		return "", err
 	} else if valid {
 		r.logger.Debug("using verified remote helper cache", zap.String("path", cachePath), zap.String("remote_platform", platform.String()))
-		r.pruneCacheAfterResolution(ctx)
+		r.scheduleCachePruneAfterResolution()
 		keepLease = r.retainRemoteHelperCacheLease(ctx, lease)
 		if !keepLease {
 			return "", ctx.Err()
@@ -293,7 +295,7 @@ func (r *AgentctlResolver) resolveStandardManifestHelper(ctx context.Context, ma
 		return "", err
 	}
 	emitRemoteHelperProgress(onProgress, platform, PrepareStepCompleted, started, nil)
-	r.pruneCacheAfterResolution(ctx)
+	r.scheduleCachePruneAfterResolution()
 	keepLease = r.retainRemoteHelperCacheLease(ctx, lease)
 	if !keepLease {
 		return "", ctx.Err()
@@ -420,7 +422,7 @@ func (r *AgentctlResolver) pruneCache(pinnedPaths []string, inventoryComplete bo
 	return err
 }
 
-func (r *AgentctlResolver) pruneCacheAfterResolution(ctx context.Context) {
+func (r *AgentctlResolver) scheduleCachePruneAfterResolution() {
 	r.cacheInventoryMu.RLock()
 	inventory := r.cacheInventory
 	r.cacheInventoryMu.RUnlock()
@@ -430,23 +432,35 @@ func (r *AgentctlResolver) pruneCacheAfterResolution(ctx context.Context) {
 
 	r.cachePruneMu.Lock()
 	now := time.Now()
-	if now.Sub(r.lastCachePrune) < remoteHelperPruneCooldown {
+	if r.cachePruneRunning || now.Sub(r.lastCachePrune) < remoteHelperPruneCooldown {
 		r.cachePruneMu.Unlock()
 		return
 	}
 	r.lastCachePrune = now
+	r.cachePruneRunning = true
+	done := make(chan struct{})
+	r.cachePruneDone = done
 	r.cachePruneMu.Unlock()
 
-	inventoryCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), remoteHelperInventoryTimeout)
-	defer cancel()
-	pinnedPaths, err := inventory(inventoryCtx)
-	if err != nil {
-		r.logger.Debug("defer remote helper cache cleanup because container inventory is unavailable", zap.Error(err))
-		return
-	}
-	if err := r.pruneCache(pinnedPaths, true); err != nil {
-		r.logger.Warn("failed to prune unused remote helper cache entries", zap.Error(err))
-	}
+	go func() {
+		defer func() {
+			r.cachePruneMu.Lock()
+			r.cachePruneRunning = false
+			close(done)
+			r.cachePruneMu.Unlock()
+		}()
+
+		inventoryCtx, cancel := context.WithTimeout(context.Background(), remoteHelperInventoryTimeout)
+		defer cancel()
+		pinnedPaths, err := inventory(inventoryCtx)
+		if err != nil {
+			r.logger.Debug("defer remote helper cache cleanup because container inventory is unavailable", zap.Error(err))
+			return
+		}
+		if err := r.pruneCache(pinnedPaths, true); err != nil {
+			r.logger.Warn("failed to prune unused remote helper cache entries", zap.Error(err))
+		}
+	}()
 }
 
 func (r *AgentctlResolver) downloadRemoteHelper(ctx context.Context, manifest *RemoteHelperManifest, record RemoteHelperRecord, cachePath string) error {
