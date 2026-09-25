@@ -54,6 +54,31 @@ describe("prepareCompactRuntimeFixture", () => {
     expect(fs.statSync(result.cachePath).mode & 0o111).not.toBe(0);
   });
 
+  it("uses a SemVer-shaped test version when the checkout has no release tag", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "kandev-compact-runtime-identity-"));
+    roots.push(root);
+    const sourceBinDir = path.join(root, "source-bin");
+    fs.mkdirSync(sourceBinDir);
+    for (const name of ["kandev", "agentctl", "agentctl-linux-amd64"]) {
+      fs.writeFileSync(path.join(sourceBinDir, name), `${name} test fixture\n`, {
+        mode: 0o755,
+      });
+    }
+
+    const result = prepareCompactRuntimeFixture({
+      bundleDir: path.join(root, "bundle"),
+      homeDir: path.join(root, "home"),
+      sourceBinDir,
+    });
+
+    expect(result.version).toMatch(/^0\.0\.0-e2e\.[a-f0-9]{12}$/);
+    expect(result.commit).toMatch(/^[a-f0-9]{40}$/);
+    const manifest = JSON.parse(
+      fs.readFileSync(path.join(result.bundleDir, "remote-helpers.json"), "utf8"),
+    ) as { version: string; commit: string };
+    expect(manifest).toMatchObject({ version: result.version, commit: result.commit });
+  });
+
   it("fails when the Linux remote helper was not built", () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "kandev-compact-runtime-missing-"));
     roots.push(root);

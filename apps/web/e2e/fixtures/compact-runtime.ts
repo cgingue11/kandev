@@ -121,15 +121,14 @@ export function prepareCompactRuntimeFixture({
 }
 
 function currentBuildIdentity(): CompactRuntimeIdentity {
+  const commit = execFileSync("git", ["rev-parse", "HEAD"], {
+    cwd: REPO_ROOT,
+    encoding: "utf8",
+  }).trim();
   return {
-    version: execFileSync("git", ["describe", "--tags", "--always", "--dirty"], {
-      cwd: REPO_ROOT,
-      encoding: "utf8",
-    }).trim(),
-    commit: execFileSync("git", ["rev-parse", "HEAD"], {
-      cwd: REPO_ROOT,
-      encoding: "utf8",
-    }).trim(),
+    // Helper manifests require SemVer even when CI checks out an untagged commit.
+    version: `0.0.0-e2e.${commit.slice(0, 12)}`,
+    commit,
   };
 }
 
