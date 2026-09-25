@@ -209,7 +209,10 @@ jobs:
       # bundles the pseudo QA catalog, and tests/i18n/pseudo-coverage.spec.ts
       # needs it. See apps/web/lib/i18n/bundling.ts.
       - name: Build backend and web
-        run: make build-backend build-web-e2e
+        run: |
+          # PR merge refs are untagged; helper manifests require a SemVer version.
+          VERSION="0.0.0-e2e.${GITHUB_SHA}" make build-backend
+          make build-web-e2e
 
       # Fixture plugin package consumed by the plugin E2E specs. Built here
       # (the build job has the Go toolchain) and shipped to the shards as its

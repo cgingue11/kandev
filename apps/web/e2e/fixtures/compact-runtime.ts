@@ -38,7 +38,7 @@ export function prepareCompactRuntimeFixture({
   homeDir,
   sourceBinDir,
   launcherPath = path.join(sourceBinDir, "kandev"),
-  identity = currentBuildIdentity(),
+  identity,
 }: PrepareCompactRuntimeOptions): CompactRuntimeFixture {
   const parentDir = path.dirname(bundleDir);
   const agentctlPath = path.join(sourceBinDir, "agentctl");
@@ -48,6 +48,7 @@ export function prepareCompactRuntimeFixture({
       throw new Error(`Compact runtime E2E requires a built executable at ${sourcePath}`);
     }
   }
+  const runtimeIdentity = identity ?? currentBuildIdentity(launcherPath);
 
   fs.mkdirSync(path.join(bundleDir, "bin"), { recursive: true });
   const packagedLauncher = path.join(bundleDir, "bin", "kandev");
@@ -74,9 +75,9 @@ export function prepareCompactRuntimeFixture({
       "--output-dir",
       helperArtifactDir,
       "--version",
-      identity.version,
+      runtimeIdentity.version,
       "--commit",
-      identity.commit,
+      runtimeIdentity.commit,
       "--stable",
       "true",
     ],
@@ -99,7 +100,7 @@ export function prepareCompactRuntimeFixture({
   const cacheRoot = path.join(homeDir, "cache", "remote-helpers");
   const cachePath = path.join(
     cacheRoot,
-    identity.version,
+    runtimeIdentity.version,
     "linux-amd64",
     linuxRecord.sha256,
     "agentctl",
@@ -111,7 +112,7 @@ export function prepareCompactRuntimeFixture({
   fs.rmSync(helperArtifactDir, { recursive: true, force: true });
 
   return {
-    ...identity,
+    ...runtimeIdentity,
     bundleDir,
     launcherPath: packagedLauncher,
     cacheRoot,
@@ -120,14 +121,16 @@ export function prepareCompactRuntimeFixture({
   };
 }
 
-function currentBuildIdentity(): CompactRuntimeIdentity {
+function currentBuildIdentity(launcherPath: string): CompactRuntimeIdentity {
   const commit = execFileSync("git", ["rev-parse", "HEAD"], {
     cwd: REPO_ROOT,
     encoding: "utf8",
   }).trim();
   return {
-    // Helper manifests require SemVer even when CI checks out an untagged commit.
-    version: `0.0.0-e2e.${commit.slice(0, 12)}`,
+    version: execFileSync(launcherPath, ["--version"], {
+      cwd: REPO_ROOT,
+      encoding: "utf8",
+    }).trim(),
     commit,
   };
 }
