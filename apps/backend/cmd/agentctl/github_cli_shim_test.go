@@ -469,6 +469,44 @@ func TestGitHubCLIShimIncrementsChildDepth(t *testing.T) {
 	}
 }
 
+func TestGitHubCLIShimRemovesManagedDirectoriesFromChildPath(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]string{"username": "x-access-token", "password": "token"})
+	}))
+	t.Cleanup(server.Close)
+
+	root := t.TempDir()
+	currentShim := filepath.Join(root, githubCLIShimDirPrefix+"current")
+	staleShim := filepath.Join(root, githubCLIShimDirPrefix+"stale")
+	realDir := filepath.Join(root, "real")
+	env := githubCredentialTestEnv(server.URL)
+	env["PATH"] = strings.Join([]string{currentShim, staleShim, realDir}, string(os.PathListSeparator))
+
+	var lookedUpPath, childPath string
+	err := runGitHubCLIShim(
+		context.Background(), []string{"pr", "list"}, strings.NewReader(""), io.Discard, io.Discard,
+		lookupEnv(env), func() []string { return envMap(env) }, server.Client(), currentShim,
+		func(_ string, path string) (string, error) {
+			lookedUpPath = path
+			return filepath.Join(realDir, "gh"), nil
+		},
+		func(_ context.Context, _ string, _ []string, childEnv []string, _ io.Reader, _, _ io.Writer) error {
+			childPath = envValue(childEnv, "PATH")
+			return nil
+		},
+	)
+	if err != nil {
+		t.Fatalf("runGitHubCLIShim() error = %v", err)
+	}
+	wantPath := realDir
+	if lookedUpPath != wantPath {
+		t.Fatalf("real gh lookup PATH = %q, want %q", lookedUpPath, wantPath)
+	}
+	if childPath != wantPath {
+		t.Fatalf("real gh child PATH = %q, want %q", childPath, wantPath)
+	}
+}
+
 func TestLookPathSkippingShimsIgnoresLinksToSelf(t *testing.T) {
 	if runtime.GOOS == windowsOS {
 		t.Skip("symlink layout is unix-specific")

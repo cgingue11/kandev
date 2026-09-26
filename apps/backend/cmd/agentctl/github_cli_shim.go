@@ -71,6 +71,7 @@ func runGitHubCLIShim(
 		return err
 	}
 	realPath := pathWithoutDirectory(getenv("PATH"), shimDir)
+	realPath = pathWithoutGitHubCLIShimDirectories(realPath)
 	executable, err := lookPath("gh", realPath)
 	if err != nil {
 		return fmt.Errorf("find real gh CLI: %w", err)
@@ -277,6 +278,17 @@ func pathWithoutDirectory(path, excluded string) string {
 	filtered := parts[:0]
 	for _, part := range parts {
 		if filepath.Clean(part) != cleanExcluded {
+			filtered = append(filtered, part)
+		}
+	}
+	return strings.Join(filtered, string(os.PathListSeparator))
+}
+
+func pathWithoutGitHubCLIShimDirectories(path string) string {
+	parts := filepath.SplitList(path)
+	filtered := parts[:0]
+	for _, part := range parts {
+		if !isGitHubCLIShimDir(part) {
 			filtered = append(filtered, part)
 		}
 	}
