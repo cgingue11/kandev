@@ -51,4 +51,22 @@ func TestConfigureAndStartAgentKeepsLaunchManagedGitCredentials(t *testing.T) {
 	if configuredEnv["GIT_CONFIG_VALUE_1"] != githubauth.ManagedGitCredentialHelper {
 		t.Errorf("managed helper entry = %q, want %q", configuredEnv["GIT_CONFIG_VALUE_1"], githubauth.ManagedGitCredentialHelper)
 	}
+	if replaced {
+		t.Fatal("overlay-free launch must use agentctl's overlay configuration mode")
+	}
+}
+
+// An empty runtime_env is an explicit overlay and must keep its composition semantics.
+func TestHasRuntimeEnvOverlayDistinguishesAbsentAndEmptyOverlay(t *testing.T) {
+	if hasRuntimeEnvOverlay(nil) {
+		t.Fatal("nil metadata must not report an overlay")
+	}
+	if hasRuntimeEnvOverlay(map[string]interface{}{}) {
+		t.Fatal("metadata without runtime_env must not report an overlay")
+	}
+	if !hasRuntimeEnvOverlay(map[string]interface{}{
+		"runtime_env": map[string]string{},
+	}) {
+		t.Fatal("an explicitly delivered empty runtime_env must report an overlay")
+	}
 }

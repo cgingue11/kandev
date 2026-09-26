@@ -2420,7 +2420,8 @@ func getAttachmentsFromMetadata(execution *AgentExecution) []MessageAttachment {
 // Returns the effective boot command (full command with adapter args, or base command).
 func (m *Manager) configureAndStartAgent(ctx context.Context, execution *AgentExecution, approvalPolicy string) (string, error) {
 	runtimeSnapshot := execution.RuntimeEnvironment()
-	metadataEnv := runtimeEnvFromMetadata(execution.MetadataSnapshot())
+	metadata := execution.MetadataSnapshot()
+	metadataEnv := runtimeEnvFromMetadata(metadata)
 	var env map[string]string
 	if runtimeSnapshot == nil {
 		env = cloneStringMap(metadataEnv)
@@ -2431,7 +2432,7 @@ func (m *Manager) configureAndStartAgent(ctx context.Context, execution *AgentEx
 			m.updateExecutionError(execution.ID, "failed to resolve agent profile environment: "+err.Error())
 			return "", fmt.Errorf("resolve agent profile environment: %w", err)
 		}
-	} else if !hasRuntimeEnvOverlay(execution.MetadataSnapshot()) {
+	} else if !hasRuntimeEnvOverlay(metadata) {
 		// Without a SetExecutionEnv overlay the snapshot is the environment
 		// this launch composed, including the managed credential broker
 		// values its helper entries expand. Nothing newer can replace them.
