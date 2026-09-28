@@ -58,8 +58,9 @@ export async function addRemoteRepositoryFromSettings(options: {
     savedRepository = (await response.json()) as Repository;
     await expect(dialog).toBeHidden();
 
-    const card = page.locator('[data-slot="card"]', { hasText: REMOTE_FULL_NAME });
-    await expect(card).toBeVisible();
+    // The saved repository opens in its editor right away, so its name is an
+    // input value here and plain card text only after the reload below.
+    await expect(page.getByPlaceholder("my-repo")).toHaveValue(REMOTE_FULL_NAME);
     await page.reload();
     await expect(page.locator('[data-slot="card"]', { hasText: REMOTE_FULL_NAME })).toBeVisible({
       timeout: 15_000,
