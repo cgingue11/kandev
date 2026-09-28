@@ -1,0 +1,96 @@
+import { expect, type Page } from "@playwright/test";
+import type { SeedData } from "../../fixtures/test-base";
+import type { ApiClient } from "../../helpers/api-client";
+import type { ListRepositoriesResponse, Repository } from "../../../lib/types/http";
+
+const REMOTE_OWNER = "mock-user";
+const REMOTE_NAME = "settings-remote";
+const REMOTE_FULL_NAME = `${REMOTE_OWNER}/${REMOTE_NAME}`;
+
+/**
+ * Registers a mock GitHub repository through Settings > Workspace >
+ * Repositories > Add repository > Remote repository and proves it persisted.
+ * Covers AC-WORKSPACES-REMOTE-REPOSITORY-REGISTRATION-001.1 through .5 and,
+ * with `mobile`, .8.
+ */
+export async function addRemoteRepositoryFromSettings(options: {
+  page: Page;
+  apiClient: ApiClient;
+  seedData: SeedData;
+  mobile?: boolean;
+}) {
+  const { page, apiClient, seedData, mobile = false } = options;
+  if (mobile) await page.setViewportSize({ width: 390, height: 844 });
+  let savedRepository: Repository | undefined;
+
+  await apiClient.mockGitHubReset();
+  await apiClient.mockGitHubSetUser(REMOTE_OWNER);
+  await apiClient.mockGitHubAddRepos(REMOTE_OWNER, [
+    { full_name: REMOTE_FULL_NAME, owner: REMOTE_OWNER, name: REMOTE_NAME, private: false },
+  ]);
+  await apiClient.mockGitHubAddBranches(REMOTE_OWNER, REMOTE_NAME, [{ name: "main" }]);
+
+  try {
+    await page.goto(`/settings/workspaces/${seedData.workspaceId}/repositories`);
+    await page.getByRole("button", { name: "Add repository" }).click();
+    await page.getByRole("menuitem", { name: "Remote repository" }).click();
+
+    const dialog = page.getByRole("dialog", { name: "Add Remote Repository" });
+    await expect(dialog).toBeVisible();
+    const confirm = dialog.getByRole("button", { name: "Add to workspace" });
+    await expect(confirm).toBeDisabled();
+
+    await dialog.getByTestId("remote-repo-chip-trigger").click();
+    const option = page.getByTestId("remote-repo-option").filter({ hasText: REMOTE_FULL_NAME });
+    await expect(option).toBeVisible({ timeout: 10_000 });
+    await option.first().click();
+    await expect(confirm).toBeEnabled();
+
+    const registerResponse = page.waitForResponse(
+      (response) =>
+        response.url().endsWith(`/api/v1/workspaces/${seedData.workspaceId}/repositories/remote`) &&
+        response.request().method() === "POST" &&
+        response.ok(),
+    );
+    await confirm.click();
+    const response = await registerResponse;
+    expect(response.status()).toBe(201);
+    savedRepository = (await response.json()) as Repository;
+    await expect(dialog).toBeHidden();
+
+    const card = page.locator('[data-slot="card"]', { hasText: REMOTE_FULL_NAME });
+    await expect(card).toBeVisible();
+    await page.reload();
+    await expect(page.locator('[data-slot="card"]', { hasText: REMOTE_FULL_NAME })).toBeVisible({
+      timeout: 15_000,
+    });
+
+    const listResponse = await apiClient.rawRequest(
+      "GET",
+      `/api/v1/workspaces/${seedData.workspaceId}/repositories`,
+    );
+    expect(listResponse.ok).toBe(true);
+    const listed = (await listResponse.json()) as ListRepositoriesResponse;
+    expect(listed.repositories).toContainEqual(
+      expect.objectContaining({
+        id: savedRepository.id,
+        provider: "github",
+        provider_owner: REMOTE_OWNER,
+        provider_name: REMOTE_NAME,
+        default_branch: "main",
+      }),
+    );
+
+    if (mobile) {
+      expect(
+        await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth),
+      ).toBe(false);
+    }
+  } finally {
+    if (savedRepository) {
+      await apiClient
+        .rawRequest("DELETE", `/api/v1/repositories/${savedRepository.id}`)
+        .catch(() => undefined);
+    }
+  }
+}
