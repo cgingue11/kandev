@@ -51,6 +51,9 @@ func (s *Service) RegisterRemoteRepository(
 	if err := s.preflightRepositoryInputs(ctx, req.WorkspaceID, inputs); err != nil {
 		return nil, false, err
 	}
+	if err := validateBuiltInRemoteHints(inputs[0]); err != nil {
+		return nil, false, err
+	}
 	repositoryID, _, created, err := s.ResolveRepositoryRef(ctx, req.WorkspaceID, inputs[0])
 	if err != nil {
 		return nil, false, err
@@ -63,4 +66,36 @@ func (s *Service) RegisterRemoteRepository(
 		return nil, false, err
 	}
 	return repository, created, nil
+}
+
+// validateBuiltInRemoteHints applies the same provider, owner, name, and host
+// agreement checks that built-in resolution enforces, but as a typed
+// selection error so a caller-supplied hint that disagrees with the locator
+// is a client error rather than an internal failure. Plugin descriptors are
+// already authoritative by the time this runs.
+func validateBuiltInRemoteHints(input TaskRepositoryInput) error {
+	if input.TrustedProviderDescriptor {
+		return nil
+	}
+	provider, owner, name, canonicalURL, err := parseRemoteRepositoryURL(effectiveRemoteURL(input), input.Provider)
+	if err != nil {
+		return NewRepositorySelectionError(RepositorySelectionErrorInvalid, err)
+	}
+	if input.Provider != "" && !strings.EqualFold(input.Provider, provider) {
+		return NewRepositorySelectionError(RepositorySelectionErrorInvalid,
+			fmt.Errorf("remote_url provider %q does not match provider %q", provider, input.Provider))
+	}
+	if _, err := validateRemoteRepositoryMetadata(input, provider, owner, name); err != nil {
+		return NewRepositorySelectionError(RepositorySelectionErrorInvalid, err)
+	}
+	providerHost := remoteProviderHost(provider, canonicalURL)
+	if input.ProviderHost != "" && !strings.EqualFold(strings.TrimRight(input.ProviderHost, "/"), providerHost) {
+		return NewRepositorySelectionError(RepositorySelectionErrorInvalid,
+			fmt.Errorf("remote_url provider host %q does not match %q", providerHost, input.ProviderHost))
+	}
+	if provider == providerGitLab && providerHost != "https://gitlab.com" {
+		return NewRepositorySelectionError(RepositorySelectionErrorInvalid,
+			fmt.Errorf("untrusted GitLab origin %q", providerHost))
+	}
+	return nil
 }

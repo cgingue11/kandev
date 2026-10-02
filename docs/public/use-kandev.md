@@ -155,7 +155,7 @@ workspace there from the menu sheet instead.
 ## Add a local repository
 
 1. Open **Settings > Workspaces > Default Workspace > Repositories**. If you created or renamed the workspace, choose that workspace instead.
-2. Select **Add Local Repository**.
+2. Select **Add repository > Local repository**.
 3. Choose a discovered repository, or enter an absolute path and select **Validate**. The backend accepts any existing Git repository the Kandev process can access. Configured discovery roots bound automatic scans; they do not restrict an explicit path.
 4. Select **Use Repository**. This opens an unsaved repository card.
 5. Review the repository name, worktree branch template, pull behavior, setup/cleanup/dev scripts, copied files, and custom commands. Then select **Save changes**.

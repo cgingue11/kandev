@@ -77,10 +77,13 @@ before any task exists.
 - **AC-WORKSPACES-REMOTE-REPOSITORY-REGISTRATION-001.6:** When verification
   fails, the system shall persist nothing, the dialog shall stay open with the
   selection intact, and it shall show the failure reason. The API shall answer
-  an unsupported or malformed locator with `400` and
-  `repository_selection_invalid`, an unknown repository with `404` and
-  `repository_selection_not_found`, and an unreachable provider with `503`
-  and `repository_selection_unavailable`.
+  an unsupported or malformed locator, or a provider hint that disagrees with
+  the locator, with `400` and `repository_selection_invalid`. For a plugin
+  provider, whose inspection is authoritative, the API shall also answer an
+  unknown repository with `404` and `repository_selection_not_found` and an
+  unreachable provider with `503` and `repository_selection_unavailable`.
+  Built-in providers are verified from the locator alone; their default
+  branch lookup is best effort and does not block registration.
 - **AC-WORKSPACES-REMOTE-REPOSITORY-REGISTRATION-001.7:** When the workspace
   is the read-only Improve Kandev workspace, the page shall not offer the
   **Add repository** control and the registration API shall refuse with

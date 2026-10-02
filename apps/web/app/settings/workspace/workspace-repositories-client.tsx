@@ -486,12 +486,12 @@ export function useWorkspaceRepositoriesPage(
   const [remoteRepoDialogOpen, setRemoteRepoDialogOpen] = useState(false);
   // A remote repository is saved by the backend before it reaches the page, so
   // it joins the saved baseline directly instead of becoming an unsaved draft.
+  // A repository the page already lists keeps its loaded baseline and scripts;
+  // the registration response never carries scripts.
   const handleRemoteRepositoryRegistered = (repository: Repository) => {
     const saved: RepositoryWithScripts = { ...repository, scripts: [] };
     setSavedRepositoryItems((prev) =>
-      prev.some((item) => item.id === saved.id)
-        ? prev.map((item) => (item.id === saved.id ? cloneRepository(saved) : item))
-        : [cloneRepository(saved), ...prev],
+      prev.some((item) => item.id === saved.id) ? prev : [cloneRepository(saved), ...prev],
     );
     setRepositoryItems((prev) =>
       prev.some((item) => item.id === saved.id) ? prev : [{ ...saved, __autoOpen: true }, ...prev],

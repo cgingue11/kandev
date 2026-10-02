@@ -98,14 +98,20 @@ remote item opens `AddRemoteRepositoryDialog`.
 
 ### Remote dialog
 
-The dialog holds one `TaskRemoteRepoRow`. Picker selection fills the row's
-URL, provider hints, and default branch; a pasted URL fills only the URL.
-Branch loading uses `useBranchesByURL(workspaceId)`, which already routes
-plugin providers through their `repositories.branches` action. Confirmation is
-enabled only with a non-empty URL. On success the page inserts the returned
-repository into both the saved baseline and the rendered list (replacing an
-existing entry with the same ID rather than duplicating it) and closes the
-dialog.
+The form that owns the picker mounts only while the dialog is open, so
+provider catalogs are requested when the user opens the dialog, not on every
+settings page visit. The form holds one `TaskRemoteRepoRow`. Picker selection
+fills the row's URL, provider hints, and default branch; a pasted URL fills
+only the URL and is inspected through `usePRInfoByURL(workspaceId)`, the same
+inspection task creation uses: when a registered plugin provider claims the
+URL, its inspection descriptor (clone URL, provider identity, default branch)
+replaces the bare URL on the row before submission is allowed. Branch loading
+uses `useBranchesByURL(workspaceId)`, which already routes plugin providers
+through their `repositories.branches` action. Confirmation is enabled only
+with a non-empty URL whose inspection has settled without error. On success
+the page inserts the returned repository into the saved baseline and the
+rendered list; a repository the page already lists keeps its loaded entry and
+scripts, since the registration response carries no scripts.
 
 ## Control flow
 
@@ -131,8 +137,16 @@ dialog.
 | Workspace scope denied | `403` |
 
 The dialog keeps the row and shows the returned `error` message in a
-`role="alert"` region; a pending submission shows a `role="status"` line. The
-GitHub default-branch probe is best effort, as in task creation.
+`role="alert"` region; a pending submission shows a `role="status"` line, and
+the dialog refuses close requests (Cancel, Escape, overlay) until the request
+settles. Registration enables `ResolveProviderDefaults`, so a GitHub locator
+without a branch probes the provider's default branch; that probe is best
+effort and a failure leaves the branch empty rather than failing registration.
+
+Provider hints that disagree with a built-in locator (owner, name, provider,
+host) are rejected by `validateBuiltInRemoteHints` as
+`repository_selection_invalid` before resolution, so a stale or forged hint is
+a client error rather than an internal failure.
 
 ## Persistence
 

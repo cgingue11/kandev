@@ -110,6 +110,22 @@ func TestHTTPRegisterRemoteRepositoryMapsClientErrors(t *testing.T) {
 		}
 	})
 
+	t.Run("provider hint mismatch", func(t *testing.T) {
+		router, repo := newRepositoryHTTPTestRouter(t)
+		response := performRegisterRemoteRepositoryRequest(t, router, "ws-1",
+			`{"remote_url":"https://github.com/acme/api","provider_owner":"someone-else"}`)
+		if response.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusBadRequest, response.Body.String())
+		}
+		if !strings.Contains(response.Body.String(), `"error_code":"repository_selection_invalid"`) {
+			t.Fatalf("body = %s, want repository_selection_invalid error code", response.Body.String())
+		}
+		repositories, err := repo.ListRepositories(context.Background(), "ws-1")
+		if err != nil || len(repositories) != 0 {
+			t.Fatalf("repositories = %+v, error %v; want none", repositories, err)
+		}
+	})
+
 	t.Run("unknown workspace", func(t *testing.T) {
 		router, _ := newRepositoryHTTPTestRouter(t)
 		response := performRegisterRemoteRepositoryRequest(t, router, "missing",

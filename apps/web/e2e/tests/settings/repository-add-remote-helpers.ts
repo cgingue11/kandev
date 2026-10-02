@@ -9,9 +9,10 @@ const REMOTE_FULL_NAME = `${REMOTE_OWNER}/${REMOTE_NAME}`;
 
 /**
  * Registers a mock GitHub repository through Settings > Workspace >
- * Repositories > Add repository > Remote repository and proves it persisted.
- * Covers AC-WORKSPACES-REMOTE-REPOSITORY-REGISTRATION-001.1 through .5 and,
- * with `mobile`, .8.
+ * Repositories > Add repository > Remote repository and proves it persisted
+ * without creating a task. Covers
+ * AC-WORKSPACES-REMOTE-REPOSITORY-REGISTRATION-001.1 through .5 and, with
+ * `mobile`, .8.
  */
 export async function addRemoteRepositoryFromSettings(options: {
   page: Page;
@@ -29,10 +30,19 @@ export async function addRemoteRepositoryFromSettings(options: {
     { full_name: REMOTE_FULL_NAME, owner: REMOTE_OWNER, name: REMOTE_NAME, private: false },
   ]);
   await apiClient.mockGitHubAddBranches(REMOTE_OWNER, REMOTE_NAME, [{ name: "main" }]);
+  const tasksBefore = (await apiClient.listTasks(seedData.workspaceId)).tasks.length;
 
   try {
     await page.goto(`/settings/workspaces/${seedData.workspaceId}/repositories`);
     await page.getByRole("button", { name: "Add repository" }).click();
+    // Opening the dialog mounts the picker, which lists the connected
+    // provider's repositories; the option can only render after that answer.
+    const reposListed = page.waitForResponse(
+      (response) =>
+        response.url().includes("/api/v1/github/repos") &&
+        response.request().method() === "GET" &&
+        response.ok(),
+    );
     await page.getByRole("menuitem", { name: "Remote repository" }).click();
 
     const dialog = page.getByRole("dialog", { name: "Add Remote Repository" });
@@ -40,9 +50,10 @@ export async function addRemoteRepositoryFromSettings(options: {
     const confirm = dialog.getByRole("button", { name: "Add to workspace" });
     await expect(confirm).toBeDisabled();
 
+    await reposListed;
     await dialog.getByTestId("remote-repo-chip-trigger").click();
     const option = page.getByTestId("remote-repo-option").filter({ hasText: REMOTE_FULL_NAME });
-    await expect(option).toBeVisible({ timeout: 10_000 });
+    await expect(option).toBeVisible();
     await option.first().click();
     await expect(confirm).toBeEnabled();
 
@@ -59,12 +70,12 @@ export async function addRemoteRepositoryFromSettings(options: {
     await expect(dialog).toBeHidden();
 
     // The saved repository opens in its editor right away, so its name is an
-    // input value here and plain card text only after the reload below.
+    // input value here and plain card text only after the reload below. The
+    // reload renders the list from the boot payload, so no request precedes
+    // the card; the default assertion timeout covers hydration.
     await expect(page.getByPlaceholder("my-repo")).toHaveValue(REMOTE_FULL_NAME);
     await page.reload();
-    await expect(page.locator('[data-slot="card"]', { hasText: REMOTE_FULL_NAME })).toBeVisible({
-      timeout: 15_000,
-    });
+    await expect(page.locator('[data-slot="card"]', { hasText: REMOTE_FULL_NAME })).toBeVisible();
 
     const listResponse = await apiClient.rawRequest(
       "GET",
@@ -81,6 +92,8 @@ export async function addRemoteRepositoryFromSettings(options: {
         default_branch: "main",
       }),
     );
+    const tasksAfter = (await apiClient.listTasks(seedData.workspaceId)).tasks.length;
+    expect(tasksAfter).toBe(tasksBefore);
 
     if (mobile) {
       expect(

@@ -123,6 +123,30 @@ func TestRegisterRemoteRepositoryRejectsUnsupportedHostWithoutProvider(t *testin
 	}
 }
 
+func TestRegisterRemoteRepositoryRejectsMismatchedBuiltInHints(t *testing.T) {
+	svc, _, repo := createTestService(t)
+	ctx := context.Background()
+	createRepositorySelectionWorkspace(t, repo)
+	for name, request := range map[string]*RegisterRemoteRepositoryRequest{
+		"owner":    {WorkspaceID: "ws-1", RemoteURL: "https://github.com/acme/api", ProviderOwner: "someone-else"},
+		"name":     {WorkspaceID: "ws-1", RemoteURL: "https://github.com/acme/api", ProviderName: "other"},
+		"provider": {WorkspaceID: "ws-1", RemoteURL: "https://github.com/acme/api", Provider: "gitlab"},
+		"host":     {WorkspaceID: "ws-1", RemoteURL: "https://github.com/acme/api", ProviderHost: "https://ghe.example.test"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, _, err := svc.RegisterRemoteRepository(ctx, request)
+			assertRepositorySelectionError(t, err, RepositorySelectionErrorInvalid, "")
+		})
+	}
+	repositories, err := repo.ListRepositories(ctx, "ws-1")
+	if err != nil {
+		t.Fatalf("ListRepositories: %v", err)
+	}
+	if len(repositories) != 0 {
+		t.Fatalf("repositories after mismatched hints = %d, want zero", len(repositories))
+	}
+}
+
 func TestRegisterRemoteRepositoryCreatesBuiltInGitHubRepository(t *testing.T) {
 	svc, _, repo := createTestService(t)
 	ctx := context.Background()
